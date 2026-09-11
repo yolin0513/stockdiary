@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ok, eq, section, done } from './tap.mjs';
+import { ok, eq, section, done , note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -1091,11 +1091,12 @@ const MUTATIONS = [
     name: '持股頁把兩個入口放回「目前持股」上面',
     why: '每次進持股頁都要先捲過兩張卡片才看得到自己的持股。',
     file: 'js/views/holdings.js',
-    find: `    concentrationCard(withIndustry, quotes),
+    // v0.7.7 之後「目前持股」在最上面，所以改成**把產業分布插回它前面** ——
+    // 一樣是使用者回報過的症狀：每次進持股頁都要先捲過一張圖表才看得到自己的持股。
+    find: `  render([
     held.length === 0`,
-    // 把「新增持股」那張卡插到持股清單前面 —— 這就是使用者回報的原本順序。
-    replace: `    concentrationCard(withIndustry, quotes),
-    h('section', { class: 'card', dataset: { card: 'addHolding' } }),
+    replace: `  render([
+    concentrationCard(withIndustry, quotes),
     held.length === 0`,
     test: 'uikittest',
   },
@@ -1307,8 +1308,11 @@ const MUTATIONS = [
     why: '新增持股、儲存計畫、按重新整理都會 force 一次，而開機那一次通常還在飛。'
       + '並行跑的話同一檔同一個月會被抓兩次 —— TWSE 連打是會被封 IP 的。',
     file: 'js/store.js',
-    find: '    if (!force) return state.updating;\n    return state.updating.then(() => runUpdate({ force, onProgress }));',
-    replace: '    return state.updating;',
+    // 要改的是**守門那一行**：force 跳過去就會跟進行中的那次並行跑。
+    // 只換掉區塊裡面兩行的話，force 會拿到同一個 promise（等於 force 被忽略），
+    // 請求數不會變兩倍，測試也就不會紅 —— 那條突變本身是錯的。
+    find: '  if (state.updating) {',
+    replace: '  if (state.updating && !force) {',
     test: 'pathtest',
   },
   {
@@ -1402,11 +1406,45 @@ function runTest(name) {
 
 // 被改壞的檔案一定要還原，就算中途被 Ctrl-C 或丟例外。
 const backups = new Map();
+
+/**
+ * 還原記錄**寫在磁碟上**，不是只留在記憶體裡。
+ *
+ * `process.on('exit')` 遇到硬殺（工作管理員、CI 逾時、Ctrl-Break）不會跑。
+ * 實際發生過：中途 kill 掉之後，`js/update.js` 留著一條突變在工作目錄裡 ——
+ * 程式看起來很正常，只是某幾條測試紅；沒注意就 commit 的話，
+ * 等於把一條**故意寫壞的程式碼**推上線。
+ *
+ * 有這個檔的話，下一次啟動會先把它還原回去，並且大聲講出來。
+ */
+const PENDING = path.join(ROOT, 'scripts/.mutation-pending.json');
+
+function writePending(rel, content) {
+  try { fs.writeFileSync(PENDING, JSON.stringify({ file: rel, content, at: new Date().toISOString() }), 'utf8'); } catch { /* 盡力 */ }
+}
+function clearPending() {
+  try { fs.rmSync(PENDING, { force: true }); } catch { /* 盡力 */ }
+}
+
+/** 上一次跑到一半被殺掉的話，把那個檔案還原回去。 */
+function recoverPending() {
+  if (!fs.existsSync(PENDING)) return null;
+  let rec;
+  try { rec = JSON.parse(fs.readFileSync(PENDING, 'utf8')); } catch { clearPending(); return null; }
+  const abs = path.join(ROOT, rec.file);
+  const now = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
+  clearPending();
+  if (now === rec.content) return { file: rec.file, changed: false };
+  fs.writeFileSync(abs, rec.content, 'utf8');
+  return { file: rec.file, changed: true, at: rec.at };
+}
+
 function restoreAll() {
   for (const [rel, content] of backups) {
     try { fs.writeFileSync(path.join(ROOT, rel), content, 'utf8'); } catch { /* 盡力 */ }
   }
   backups.clear();
+  clearPending();
 }
 process.on('exit', restoreAll);
 for (const sig of ['SIGINT', 'SIGTERM']) {
@@ -1416,6 +1454,15 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 // 先確認每條突變指到的測試檔真的存在。
 // 少了這一步，檔名打錯會以「基準不是綠的、而且沒有任何 ✗ 明細」的形式出現 ——
 // 看起來像測試壞了，其實是 scripts/<代號>.mjs 根本不存在。（踩過一次。）
+section('開跑前：檢查上一次有沒有留下沒還原的突變');
+const recovered = recoverPending();
+if (recovered?.changed) {
+  ok(false, `上一次跑到一半被殺掉，${recovered.file} 留著一條突變（已經還原回去了）`,
+    `那次是 ${recovered.at} 開始的。**請重跑一次**，而且先確認剛才那段時間沒有把它 commit 出去。`);
+} else {
+  note(recovered ? `上一次的記錄還在，但 ${recovered.file} 內容是對的，不用還原` : '沒有殘留，工作目錄是乾淨的');
+}
+
 section('突變指到的測試檔都存在');
 const missingTests = TESTS.filter((t) => !fs.existsSync(path.join(ROOT, 'scripts', `${t}.mjs`)));
 eq(missingTests, [], `每條突變的 test 代號都對得到 scripts/<代號>.mjs（${TESTS.length} 個代號）`);
@@ -1424,9 +1471,30 @@ if (missingTests.length) {
   done('mutationtest');
 }
 
+// 只跑其中幾條：node scripts/mutationtest.mjs --only scenariotest
+//
+// **這是除錯用的，不是驗收用的。** 跑完只證明挑出來的那幾條沒問題，
+// 所以下面會把「這次只跑了幾條」寫進輸出，免得有人拿部分結果當成全綠。
+const ONLY = (() => {
+  const i = process.argv.indexOf('--only');
+  return i >= 0 ? process.argv[i + 1] : null;
+})();
+const SELECTED = ONLY
+  ? MUTATIONS.filter((m) => m.name.includes(ONLY) || m.test.includes(ONLY) || m.file.includes(ONLY))
+  : MUTATIONS;
+
+if (ONLY) {
+  section(`只跑符合「${ONLY}」的突變`);
+  ok(SELECTED.length > 0, `挑出 ${SELECTED.length} 條（全部 ${MUTATIONS.length} 條）`);
+  note(`**這不是全綠**：這次只驗了 ${SELECTED.length}/${MUTATIONS.length} 條，其餘沒有跑。`);
+}
+
 section('基準：沒有任何突變時，測試必須全綠');
 let baselineOk = true;
-for (const t of TESTS) {
+// 基準只跑「這次挑出來的突變會用到的」那幾支 —— 不然 --only 還是要先等 27 支跑完。
+// 沒有 --only 的時候 SELECTED 就是全部，跟以前一樣。
+const BASELINE_TESTS = [...new Set(SELECTED.map((m) => m.test))];
+for (const t of BASELINE_TESTS) {
   const r = runTest(t);
   if (!ok(r.code === 0, `${t} 在乾淨的程式碼上通過`, r.out.split('\n').filter((l) => l.includes('✗')).join('\n      '))) {
     baselineOk = false;
@@ -1437,8 +1505,8 @@ if (!baselineOk) {
   done('mutationtest');
 }
 
-section(`${MUTATIONS.length} 條突變：每一條都必須讓對應的測試變紅`);
-for (const mut of MUTATIONS) {
+section(`${SELECTED.length} 條突變：每一條都必須讓對應的測試變紅`);
+for (const mut of SELECTED) {
   const abs = path.join(ROOT, mut.file);
   const original = fs.readFileSync(abs, 'utf8');
 
@@ -1451,10 +1519,12 @@ for (const mut of MUTATIONS) {
   }
 
   backups.set(mut.file, original);
+  writePending(mut.file, original);          // 被硬殺掉也還原得回來
   fs.writeFileSync(abs, original.replace(mut.find, mut.replace), 'utf8');
   const r = runTest(mut.test);
   fs.writeFileSync(abs, original, 'utf8');
   backups.delete(mut.file);
+  clearPending();
 
   const restored = fs.readFileSync(abs, 'utf8');
   if (restored !== original) {

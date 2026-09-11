@@ -7,6 +7,7 @@ import * as store from '../store.js';
 import { setTop, render } from '../shell.js';
 import * as secrets from '../secrets.js';
 import * as backup from '../backup.js';
+import { APP_VERSION } from '../version.js';
 
 export default async function settings() {
   setTop({ title: '設定' });
@@ -216,8 +217,12 @@ function dataSection() {
 }
 
 function aboutSection() {
-  return h('section', { class: 'card' },
+  return h('section', { class: 'card', dataset: { card: 'about' } },
     h('h2', { class: 'card-title' }, '關於'),
+    // 版本號以前**畫面上任何地方都看不到** —— 只有「這個畫面在你目前的版本裡還沒有」
+    // 那張錯誤卡片會寫。結果是：換版之後沒有人（包括使用者自己）講得出手機上跑的是哪一版，
+    // 出問題時也沒辦法對。放在這裡，可以直接唸出來。
+    h('p', { class: 'muted sm', dataset: { field: 'appVersion' } }, `版本 ${APP_VERSION}`),
     h('p', { class: 'muted sm' }, '這個版本只支援上市股票。上櫃與興櫃代號可以記錄股數，但不會顯示價格與損益。'),
     h('p', { class: 'muted sm' }, '所有資料只存在這台裝置上，沒有帳號、沒有雲端。換手機請用匯出／匯入。'),
     h('p', { class: 'muted sm' }, '本 App 不提供投資建議，不顯示目標價，也不做任何買賣提示。'),

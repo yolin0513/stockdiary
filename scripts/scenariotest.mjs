@@ -272,6 +272,63 @@ try {
     await page.close();
   }
 
+  // =========================================================================
+  section('情境 4：除息日，參考價既查不到也算不出來');
+  //
+  // 這一段是突變測試逼出來的：「除息日拿不到參考價就退回前一日收盤」那條突變
+  // **改壞了 settle.js 但 scenariotest 還是綠的** —— 因為前三個情境每一個都餵了
+  // TWT49U 的參考價，那條 fallback 路徑一次都沒走到。
+  //
+  // 真的會發生：TWT48U 的預告表有這一天（所以知道要除息），但**現金股利還沒公告**
+  // （TWSE 對 ETF 常寫「待公告實際收益分配金額」），而 TWT49U 的結果表只留最近一次，
+  // 查不到這一天。此時參考價既拿不到、也推導不出來。
+  //
+  // 唯一正確的行為是**不算這一檔**。拿前收當基準的話，畫面會生出一筆
+  // 等於息值的假虧損，而且看起來完全正常。
+  {
+    const page = await freshApp({
+      csvToday: dayAllCsv(TODAY, [['2330', '台積電', 2455, 'X0.00']]),
+      csvPrev: [{ code: '2330', date: PREV, close: 2460 }],
+      // 現金股利欄位寫「待公告實際收益分配金額」→ 解出來是 null → 推導不出參考價
+      t48: [[rocChars(TODAY), '2330', '台積電', '息', '0.000000', '0.000000', '0.00', '待公告實際收益分配金額']],
+      t49: [],   // 結果表查不到這一天
+    });
+
+    const r = await page.evaluate(async (today) => {
+      const db = await import('./js/db.js');
+      const holdings = await import('./js/holdings.js');
+      const store = await import('./js/store.js');
+      await holdings.addOpening({ code: '2330', shares: 1000, avgCost: 1000, date: '2026-01-05' });
+      await store.update();
+      const settle = await db.get('settle', today);
+      const home = await import('./js/views/home.js');
+      await home.default();
+      await new Promise((r2) => setTimeout(r2, 200));
+      return {
+        row: settle?.byCode?.find((x) => x.code === '2330') ?? null,
+        dayPL: settle?.dayPL ?? null,
+        counted: settle?.counted ?? null,
+        text: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
+      };
+    }, TODAY);
+
+    ok(r.row != null, '這一檔還在結算紀錄裡（不是默默消失）', JSON.stringify(r.row));
+    eq(r.row?.close, 2455, '（前提）當天有成交，收盤價讀得到');
+    eq(r.row?.status, 'exNoRef', '狀態是「除權息日，尚未取得參考價」');
+    eq(r.row?.basis, null, '**基準價是 null —— 沒有退回前一日收盤 2460**');
+    eq(r.row?.basisSource, 'none', '而且來源標成 none，不是 prevClose');
+    eq(r.row?.pl, null, '這一檔的當日損益是 null');
+    eq(r.dayPL, null, '整體當日損益也是 null，不是一個湊出來的數字');
+    eq(r.counted, 0, '一檔都沒算進去');
+    // 手算：拿前收當基準會得到 (2455 − 2460) × 1000 ＝ −5,000。
+    // 那個數字**一次都不可以出現**，畫面上也不行。
+    noneOf([String(r.row?.pl), String(r.dayPL), r.text],
+      (t) => t.includes('-5000000000') || t.includes('-5,000'),
+      '**「−5,000」這個假虧損一次都沒出現** —— 那正是拿前收當基準會算出來的數字');
+    ok(r.text.includes('參考價'), `畫面講出卡在哪裡：「${/有持股在這一天除權息[^。]{0,40}/.exec(r.text)?.[0] ?? r.text.slice(0, 80)}」`);
+    await page.close();
+  }
+
   eq(pageErrors.filter((e) => !/favicon/.test(e)), [], '整段沒有未攔截的例外');
 } finally {
   await browser.close();

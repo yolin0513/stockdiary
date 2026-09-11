@@ -12,3 +12,6 @@ assert-audit.jsonl
 
 # 走查截圖與測試輸出（本機暫存，不進版控）
 .logs/
+
+# 突變跑到一半被殺掉時的還原記錄（不進版控）
+scripts/.mutation-pending.json

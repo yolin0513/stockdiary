@@ -22,7 +22,10 @@ import puppeteer from 'puppeteer';
 import { ok, eq, section, done, note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const OLD_REV = process.argv[2] || '8968518';
+// 預設拿**上一個 commit**當舊版。以前這裡寫死一個 commit id（8968518，v0.5.0），
+// 於是每發一版，這支測的都還是「從 v0.5.0 升上來」—— 真正要驗的那一跳從來沒測到。
+// 跟突變寫死版本號是同一種過期。要測特定版本就用 npm run upgradecheck -- <rev>。
+const OLD_REV = process.argv[2] || 'HEAD~1';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',

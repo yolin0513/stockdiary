@@ -434,6 +434,17 @@ try {
   ok(mismatch.hash !== '#/', `網址留在原地（${mismatch.hash}），更新之後才接得上`);
   ok(await page.$('#tabbar .tab') != null, '底部分頁還在，沒有把使用者困住');
 
+  section('畫面上看得到版本號');
+  // 以前版本號**只有錯誤卡片會寫**，正常畫面任何地方都看不到。
+  // 結果是換版之後沒有人（包括使用者自己）講得出手機上跑的是哪一版，出問題時沒辦法對。
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  await page.waitForSelector('#view [data-card="about"]', { timeout: 60000 });
+  const shown = await page.$eval('#view [data-field="appVersion"]', (el) => el.textContent.trim());
+  ok(shown.includes(APP_VERSION_IN_SRC),
+    `關於卡片上寫著目前執行的版本：「${shown}」`);
+  // 對照：不是寫死一個字串 —— 換個版本號它要跟著變
+  ok(!shown.includes('stockdiary-v0.0.0'), '（對照）不是寫死的假版本號');
+
   section('有持股但還沒結算：顯示「—」，不顯示 0');
   // 要先**真的有一檔持股**。一筆資料都沒有的時候總覽畫的是「開始使用」那張，
   // 上面本來就沒有大數字 —— 拿那個畫面來驗「當日損益是不是 —」等於什麼都沒驗。
