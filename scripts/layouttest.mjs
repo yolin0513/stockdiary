@@ -43,6 +43,20 @@ const SETTINGS_STATES = [
   } },
 ];
 
+/** 試算器查完配息之後會多出一整塊清單，特大字級下最容易擠。 */
+const CALC_STATES = [
+  { name: '預設', apply: null },
+  { name: '查過配息', apply: async (page) => {
+    await page.evaluate(async () => {
+      const i = document.querySelector('[data-field="lookupCode"]');
+      if (!i) return;
+      i.value = '2330';
+      i.parentElement.querySelector('button').click();
+    });
+    await new Promise((r) => setTimeout(r, 1200));
+  } },
+];
+
 const NEWS_STATES = [
   { name: '預設', apply: null },
   { name: '台股收起來', apply: async (page) => {
@@ -214,7 +228,8 @@ try {
       for (const route of ROUTES) {
         const states = route === '/news' ? NEWS_STATES
           : route === '/settings' ? SETTINGS_STATES
-            : [{ name: '預設', apply: null }];
+            : route === '/calc' ? CALC_STATES
+              : [{ name: '預設', apply: null }];
         for (const st of states) {
           await page.evaluate((r) => { location.hash = '#/'; void r; }, route);
           await new Promise((r) => setTimeout(r, 200));
@@ -231,13 +246,16 @@ try {
 
   const where = (p) => `${p.route}[${p.state}] @${p.width}px/${p.scale}`;
   // 新聞頁多掃兩種狀態、設定頁多掃一種
-  const perPass = ROUTES.length + (NEWS_STATES.length - 1) + (SETTINGS_STATES.length - 1);
-  section(`掃了 ${all.length} 個組合（${ROUTES.length} 頁＋新聞頁 ${NEWS_STATES.length} 種＋設定頁 ${SETTINGS_STATES.length} 種狀態，×${SCALES.length} 字級 ×${WIDTHS.length} 寬度）`);
+  const perPass = ROUTES.length + (NEWS_STATES.length - 1) + (SETTINGS_STATES.length - 1)
+    + (CALC_STATES.length - 1);
+  section(`掃了 ${all.length} 個組合（${ROUTES.length} 頁，新聞 ${NEWS_STATES.length} 種／設定 ${SETTINGS_STATES.length} 種／試算 ${CALC_STATES.length} 種狀態，×${SCALES.length} 字級 ×${WIDTHS.length} 寬度）`);
   eq(all.length, perPass * SCALES.length * WIDTHS.length, '組合數對得上');
   ok(all.filter((p) => p.route === '/news').length === NEWS_STATES.length * SCALES.length * WIDTHS.length,
     `新聞頁的 ${NEWS_STATES.length} 種狀態都掃到了（${all.filter((p) => p.route === '/news').length} 組）`);
   ok(all.filter((p) => p.route === '/settings').length === SETTINGS_STATES.length * SCALES.length * WIDTHS.length,
     `設定頁的 ${SETTINGS_STATES.length} 種狀態都掃到了（${all.filter((p) => p.route === '/settings').length} 組）`);
+  ok(all.filter((p) => p.route === '/calc').length === CALC_STATES.length * SCALES.length * WIDTHS.length,
+    `試算頁的 ${CALC_STATES.length} 種狀態都掃到了（${all.filter((p) => p.route === '/calc').length} 組）`);
   ok(all.every((p) => p.leafCount >= 3),
     `每一組都真的量到東西（最少的一組有 ${Math.min(...all.map((p) => p.leafCount))} 個文字節點）`);
 

@@ -48,6 +48,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run versionmixtest` | 版本混搭：舊 `app.js` ＋ 新 view 會怎樣、不認得的路由要講清楚原因、離線（**真的把伺服器關掉**）開得起來 |
 | `npm run backuptest` | 匯出／匯入：round-trip、備份檔不含金鑰、壞檔案擋得下來並講出原因 |
 | `npm run concentrationtest` | 產業集中度：整數百分比、算不出市值的不計入分母、不做任何評價 |
+| `npm run divrecordtest` | 配息紀錄與**界線**：不填試算欄位、沒有帶入按鈕、零百分比、只做合計不做平均 |
 | `npm run uikittest` | 共用元件：全 App 只有一套切換開關（滑塊真的會動）、沒有原生 time 欄位、沒有底線文字連結、觸控區 ≥44px |
 | `npm run layouttest` | 版面掃描：7 頁 × 4 字級 × 3 寬度 ＝ 84 組，零溢出、零重疊、零橫向捲動 |
 | `npm run insighttest` | 今日觀察的界線：禁用詞過濾（正反對照組）、越界只隱藏該段、prompt 不含股數金額、免責標籤關不掉 |
@@ -67,7 +68,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
 
 ```
-— 126 條突變：每一條都必須讓對應的測試變紅 —
+— 133 條突變：每一條都必須讓對應的測試變紅 —
   ✓ 把「沒成交」的漲跌價差照抄成 0 → parsetest 變紅
   ✓ 不認得除權息的 "X0.00" 標記 → parsetest 變紅
   ✓ 除權息日拿不到參考價時，退回用前一日收盤當基準 → settletest 變紅

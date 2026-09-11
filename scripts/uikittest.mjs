@@ -24,6 +24,22 @@ const viewFiles = fs.readdirSync(path.join(ROOT, 'js/views'))
 const read = (rel) => stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
 
 // ---------------------------------------------------------------------------
+section('畫面文字裡不可以出現 markdown 記號');
+// h() 全部是 textNode，不會渲染 markdown —— 寫 **粗體** 只會讓使用者看到兩個星號。
+// 實際發生過：試算器的配息查詢卡片上直接印出「以下都是**過去實際發生的紀錄**」。
+// 註解與系統提示不算（系統提示是給模型看的，那裡的 markdown 有意義）。
+const uiStrings = (rel) => {
+  const src = stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+  const single = [...src.matchAll(/'([^'\n]{4,})'/g)].map((m) => m[1]);
+  const tpl = [...src.matchAll(/`([^`]{4,}?)`/g)].map((m) => m[1]);
+  return [...single, ...tpl];
+};
+const markdownish = viewFiles.flatMap((f) => uiStrings(f).filter((t) => /\*\*|^#{1,3} |\[.+\]\(.+\)/.test(t))
+  .map((t) => `${f}: ${t.slice(0, 60)}`));
+eq(markdownish, [], '畫面字串裡沒有 **粗體**、# 標題或 [連結](網址) 這類記號');
+ok(viewFiles.flatMap(uiStrings).length > 50,
+  `（母體）掃了 ${viewFiles.flatMap(uiStrings).length} 條畫面字串 —— 上面那條不是因為根本沒抓到字串`);
+
 section('靜態：舊的三套寫法都清乾淨了');
 noneOf(viewFiles, (f) => /type:\s*['"]time['"]/.test(read(f)),
   '沒有任何畫面還在用 <input type="time">（iOS 會拉滿整個卡片，空值還顯示當下時間）');

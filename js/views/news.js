@@ -374,10 +374,10 @@ function consentCard() {
     h('h2', { class: 'card-title' }, '今日觀察（AI 整理，非投資建議）'),
     disclaimerBadge(),
     h('p', {}, '啟用前請先看清楚三件事：'),
-    h('p', { class: 'muted sm' }, '一、這是**資訊整理，不是投資建議**。不會有買賣建議、目標價、進出場時機或個股評等；'
+    h('p', { class: 'muted sm' }, '一、這是資訊整理，不是投資建議。不會有買賣建議、目標價、進出場時機或個股評等；'
       + '真的出現了，程式會把那一段隱藏起來，但你仍然不應該把任何一句話當成建議。'),
-    h('p', { class: 'muted sm' }, '二、**費用由你付**。用的是你自己的 Anthropic 金鑰，直接跟 Anthropic 結算，這個 App 不經手。'),
-    h('p', { class: 'muted sm' }, '三、**金鑰只存在這台裝置**，不會上傳，也不會出現在匯出的備份檔裡。'),
+    h('p', { class: 'muted sm' }, '二、費用由你付。用的是你自己的 Anthropic 金鑰，直接跟 Anthropic 結算，這個 App 不經手。'),
+    h('p', { class: 'muted sm' }, '三、金鑰只存在這台裝置，不會上傳，也不會出現在匯出的備份檔裡。'),
     h('label', { class: 'pref-row' }, box, h('span', {}, ' 我了解以上三點')),
     go);
 }

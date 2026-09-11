@@ -1099,6 +1099,69 @@ const MUTATIONS = [
     held.length === 0`,
     test: 'uikittest',
   },
+  // ---- v0.7.5：配息紀錄（界線） ----
+  {
+    name: '配息查詢結果自動填進試算的配息率欄位',
+    why: '這是整個功能唯一不能做的事。把歷史配息換算成配息率填進去，'
+      + '等於我們替使用者決定了未來會配多少 —— 那正是「試算器不得有預設值、'
+      + '不得給建議值或歷史平均」要防的。',
+    file: 'js/views/calc.js',
+    find: '  state.lookup = { key, info, announced, received };',
+    replace: `  state.lookup = { key, info, announced, received };
+  state.yieldRate = String(announced.totalCash || 0);`,
+    test: 'divrecordtest',
+  },
+  {
+    name: '合計改成平均',
+    why: '實測每檔中位數只有 1 筆紀錄。拿 1–3 筆算「平均」沒有統計意義，'
+      + '卻會讓畫面看起來像在說「大概就是這個數」。加總是事實，平均是推論。',
+    file: 'js/divrecord.js',
+    find: '    totalCash: round8(list.reduce((a, r) => a + (r.cash ?? 0), 0)),',
+    replace: '    totalCash: round8(list.reduce((a, r) => a + (r.cash ?? 0), 0) / list.length),',
+    test: 'divrecordtest',
+  },
+  {
+    name: '查不到的代號回空陣列假裝「這檔沒配過息」',
+    why: '「沒有這筆資料」跟「沒有配過息」是兩件事。ETF 根本不在這份資料裡，'
+      + '回一個「合計 0 元」會讓人以為它不配息。',
+    file: 'js/divrecord.js',
+    find: '  if (!list) return { found: false, code: key, records: [] };',
+    replace: '  if (!list) return { found: true, code: key, records: [], totalCash: 0, totalStock: 0, periods: 0 };',
+    test: 'divrecordtest',
+  },
+  {
+    name: '待確認的除權息也算進「你實際領到的」',
+    why: '還沒確認的金額只是估算，算進去會讓使用者以為那筆已經入袋。',
+    file: 'js/divrecord.js',
+    find: `  const mine = events.filter((e) => e.code === code && e.status === 'confirmed');`,
+    replace: '  const mine = events.filter((e) => e.code === code);',
+    test: 'divrecordtest',
+  },
+  {
+    name: '沒有填金額的除權息當成 0 元加進合計',
+    why: '「不知道多少」被當成「領了 0 元」，合計會偏低而且看不出來。',
+    file: 'js/divrecord.js',
+    find: `    if (raw == null) { unknown += 1; rows.push({ exDate: e.exDate, micro: null }); continue; }`,
+    replace: '    if (raw == null) { unknown += 1; rows.push({ exDate: e.exDate, micro: 0n }); counted += 1; continue; }',
+    test: 'divrecordtest',
+  },
+  {
+    name: '資料過期不講',
+    why: '配息資料要定期重跑 build 才會更新。不標出表日期與「可能已過期」，'
+      + '使用者會以為看到的是最新決議。',
+    file: 'js/divrecord.js',
+    find: '  return { known: true, stale: days > STALE_DAYS, days, iso };',
+    replace: '  return { known: true, stale: false, days, iso };',
+    test: 'divrecordtest',
+  },
+  {
+    name: '每股金額四捨五入到兩位',
+    why: '0.125 會變成 0.13 —— 那是真的改了公司公告的數字。',
+    file: 'js/divrecord.js',
+    find: '  return String(Math.round(n * 1e4) / 1e4);',
+    replace: '  return String(Math.round(n * 1e2) / 1e2);',
+    test: 'divrecordtest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

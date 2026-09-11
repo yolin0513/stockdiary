@@ -16,13 +16,14 @@
     "dev": "node scripts/serve.mjs 5180",
     "build-stocks": "node scripts/build-stocks.mjs",
     "build-calendar": "node scripts/build-calendar.mjs",
+    "build-dividends": "node scripts/build-dividends.mjs",
     "roctest": "node scripts/roctest.mjs",
     "fmttest": "node scripts/fmttest.mjs",
     "parsetest": "node scripts/parsetest.mjs",
     "datatest": "node scripts/datatest.mjs",
     "shelltest": "node scripts/shelltest.mjs",
     "mutationtest": "node scripts/mutationtest.mjs",
-    "test": "node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/settletest.mjs && node scripts/changestest.mjs && node scripts/dividendtest.mjs && node scripts/plantest.mjs && node scripts/calctest.mjs && node scripts/throttletest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/holdingtest.mjs && node scripts/eventtest.mjs && node scripts/dcatest.mjs && node scripts/calcviewtest.mjs && node scripts/versionmixtest.mjs && node scripts/racetest.mjs && node scripts/newstest.mjs && node scripts/secret-leak-test.mjs && node scripts/insighttest.mjs && node scripts/backuptest.mjs && node scripts/concentrationtest.mjs && node scripts/layouttest.mjs && node scripts/uikittest.mjs && node scripts/mutationtest.mjs",
+    "test": "node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/settletest.mjs && node scripts/changestest.mjs && node scripts/dividendtest.mjs && node scripts/plantest.mjs && node scripts/calctest.mjs && node scripts/throttletest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/holdingtest.mjs && node scripts/eventtest.mjs && node scripts/dcatest.mjs && node scripts/calcviewtest.mjs && node scripts/versionmixtest.mjs && node scripts/racetest.mjs && node scripts/newstest.mjs && node scripts/secret-leak-test.mjs && node scripts/insighttest.mjs && node scripts/backuptest.mjs && node scripts/concentrationtest.mjs && node scripts/layouttest.mjs && node scripts/uikittest.mjs && node scripts/divrecordtest.mjs && node scripts/mutationtest.mjs",
     "livecheck": "node scripts/livecheck.mjs",
     "sweep": "node scripts/sweep.mjs",
     "observe-publish-time": "node scripts/observe-twse-publish-time.mjs",
@@ -49,7 +50,8 @@
     "backuptest": "node scripts/backuptest.mjs",
     "concentrationtest": "node scripts/concentrationtest.mjs",
     "layouttest": "node scripts/layouttest.mjs",
-    "uikittest": "node scripts/uikittest.mjs"
+    "uikittest": "node scripts/uikittest.mjs",
+    "divrecordtest": "node scripts/divrecordtest.mjs"
   },
   "devDependencies": {
     "puppeteer": "^23.0.0",
