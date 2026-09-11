@@ -621,6 +621,229 @@ try {
   noneOf(rendered.colors, (c) => /rgb\(\s*[0-9]{1,2}\s*,\s*(1[5-9][0-9]|2[0-9]{2})\s*,\s*[0-9]{1,2}\s*\)/.test(c),
     '文字也沒有用到綠色系');
 
+  section('畫面真的把大盤與個股當日漲跌％帶進 prompt（從按鈕按下去實測）');
+  //
+  // 為什麼要有這一段：buildUserContent 早就會處理這兩個欄位，上面也測過了 ——
+  // **但 js/views/news.js 根本沒有傳。** 模組測得再細也照不到呼叫端漏傳，
+  // PLAN §7.2 要求的兩個輸入就這樣缺了一段時間都沒人發現。
+  // 所以這一段從「按下產生今日觀察」開始，斷言真的送出去的那個字串。
+  const wired = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const prefs = await import('./js/prefs.js');
+    const today = new Date().toLocaleDateString('sv');
+    const roc = (iso) => `${Number(iso.slice(0, 4)) - 1911}/${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
+
+    await db.clear('holdings');
+    await db.clear('settle');
+    await db.clear('insights');
+    for (const hd of [
+      { code: '2330', name: '台積電', shares: 1000, supported: true },
+      { code: '2317', name: '鴻海', shares: 2000, supported: true },
+      { code: '6488', name: '環球晶', shares: 500, supported: false },
+    ]) await db.put('holdings', hd);
+
+    // 今天的結算紀錄。close 與 basis 都是刻意挑的，算出來的百分比不會跟別的數字撞。
+    await db.put('settle', {
+      date: today, dayPL: '0', marketValue: null, dividend: null,
+      counted: 2, excludedUnsupported: 1, excludedMissing: 0,
+      byCode: [
+        { code: '2330', shares: 1000, close: 2410, basis: 2430, basisSource: 'prevClose', status: 'ok', pl: '-20000000' },
+        { code: '2317', shares: 2000, close: 248, basis: 245, basisSource: 'prevClose', status: 'ok', pl: '6000000' },
+        { code: '6488', shares: 500, close: null, basis: null, basisSource: 'none', status: 'unsupported', pl: null },
+      ],
+      settledAt: new Date().toISOString(),
+    });
+    await prefs.load();
+
+    // 攔 fetch：大盤給一份含「今天」與「另一天」的假回應，Anthropic 那邊只收不送。
+    const real = window.fetch;
+    let sentBody = null;
+    let fmtqikUrl = null;
+    window.fetch = async (input, init) => {
+      const url = String(typeof input === 'string' ? input : input.url);
+      if (url.includes('FMTQIK')) {
+        fmtqikUrl = url;
+        return new Response(JSON.stringify({
+          stat: 'OK', date: today.replace(/-/g, ''), title: '假的整月市場成交資訊',
+          fields: ['日期', '成交股數', '成交金額', '成交筆數', '發行量加權股價指數', '漲跌點數'],
+          data: [
+            // 另一個交易日：**故意放一個方向相反、值也不同的** —— 挑錯列就會被抓到
+            [roc('2026-01-02'), '1', '1', '1', '46,940.49', '242.87'],
+            [roc(today), '1', '1', '1', '46,184.85', '-755.64'],
+          ],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('anthropic')) {
+        sentBody = init?.body ? String(init.body) : null;
+        return new Response(JSON.stringify({
+          content: [{ type: 'text', text: JSON.stringify({ summary: '假的。', sections: [], watchDates: [] }) }],
+          stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return real(input, init);
+    };
+
+    try {
+      location.hash = '#/';
+      await new Promise((r) => setTimeout(r, 300));
+      location.hash = '#/news';
+      for (let i = 0; i < 150; i += 1) {
+        if (document.querySelector('#view [data-card="insight"] button')) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const btn = [...document.querySelectorAll('#view [data-card="insight"] button')]
+        .find((b) => /產生|重新/.test(b.textContent));
+      if (btn) btn.click();
+      for (let i = 0; i < 200; i += 1) {
+        if (sentBody) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const sent = sentBody ? JSON.parse(sentBody) : null;
+      return {
+        clicked: !!btn,
+        fmtqikUrl,
+        userContent: sent?.messages?.[0]?.content ?? null,
+        today,
+      };
+    } finally {
+      window.fetch = real;
+    }
+  });
+
+  ok(wired.clicked, '（對照）畫面上真的有「產生今日觀察」的按鈕，而且按下去了');
+  ok(typeof wired.userContent === 'string' && wired.userContent.length > 0,
+    '按鈕按下去之後真的送出了一個 prompt');
+  ok(String(wired.fmtqikUrl).includes(wired.today.replace(/-/g, '')),
+    `大盤是**指名今天**去拿的：…${String(wired.fmtqikUrl).slice(-24)}`);
+
+  // 大盤：46,184.85 減 -755.64 → 前一日 46,940.49，百分比 -1.61
+  ok(String(wired.userContent).includes('大盤當日漲跌：-1.61%'),
+    `prompt 裡有大盤當日漲跌：「${(/大盤當日漲跌：.*/.exec(String(wired.userContent)) ?? [''])[0]}」`);
+  // 個股：2410/2430 → -0.82；248/245 → +1.22
+  everyOf(['2330 台積電', '-0.82%', '2317 鴻海', '+1.22%'], (v) => String(wired.userContent).includes(v),
+    '每一檔有報價的持股都帶著自己的當日漲跌％');
+  ok(/6488.*當日無報價/.test(String(wired.userContent)),
+    '不支援報價的那一檔寫「當日無報價」，不是 0%');
+  noneOf(['0.0%', '：0%', '+0.00%'], (v) => String(wired.userContent).includes(v),
+    '**prompt 裡沒有任何一個 0%** —— 拿不到不能講成持平');
+  // 挑錯天的對照：另一個交易日那一列算出來是 +0.52%，出現就代表挑錯列了
+  noneOf(['+0.52%', '0.52'], (v) => String(wired.userContent).includes(v),
+    '（對照）沒有把別天的漲跌當成今天的');
+
+  section('大盤拿不到的時候，prompt 要明講拿不到');
+  const noMarket = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    await db.clear('insights');
+    const real = window.fetch;
+    let sentBody = null;
+    window.fetch = async (input, init) => {
+      const url = String(typeof input === 'string' ? input : input.url);
+      // 上游回「查無資料」—— 今天的還沒公布時就是長這樣
+      if (url.includes('FMTQIK')) {
+        return new Response(JSON.stringify({ stat: '很抱歉，沒有符合條件的資料!' }),
+          { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('anthropic')) {
+        sentBody = init?.body ? String(init.body) : null;
+        return new Response(JSON.stringify({
+          content: [{ type: 'text', text: JSON.stringify({ summary: '假的。', sections: [], watchDates: [] }) }],
+          stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return real(input, init);
+    };
+    try {
+      location.hash = '#/';
+      await new Promise((r) => setTimeout(r, 300));
+      location.hash = '#/news';
+      for (let i = 0; i < 150; i += 1) {
+        if (document.querySelector('#view [data-card="insight"] button')) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const btn = [...document.querySelectorAll('#view [data-card="insight"] button')]
+        .find((b) => /產生|重新/.test(b.textContent));
+      if (btn) btn.click();
+      for (let i = 0; i < 200; i += 1) {
+        if (sentBody) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return JSON.parse(sentBody ?? 'null')?.messages?.[0]?.content ?? null;
+    } finally {
+      window.fetch = real;
+    }
+  });
+  ok(typeof noMarket === 'string', '上游查無資料時，今日觀察照樣送得出去（不是整個卡住）');
+  ok(String(noMarket).includes('大盤當日漲跌：無法取得'),
+    `拿不到就明講：「${(/大盤當日漲跌：.*/.exec(String(noMarket)) ?? [''])[0]}」`);
+  noneOf(['大盤當日漲跌：0%', '大盤當日漲跌：+0%', '大盤當日漲跌：-0%'],
+    (v) => String(noMarket).includes(v), '沒有拿 0% 頂替');
+  // 個股那邊仍然要有 —— 不然「沒有 0%」可能只是因為整段持股都不見了
+  ok(String(noMarket).includes('2330'), '（對照）持股那一段還在');
+
+  section('結算紀錄不是今天的：個股一律不給漲跌％');
+  //
+  // 收盤還沒公布、或今天休市時，手上最新的結算是**前一個交易日**的。
+  // 那一天的漲跌拿來當今天的講，使用者與模型都會被誤導 ——
+  // 上面那段的結算紀錄剛好是今天，所以照不到這條路；這裡專門把它換成舊的。
+  const staleSettle = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    await db.clear('insights');
+    await db.clear('settle');
+    // 舊的結算：數字跟今天那筆一樣顯眼，出現在 prompt 裡就代表拿錯天了
+    await db.put('settle', {
+      date: '2026-01-02', dayPL: '0', marketValue: null, dividend: null,
+      counted: 2, excludedUnsupported: 1, excludedMissing: 0,
+      byCode: [
+        { code: '2330', shares: 1000, close: 2410, basis: 2430, basisSource: 'prevClose', status: 'ok', pl: '-20000000' },
+        { code: '2317', shares: 2000, close: 248, basis: 245, basisSource: 'prevClose', status: 'ok', pl: '6000000' },
+      ],
+      settledAt: new Date().toISOString(),
+    });
+    const real = window.fetch;
+    let sentBody = null;
+    window.fetch = async (input, init) => {
+      const url = String(typeof input === 'string' ? input : input.url);
+      if (url.includes('FMTQIK')) {
+        return new Response(JSON.stringify({ stat: '很抱歉，沒有符合條件的資料!' }),
+          { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('anthropic')) {
+        sentBody = init?.body ? String(init.body) : null;
+        return new Response(JSON.stringify({
+          content: [{ type: 'text', text: JSON.stringify({ summary: '假的。', sections: [], watchDates: [] }) }],
+          stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return real(input, init);
+    };
+    try {
+      location.hash = '#/';
+      await new Promise((r) => setTimeout(r, 300));
+      location.hash = '#/news';
+      for (let i = 0; i < 150; i += 1) {
+        if (document.querySelector('#view [data-card="insight"] button')) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const btn = [...document.querySelectorAll('#view [data-card="insight"] button')]
+        .find((b) => /產生|重新/.test(b.textContent));
+      if (btn) btn.click();
+      for (let i = 0; i < 200; i += 1) {
+        if (sentBody) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return JSON.parse(sentBody ?? 'null')?.messages?.[0]?.content ?? null;
+    } finally {
+      window.fetch = real;
+    }
+  });
+  ok(typeof staleSettle === 'string', '結算是舊的時候照樣送得出去');
+  noneOf(['-0.82%', '+1.22%'], (v) => String(staleSettle).includes(v),
+    '**舊結算算出來的漲跌一個都沒有進到 prompt**（那兩個數字正是上一段用的）');
+  const heldLines = String(staleSettle).split('\n').filter((l) => l.startsWith('· '));
+  everyOf(heldLines, (l) => l.includes('當日無報價'),
+    '每一檔都寫「當日無報價」，不是拿舊的頂上');
+  ok(heldLines.length >= 2, `（對照）持股那一段真的有 ${heldLines.length} 行 —— 不是整段不見了`);
+
   eq(pageErrors, [], '整段沒有未攔截的例外');
 } finally {
   await browser.close();

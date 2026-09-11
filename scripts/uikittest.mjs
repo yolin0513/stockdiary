@@ -185,6 +185,137 @@ try {
   eq(home.rows, 0, '總覽上沒有任何持股列（持股頁本來就有，而且更完整）');
   ok(home.text.includes('當日損益'), '（對照）總覽該有的東西還在');
 
+  section('持股頁每一列都看得到當日損益，而且標明是哪一天');
+  //
+  // 每天盤後最常走的那條路是「總覽看到當日損益 −18,450 → 那是哪一檔造成的？」。
+  // 以前持股頁每一列只有股數與均價，要一檔一檔點進去才看得到 —— 路到這裡就斷了。
+  const perRow = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const holdings = await import('./js/holdings.js');
+    for (const st of db.STORE_NAMES) await db.clear(st);
+    const iso = new Date().toLocaleDateString('sv');
+    await holdings.addOpening({ code: '2330', shares: 1000, avgCost: 890.5, date: '2026-01-05' });
+    await holdings.addOpening({ code: '0050', shares: 3000, avgCost: 132.4, date: '2026-01-05' });
+    await holdings.addOpening({ code: '2317', shares: 500, avgCost: null, date: '2026-01-05' });
+    await db.put('settle', {
+      date: iso, dayPL: '0', marketValue: null, dividend: null, counted: 2,
+      excludedUnsupported: 0, excludedMissing: 1,
+      byCode: [
+        { code: '2330', shares: 1000, close: 2410, basis: 2430, basisSource: 'prevClose', status: 'ok', pl: '-20000000000' },
+        { code: '0050', shares: 3000, close: 107.7, basis: 109.15, basisSource: 'prevClose', status: 'ok', pl: '-4350000000' },
+        { code: '2317', shares: 500, close: null, basis: null, basisSource: 'none', status: 'noClose', pl: null },
+      ],
+      settledAt: new Date().toISOString(),
+    });
+    const hv = await import('./js/views/holdings.js');
+    await hv.default();
+    await new Promise((r) => setTimeout(r, 500));
+    const card = document.querySelector('#view [data-card="holdingsList"]');
+    return {
+      head: card.textContent.replace(/\s+/g, ' ').slice(0, 90),
+      rows: Object.fromEntries([...card.querySelectorAll('.row')]
+        .map((r) => [r.dataset.code, r.textContent.replace(/\s+/g, ' ').trim()])),
+      cards: [...document.querySelectorAll('#view [data-card]')].map((c) => c.dataset.card),
+      iso,
+    };
+  });
+
+  // 手算：(2410 − 2430) × 1000 = −20,000，(2410−2430)/2430 = −0.82%
+  ok(perRow.rows['2330']?.includes('-20,000'), `2330 那一列看得到 −20,000：「${perRow.rows['2330']}」`);
+  ok(perRow.rows['2330']?.includes('-0.82%'), '而且漲跌％是 −0.82%（手算 (2410−2430)/2430）');
+  // 手算：(107.70 − 109.15) × 3000 = −4,350，(107.70−109.15)/109.15 = −1.33%
+  ok(perRow.rows['0050']?.includes('-4,350'), `0050 那一列看得到 −4,350：「${perRow.rows['0050']}」`);
+  ok(perRow.rows['0050']?.includes('-1.33%'), '而且漲跌％是 −1.33%');
+  // 百分比是**百分比數字**不是比例：−1.33% 誤寫成 −0.01% 看起來很正常（踩過）
+  noneOf(['-0.01%', '-0.00%', '-0.02%'], (v) => perRow.rows['0050']?.includes(v),
+    '不是把比例當成百分比直接印（那會變成 −0.01%）');
+  // 算不出來的那一檔：講原因，不留白也不寫 0
+  ok(perRow.rows['2317']?.includes('尚未取得收盤價'),
+    `算不出來的那一檔寫出原因：「${perRow.rows['2317']}」`);
+  noneOf([perRow.rows['2317']], (t) => /[+-]?0\b|0%/.test(t.replace(/[0-9]{3,}/g, '')),
+    '而且沒有拿 0 頂替');
+  ok(perRow.head.includes(`${Number(perRow.iso.slice(5, 7))}/${Number(perRow.iso.slice(8, 10))}`),
+    `卡片上標明這些數字是哪一天結算的：「${perRow.head.slice(0, 46)}」`);
+  ok(perRow.cards.indexOf('holdingsList') < perRow.cards.indexOf('concentration'),
+    `目前持股在產業分布**上面**（順序：${perRow.cards.join(' → ')}）`);
+
+  section('累積已領股利不可以自相矛盾');
+  // 「還沒有確認過任何一筆股利。」＋「另有 2 筆已確認但沒有填金額」同時出現過。
+  const divCopy = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    await db.clear('events');
+    const iso = new Date().toLocaleDateString('sv');
+    for (const [i, code] of ['2330', '0050'].entries()) {
+      await db.put('events', {
+        id: `${code}@x${i}`, code, name: code, exDate: iso, kind: 'cash',
+        cashPerShare: 1, stockRate: 0, status: 'confirmed', sharesHeld: 1000,
+        amountEst: null, amountActual: null,          // 確認了但沒有金額
+      });
+    }
+    const dv = await import('./js/views/dividends.js');
+    await dv.default();
+    await new Promise((r) => setTimeout(r, 500));
+    return document.querySelector('#view [data-card="dividendSummary"]').textContent.replace(/\s+/g, ' ');
+  });
+  ok(!divCopy.includes('還沒有確認過任何一筆'),
+    `確認過但沒填金額時，不會說「還沒有確認過任何一筆」：「${divCopy.slice(0, 70)}」`);
+  ok(divCopy.includes('2 筆'), '而是講出「已經確認了 2 筆，但都還沒有填金額」');
+  eq((divCopy.match(/2 筆/g) ?? []).length, 1, '而且只講一次，不是同一件事講兩遍');
+
+  section('每一頁的每一個可點元素都 ≥ 44px（標準與特大字級各掃一次）');
+  //
+  // 這一條以前只寫在檔案開頭的註解裡，**實際上只驗了切換開關那一顆**。
+  // 於是 .btn-sm 長期是 36px —— 而它正好用在最常按的那幾顆：
+  // 確認扣款、確認股利、取消確認、修改、停用。實測量出來才發現。
+  //
+  // 種一份像真的資料再掃：沒有資料的話很多按鈕根本不會出現，掃了等於沒掃。
+  const ROUTES_44 = ['/', '/holdings', '/plans', '/dividends', '/calc', '/settings', '/news'];
+  const tooSmall = [];
+  const counted = [];
+  for (const scale of ['md', 'xl']) {
+    await page.evaluate(async (sc) => {
+      const prefs = await import('./js/prefs.js');
+      await prefs.load();
+      await prefs.set('fontScale', sc);
+      prefs.applyFontScale(sc);
+    }, scale);
+    for (const route of ROUTES_44) {
+      // 目標剛好是現在這一頁的話，設同一個 hash 不會重繪 —— 先去別的路由再回來
+      await page.evaluate((r) => { location.hash = r === '/settings' ? '#/' : '#/settings'; }, route);
+      await new Promise((r) => setTimeout(r, 350));
+      await page.evaluate((r) => { location.hash = `#${r}`; }, route);
+      await new Promise((r) => setTimeout(r, 1200));
+      const found = await page.evaluate((info) => {
+        const out = [];
+        let n = 0;
+        for (const el of document.querySelectorAll('#view a, #view button, #view select, #view input, #tabbar .tab')) {
+          const r = el.getBoundingClientRect();
+          if (r.height === 0) continue;             // 藏起來的不算
+          n += 1;
+          // 勾選框本身是 24px，但**整個 label 才是觸控區**（點文字也會勾）。
+          // 有 label 包著就量 label。
+          const target = el.type === 'checkbox' ? (el.closest('label') ?? el) : el;
+          const h = target.getBoundingClientRect().height;
+          if (h < 44) out.push({ ...info, label: (el.textContent.trim() || el.type || el.tagName).slice(0, 16), h: Math.round(h) });
+        }
+        return { out, n };
+      }, { scale, route });
+      tooSmall.push(...found.out);
+      counted.push({ scale, route, n: found.n });
+    }
+  }
+  await page.evaluate(async () => {
+    const prefs = await import('./js/prefs.js');
+    await prefs.set('fontScale', 'md');
+    prefs.applyFontScale('md');
+  });
+
+  const totalClickable = counted.reduce((a, b) => a + b.n, 0);
+  ok(totalClickable >= 100,
+    `（對照）真的掃到東西了：${ROUTES_44.length} 頁 × 2 種字級，共 ${totalClickable} 個可點元素`);
+  everyOf(counted, (c) => c.n >= 3, '每一頁每一種字級都至少掃到 3 個可點元素（沒有哪一頁是空的）');
+  eq(tooSmall, [], '沒有任何可點元素低於 44px');
+
   eq(pageErrors, [], '整段沒有未攔截的例外');
 } finally {
   await browser.close();

@@ -12,7 +12,7 @@ import puppeteer from 'puppeteer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ok, eq, section, done, everyOf, noneOf } from './tap.mjs';
+import { ok, eq, section, done, everyOf, noneOf, note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const SITE = process.argv[2] || 'https://yolin0513.github.io/stockdiary/';
@@ -160,11 +160,11 @@ try {
   eq(realFailed, [], '沒有失敗的請求（新聞上游另外算，見下）');
 
   // 這一條不是斷言「一定沒事」，是把忽略掉的東西攤開來講。
-  ok(true, newsFailed.length + newsErrors.length === 0
+  note(newsFailed.length + newsErrors.length === 0
     ? '新聞上游這次全部正常'
     : `新聞上游有 ${newsFailed.length + newsErrors.length} 筆失敗（限速或換頁中止），`
-      + '畫面上會顯示「這次沒抓到」，不算部署問題',
-  [...newsFailed, ...newsErrors].slice(0, 3).join(' ／ '));
+      + '畫面上會顯示「這次沒抓到」，不算部署問題：'
+      + [...newsFailed, ...newsErrors].slice(0, 3).join(' ／ '));
 
 } finally {
   await browser.close();

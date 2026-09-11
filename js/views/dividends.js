@@ -46,7 +46,8 @@ function pendingRow(e) {
     h('div', { class: 'row-head' },
       h('span', { class: 'row-code' }, fmtDate(e.exDate)),
       h('span', { class: 'row-name' }, `${e.code} ${e.name}`),
-      h('span', { class: 'tag' }, KIND_LABEL[e.kind] ?? ''),
+      // 認不得的 kind 不要畫一顆空的標籤 —— 空 pill 看起來像畫面壞了
+      KIND_LABEL[e.kind] ? h('span', { class: 'tag' }, KIND_LABEL[e.kind]) : null,
     ),
     h('p', { class: 'row-note muted sm' }, describeEvent(e)),
     h('div', { class: 'row-side' },
@@ -152,12 +153,18 @@ function summaryCard(s) {
     h('h2', { class: 'card-title' }, '累積已領股利'),
     h('p', { class: 'big-number' },
       s.totalMicro != null ? num(fmtMoneyMicro(s.totalMicro)) : num(NO_VALUE, 'v-none')),
+    // 「還沒有確認過任何一筆」只有在**真的一筆都沒有**的時候才成立。
+    // 確認過但沒填金額的情況以前也走這一句，於是同一張卡片一邊說「沒有任何一筆」、
+    // 一邊說「另有 2 筆已確認」，看的人不知道到底有沒有。
     s.totalMicro == null
-      ? h('p', { class: 'muted sm' }, '還沒有確認過任何一筆股利。')
+      ? h('p', { class: 'muted sm' }, s.unknown > 0
+        ? `已經確認了 ${s.unknown} 筆，但都還沒有填金額，所以加不出總計。點進下面那幾筆補上金額就會出現。`
+        : '還沒有確認過任何一筆股利。')
       : h('p', { class: 'muted sm' },
         `${year} 年 `, num(s.yearMicro != null ? fmtMoneyMicro(s.yearMicro) : NO_VALUE), ' 元',
         `　共 ${s.counted} 筆`),
-    s.unknown > 0
+    // 有總計的時候才講「另有 N 筆不計入」——沒有總計時上面那句已經講完了
+    s.unknown > 0 && s.totalMicro != null
       ? h('p', { class: 'warn sm' }, `另有 ${s.unknown} 筆已確認但沒有填金額，不計入總計`)
       : null,
     s.byCode.length
@@ -190,7 +197,7 @@ function upcomingRow(e) {
     h('div', { class: 'row-head' },
       h('span', { class: 'row-code' }, fmtDate(e.exDate)),
       h('span', { class: 'row-name' }, `${e.code} ${e.name}`),
-      h('span', { class: 'tag' }, KIND_LABEL[e.kind] ?? ''),
+      KIND_LABEL[e.kind] ? h('span', { class: 'tag' }, KIND_LABEL[e.kind]) : null,
     ),
     h('p', { class: 'row-note muted sm' }, describeEvent(e, { happened: false })),
     h('div', { class: 'row-side' },

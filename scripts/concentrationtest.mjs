@@ -104,4 +104,27 @@ noneOf(words, (w) => stripComments(src).includes(w) || stripComments(view).inclu
   '程式碼裡沒有任何帶評價意味的字');
 ok(words.length >= 5, `（母體）檢查了 ${words.length} 個帶評價意味的詞`);
 
+section('ETF 沒有產業別，但那不是「資料缺了」');
+// 這位使用者的定期定額三檔全是 ETF。整批落在「產業未知」那一格的話，
+// 看起來像 App 沒抓到資料 —— 其實 ETF 本來就沒有單一產業別。
+{
+  const held = [
+    { code: '2330', shares: 1000, supported: true, industry: '半導體業', type: '股票' },
+    { code: '0050', shares: 1000, supported: true, industry: null, type: 'ETF' },
+    { code: '00878', shares: 1000, supported: true, industry: null, type: 'ETF' },
+    { code: '9999', shares: 1000, supported: true, industry: null, type: null },
+  ];
+  const quotes = { 2330: { close: 100 }, '0050': { close: 100 }, '00878': { close: 100 }, 9999: { close: 100 } };
+  const r = byIndustry(held, quotes);
+  const keys = r.rows.map((x) => x.industry);
+  ok(keys.includes('ETF'), `ETF 自成一格：${keys.join('、')}`);
+  const etf = r.rows.find((x) => x.industry === 'ETF');
+  eq(etf.codes.sort(), ['0050', '00878'], '而且就是那兩檔 ETF');
+  // 對照：真的查不到產業的（不是 ETF）仍然叫「產業未知」
+  ok(keys.includes('產業未知'), '（對照）查不到產業又不是 ETF 的，還是叫產業未知');
+  eq(r.rows.find((x) => x.industry === '產業未知').codes, ['9999'], '而且只有那一檔');
+  noneOf(r.rows.filter((x) => x.industry === '產業未知'), (x) => x.codes.some((c) => c.startsWith('00')),
+    'ETF 一檔都沒有掉進「產業未知」');
+}
+
 done('concentrationtest');

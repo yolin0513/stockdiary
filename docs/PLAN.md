@@ -58,7 +58,7 @@ Cloudflare Worker「stockdiary-news」（獨立於 TripQuest 的 Worker，免費
 | 回補缺漏日、前一交易日收盤 | `www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date=YYYYMMDD&stockNo=` | 前端直打，每檔每月一檔，≥ 2 秒間隔 |
 | 除權息日曆（未來約 7 週） | `www.twse.com.tw/exchangeReport/TWT48U?response=json` | 前端直打，每次開頁一次 |
 | 除息當天參考價、權值息值 | `www.twse.com.tw/exchangeReport/TWT49U?response=json&strDate=&endDate=` | 前端直打，只在有除息事件的期間查 |
-| 大盤漲跌 | `www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=&type=IND` | 前端直打 |
+| 大盤漲跌 | `www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?response=json&date=` | 前端直打（按「產生今日觀察」時才打；不用 MI_INDEX 的理由見 `STATUS.md`） |
 | 代號表、開休市日 | `openapi.twse.com.tw`（無 CORS）→ **建置腳本**產靜態檔 | 開發者手動執行，commit |
 | 國內新聞 | 四個 RSS | 經 Worker `/rss` |
 | 國際新聞 | `www.cnbc.com/id/10000664/device/rss/rss.html`、`feeds.content.dowjones.io/public/rss/mw_topstories` | 前端直打（有 ACAO *） |

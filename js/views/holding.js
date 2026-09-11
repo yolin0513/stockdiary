@@ -27,19 +27,22 @@ export default async function holdingView(code) {
 
   setTop({ title: `${hd.code} ${hd.name || ''}` });
   const changes = await holdings.changesOf(code);
-  const settleDate = await store.lastSettledDate();
-  const settled = settleDate ? await store.loadSettle(settleDate) : null;
+  // **跟首頁同一筆結算。** 以前這裡用 lastSettledDate()（最後一次算得出東西的日子），
+  // 首頁用 latestSettle()（最後一筆紀錄）—— 一檔都算不出來的那天，兩頁會顯示
+  // **不同天**的數字，而且這一頁完全沒寫是哪一天，看的人不會發現。
+  const settled = await store.latestSettle();
+  const settleDate = settled?.date ?? null;
   const row = (settled?.byCode ?? []).find((r) => r.code === code) ?? null;
 
   render([
-    summaryCard(hd, row),
+    summaryCard(hd, row, settleDate),
     costCard(hd),
     changesCard(hd, changes),
     dangerCard(hd),
   ]);
 }
 
-function summaryCard(hd, row) {
+function summaryCard(hd, row, settleDate) {
   const info = catalog.lookup(hd.code);
   const meta = [hd.market, hd.industry, info.type].filter(Boolean).join('　');
 
@@ -68,7 +71,10 @@ function summaryCard(hd, row) {
     body.push(h('p', { class: 'muted sm' }, STATUS_TEXT[row?.status] ?? '尚未結算'));
   }
 
-  return h('section', { class: 'card' }, h('h2', { class: 'card-title' }, '目前'), ...body);
+  // 標題要帶日期。『目前』配上一個其實是昨天收盤的數字，是這個 App 最不該犯的錯。
+  return h('section', { class: 'card' },
+    h('h2', { class: 'card-title' }, settleDate ? `${fmtDate(settleDate)} 收盤` : '目前'),
+    ...body);
 }
 
 function fmtMoneyFromMicroString(s) {

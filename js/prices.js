@@ -7,7 +7,7 @@
 //   STOCK_DAY      個股當月逐日，用來回補缺漏的日子。同一檔同一月只抓一次（快取在 IndexedDB）。
 
 import * as db from './db.js';
-import { parseStockDayAll, parseStockDay } from './twse.js';
+import { parseStockDayAll, parseStockDay, parseFmtqik } from './twse.js';
 import { isoToYyyymmdd, isoToRocCompact } from './roc.js';
 import { parseTwt48u, parseTwt49u } from './dividend.js';
 
@@ -125,4 +125,25 @@ export async function fetchTwt48u(client) {
 
 export async function fetchTwt49u(client, fromIso, toIso) {
   return parseTwt49u(await client.getJson(urlTwt49u(fromIso, toIso)));
+}
+
+// ---------- 大盤指數 ----------
+//
+// 只有「今日觀察」的提示內容用得到（PLAN §7.2 要求給大盤漲跌％）。
+// **不放進開頁的更新流程** —— 那條路徑上每多一個請求，每次開 App 就多一次。
+// 這支只在使用者按下「產生今日觀察」時打一次。
+
+export const urlFmtqik = (iso) =>
+  `${BASE}/rwd/zh/afterTrading/FMTQIK?response=json&date=${isoToYyyymmdd(iso)}`;
+
+/**
+ * 某一天的大盤（發行量加權股價指數）。
+ *
+ * **查不到就回 null，不要回 0、也不要回別天的。** 上游回的是整個月，
+ * 裡面沒有這一天（例如今天的還沒公布）時，回 null 才能讓提示內容照實說「無法取得」。
+ */
+export async function fetchMarketIndex(client, iso) {
+  const r = parseFmtqik(await client.getJson(urlFmtqik(iso)));
+  if (!r.ok) return null;
+  return r.rows.find((x) => x.date === iso) ?? null;
 }

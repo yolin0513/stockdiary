@@ -5,7 +5,7 @@
 //   上櫃／興櫃 → 明講不支援，問要不要「仍然記錄股數（不計損益）」
 //   查不到   → 講清楚代號表的日期，不要只說「錯誤」
 
-import { h, num, fmtShares, fmtPrice, fmtMoneyMicro, toast, modal, confirmDialog } from '../ui.js';
+import { h, num, fmtShares, fmtPrice, fmtMoneyMicro, fmtDate, fmtPct, moneyNode, toast, modal, confirmDialog } from '../ui.js';
 import * as holdings from '../holdings.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
@@ -22,20 +22,34 @@ export default async function holdingsView() {
   const settled = await store.latestSettle();
   const quotes = {};
   for (const row of settled?.byCode ?? []) if (row.close != null) quotes[row.code] = { close: row.close };
-  const withIndustry = held.map((hd) => ({ ...hd, industry: catalog.lookup(hd.code)?.industry ?? null }));
+  // type 也要帶進去 —— 產業分布要分得出「ETF（本來就沒有產業別）」與「查不到產業」。
+  const withIndustry = held.map((hd) => {
+    const info = catalog.lookup(hd.code);
+    return { ...hd, industry: info?.industry ?? null, type: info?.type ?? null };
+  });
 
-  // 順序：目前持股在最上面（每天打開最想看的），兩個入口放它下面。
-  // 使用者實機回報原本「新增持股」「定期定額」擋在持股前面，每次都要往下捲。
+  // 每一檔那一天的損益，用來回答「總覽上那個當日損益是哪幾檔造成的」——
+  // 以前只有進單檔詳情才看得到，每天盤後最常走的那條路到這裡就斷了。
+  const plByCode = new Map((settled?.byCode ?? []).map((r) => [r.code, r]));
+
+  // 順序：目前持股在最上面（每天打開最想看的），產業分布與兩個入口放它下面。
+  // 使用者實機回報原本「新增持股」「定期定額」擋在持股前面，每次都要往下捲；
+  // 產業分布後來又擠到持股上面去了，一樣要往下捲才看得到持股。
   render([
-    concentrationCard(withIndustry, quotes),
     held.length === 0
       ? h('section', { class: 'card', dataset: { card: 'holdingsList' } },
         h('h2', { class: 'card-title' }, '目前持股'),
         h('p', { class: 'muted' }, '還沒有持股。用下面的「新增一檔」開始。'))
       : h('section', { class: 'card', dataset: { card: 'holdingsList' } },
         h('h2', { class: 'card-title' }, `目前持股（${held.length} 檔）`),
-        h('div', { class: 'rows' }, ...held.map(manageRow)),
+        // **哪一天**要寫出來。沒寫的話，收盤還沒公布的日子看到的是昨天的數字，
+        // 而使用者以為是今天的。
+        h('p', { class: 'muted sm' }, settled?.date
+          ? `下面的當日損益是 ${fmtDate(settled.date)} 收盤結算的`
+          : '還沒有結算過，所以沒有當日損益'),
+        h('div', { class: 'rows' }, ...held.map((hd) => manageRow(hd, plByCode.get(hd.code)))),
       ),
+    concentrationCard(withIndustry, quotes),
     h('section', { class: 'card', dataset: { card: 'addHolding' } },
       h('h2', { class: 'card-title' }, '新增持股'),
       h('p', { class: 'muted sm' }, '這個版本只支援上市股票。上櫃與興櫃可以記股數，但不會顯示價格與損益。'),
@@ -51,7 +65,7 @@ export default async function holdingsView() {
   ]);
 }
 
-function manageRow(hd) {
+function manageRow(hd, plRow) {
   const head = h('div', { class: 'row-head' },
     h('span', { class: 'row-code' }, hd.code),
     h('span', { class: 'row-name' }, hd.name || ''),
@@ -71,13 +85,39 @@ function manageRow(hd) {
 
   return h('a', { class: 'row', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
     head,
-    h('div', { class: 'row-mid' }, h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`)),
-    h('div', { class: 'row-side' },
+    h('div', { class: 'row-mid' },
+      h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`),
       hd.avgCost != null
-        ? h('span', { class: 'muted sm' }, '均價 ', num(fmtPrice(hd.avgCost)))
-        : h('span', { class: 'muted sm' }, '未填均價'),
+        ? h('span', { class: 'muted sm' }, '　均價 ', num(fmtPrice(hd.avgCost)))
+        : h('span', { class: 'muted sm' }, '　未填均價'),
     ),
+    h('div', { class: 'row-side' }, ...dayPLParts(plRow)),
   );
+}
+
+/**
+ * 一列右邊的「當日損益」。
+ *
+ * 算不出來就**寫出算不出來的原因**（尚未取得收盤價、除權息日還沒有參考價…），
+ * 不要留白也不要寫 0 —— 使用者分不出「沒漲沒跌」與「我們不知道」。
+ *
+ * 漲跌％用結算紀錄裡的 close 與 basis 算，basis 在除權息日是**參考價**，
+ * 所以除息日不會冒出一個等於息值的假跌幅。
+ */
+function dayPLParts(r) {
+  if (!r) return [h('span', { class: 'muted sm' }, '尚未結算')];
+  if (r.status !== 'ok' || r.pl == null) {
+    return [h('span', { class: 'muted sm' }, STATUS_TEXT[r.status] ?? '沒有當日損益')];
+  }
+  // fmtPct 收的是**百分比數字**（12.34 → 12.34%），不是比例（0.1234）。
+  // 直接把比例丟進去的話 −1.33% 會顯示成 −0.01%，而且看起來很正常。
+  const pct = Number.isFinite(r.close) && Number.isFinite(r.basis) && r.basis !== 0
+    ? ((r.close - r.basis) / r.basis) * 100
+    : null;
+  return [
+    moneyNode(BigInt(r.pl)),
+    h('span', { class: 'muted sm' }, pct == null ? '　—' : `　${fmtPct(pct, { sign: true })}`),
+  ];
 }
 
 async function addFlow() {

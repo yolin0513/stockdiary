@@ -19,7 +19,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done } from './tap.mjs';
+import { ok, eq, section, done, note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const OLD_REV = process.argv[2] || '8968518';
@@ -155,13 +155,13 @@ try {
   // -------------------------------------------------------------------------
   section('伺服器換成新版（＝我剛剛 push 上去）');
   state.serveOld = false;
-  ok(true, `伺服器現在吐 ${NEW_VERSION}，瀏覽器手上還留著舊版的 SW 與十分鐘內的檔案`);
+  note(`伺服器現在吐 ${NEW_VERSION}，瀏覽器手上還留著舊版的 SW 與十分鐘內的檔案`);
 
   // -------------------------------------------------------------------------
   section('使用者把 App 關掉再開一次 —— 第 1 次');
   const second = await openApp();
   const gotNewOnFirstReopen = second.info.running === NEW_VERSION;
-  ok(true, `跑的是 ${second.info.running}；期間自動重載 ${Math.max(0, second.reloads - 1)} 次；` +
+  note(`跑的是 ${second.info.running}；期間自動重載 ${Math.max(0, second.reloads - 1)} 次；` +
     `有沒有跳出「有新版本」提示：${second.info.updateBar ? '有' : '沒有'}`);
 
   if (gotNewOnFirstReopen) {

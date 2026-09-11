@@ -5,7 +5,7 @@
 //   · 平均成本：沒填成交價就不動（猜一個價格比不算還糟）、賣出不動、配股會稀釋
 
 import { ok, eq, near, section, done, noneOf, everyOf, detects } from './tap.mjs';
-import { validatePlan, dueOccurrences, nextTradingDay, estimateDca, dcaChangeId, reinvestChangeId } from '../js/plans.js';
+import { validatePlan, dueOccurrences, nextTradingDay, estimateDca, dcaChangeId, reinvestChangeId , MAX_FEE_RATE } from '../js/plans.js';
 import { avgCostAfter, avgCostFromChanges, costNote, REASON } from '../js/avgcost.js';
 import { makeCalendar } from '../js/market.js';
 
@@ -32,7 +32,9 @@ eq(validatePlan({ ...base, days: [] }), '至少要有一個扣款日', '沒有�
 eq(validatePlan({ ...base, days: [0] }), '扣款日要是 1 到 31 之間的整數', '0 號不存在');
 eq(validatePlan({ ...base, days: [32] }), '扣款日要是 1 到 31 之間的整數', '32 號不存在');
 eq(validatePlan({ ...base, days: [6, 6] }), '扣款日有重複', '重複的扣款日');
-eq(validatePlan({ ...base, feeRate: 1 }), '手續費率要介於 0 與 1 之間（0.001425 代表 0.1425%）', '費率 1 不合理');
+ok(String(validatePlan({ ...base, feeRate: 1 })).includes('100.0000%'), '費率 1 不合理（那是 100%）');
+// 負的走另一條訊息 —— 兩種錯要分得開
+ok(String(validatePlan({ ...base, feeRate: -0.1 })).includes('不小於零'), '負的費率講的是另一件事');
 eq(validatePlan({ ...base, feeRate: '' }), null, '費率留空是可以的');
 detects((p) => validatePlan(p) !== null, {
   shouldHit: [{ ...base, amount: 0 }, { ...base, days: [] }, { ...base, code: null }, { ...base, feeRate: 2 }],
@@ -255,5 +257,28 @@ detects((changes) => costNote(changes) !== null, {
     [],
   ],
 }, '說明的觸發條件有對照組');
+
+section('手續費率的單位陷阱：填成百分比要擋下來');
+// 券商講的是「0.1425%」，欄位要的是比例 0.001425。
+// 直接把 0.1425 填進來會變成 14.25%，估出來的股數少一成四 ——
+// 而畫面只會寫「手續費率 14.2500%」，看起來完全正常，數字卻是錯的。
+detects((f) => validatePlan({ code: '0050', amount: 5000, days: [6], feeRate: f }) != null, {
+  shouldHit: [0.1425, 0.15, 0.5, 1, 1.425, 14.25, 0.0101, -0.001, 'abc'],
+  shouldMiss: [0.001425, 0.0008, 0, 0.01, '', null, undefined, '0.001425'],
+}, '把百分比當比例填（0.1425）會被擋，真的比例（0.001425）放行');
+
+const tooBig = validatePlan({ code: '0050', amount: 5000, days: [6], feeRate: 0.1425 });
+ok(tooBig.includes('14.2500%') && tooBig.includes('0.001425'),
+  `訊息講得出「你填的等於幾 %」與「應該填什麼」：「${tooBig}」`);
+// 上限就是那條線 —— 0.01 過、0.0101 不過
+eq(validatePlan({ code: '0050', amount: 5000, days: [6], feeRate: MAX_FEE_RATE }), null,
+  `上限 ${MAX_FEE_RATE}（＝1%）本身是放行的`);
+ok(validatePlan({ code: '0050', amount: 5000, days: [6], feeRate: MAX_FEE_RATE * 1.01 }) != null,
+  '超過一點點就擋');
+// 手算對照：5,000 元 × 0.001425 = 7.125 元，扣掉之後買得起的金額是 4,992.875
+const est = estimateDca({ amount: 5000, feeRate: 0.001425, price: 107.7 });
+eq(est.shares, 46, '手算 (5000 − 7.125) ÷ 107.70 = 46.35… → 46 股');
+const wrong = estimateDca({ amount: 5000, feeRate: 0.1425, price: 107.7 });
+eq(wrong.shares, 39, '（對照）填錯單位的話會變成 39 股 —— 少 7 股，畫面上完全看不出來');
 
 done('plantest');

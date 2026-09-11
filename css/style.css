@@ -143,6 +143,32 @@ body {
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #0d1520; font-weight: 600; }
 .btn-danger { border-color: var(--danger); color: var(--danger); }
 .btn:active { filter: brightness(0.92); }
+/* 導覽用的按鈕是 <a>，瀏覽器預設會畫底線，而且是 inline ——
+   同一張卡片裡「新增一檔」（button）置中沒底線、「管理定期定額計畫」（a）
+   偏左又有底線，看起來像兩種東西。統一成同一個樣子。 */
+a.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* 一列右邊的操作按鈕（修改／停用／刪除）。沒有版型的話，
+   列首多一個標籤就會把整組按鈕擠到下一行，每一列對不齊。 */
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1 0 100%;        /* **固定自成一行**：列首多一個標籤就換行的話，每一列會對不齊 */
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+/* 這一排裡如果有輸入框（查代號、貼金鑰），讓輸入框去撐，按鈕維持自己的寬度。
+   不設的話按鈕會被擠成一個字一行（「查／詢」直著排）。 */
+.row-actions > .field,
+.row-actions > input { flex: 1 1 auto; min-width: 0; }
+.row-actions > .btn { flex: 0 0 auto; white-space: nowrap; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
@@ -378,10 +404,48 @@ body {
   flex-wrap: wrap;
 }
 .card > .pref-row:first-of-type { border-top: 0; }
+
+/* 瀏覽器預設的勾選框只有 13px。整個 .pref-row（label）都點得到，
+   但那個框小到看不清楚也瞄不準 —— 而它守的是「匯入會蓋掉現在的資料」
+   與「啟用今日觀察」這兩個不可隨便按的動作。 */
+.pref-row input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* 原生的檔案選擇器只有 25px 高，而且長得跟 App 裡其他東西完全不一樣。
+   給它一個跟按鈕一致的外框與高度。 */
+input[type="file"] {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--bg-card-2);
+  color: var(--fg);
+  font: inherit;
+}
+input[type="file"]::file-selector-button {
+  font: inherit;
+  margin-right: 10px;
+  padding: 8px 14px;
+  min-height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-card);
+  color: var(--fg);
+}
 .pref-main { flex: 1 1 60%; min-width: 0; }
 .pref-label { margin: 0 0 4px; font-weight: 600; }
 
-.btn-sm { padding: 6px 12px; min-height: 36px; font-size: 0.9em; }
+/* 小一號的按鈕：**視覺上小一點，觸控區不准小**。
+   36px 是實測量到的（低於 44px 的門檻），而它正好用在最常按的那幾顆：
+   確認扣款、確認股利、取消確認、修改、停用。 */
+.btn-sm { padding: 6px 12px; min-height: 44px; font-size: 0.9em; }
 
 /* ---------- 首頁頂部提示（M2） ---------- */
 .banner {
@@ -470,8 +534,27 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
 /* 卡片裡的小標。比 card-title 小一級，不搶版面 */
 .sub-title { margin: 14px 0 6px; font-size: .95rem; font-weight: 600; color: var(--fg); }
 
-.news-row { display: flex; flex-direction: column; gap: 3px; text-decoration: none; color: inherit; }
+/* .row 帶了 align-items: center，套在這個直向排列上會把每一行**水平置中** ——
+   一串標題置中很難掃。標題與來源一律靠左。 */
+.news-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-decoration: none;
+  color: inherit;
+}
 .news-title { line-height: 1.45; }
+
+/* 「引用：[n1] [n5]」是內文裡的小連結。字要維持小，但觸控區要夠 ——
+   用 padding 撐開、負 margin 推回去，版面不變、按得到。 */
+.news-ref {
+  display: inline-block;
+  padding: 12px 6px;
+  /* 只往上下擴，**左右不要用負的 margin** —— 相鄰兩個引用的觸控區會互相疊到，
+     點在中間會開到錯的那一則（layouttest 掃出來的，疊了 4px）。 */
+  margin: -12px 0;
+}
 
 /* 今日觀察的文字**刻意不用紅綠色、不用箭頭**（PLAN §7.2）：
    那些是漲跌的視覺語言，套在 AI 的文字上會讓它讀起來像多空判斷。

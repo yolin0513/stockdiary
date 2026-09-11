@@ -35,6 +35,15 @@ export default async function home() {
   const pendingChanges = await plans.pendingChanges();
   const divSummary = await events.summary({ year: new Date().getFullYear() });
 
+  // 全新裝置：三張「—」加一張資料狀態，看起來像壞掉，而且**沒有任何地方告訴你怎麼開始**
+  // （實測過：那個畫面上一個帶得到持股頁的按鈕都沒有，只能自己去按底部分頁）。
+  // 一筆持股、一個計畫都沒有的時候，就只講「怎麼開始」。
+  const plansList = await plans.list();
+  if (held.length === 0 && plansList.length === 0) {
+    render([startCard(), newsCard(), statusCard(upd, settleDate)]);
+    return;
+  }
+
   render([
     pendingBanner(pendingEvents, pendingChanges),
     dayPLCard(settled, settleDate, upd),
@@ -45,6 +54,22 @@ export default async function home() {
     statusCard(upd, settleDate),
     // 持股明細不放這裡 —— 使用者回報總覽不用再放一次，持股頁本來就有（而且更完整）。
   ].filter(Boolean));
+}
+
+/**
+ * 全新裝置的第一張卡片。**只講下一步要做什麼**，不放任何「—」。
+ *
+ * 為什麼不直接把當日損益那幾張留著顯示「—」：一個什麼都還沒設定的人看到三個破折號，
+ * 分不出是「App 壞了」「今天還沒開盤」還是「我還沒設定」。
+ */
+function startCard() {
+  return h('section', { class: 'card', dataset: { card: 'start' } },
+    h('h2', { class: 'card-title' }, '開始使用'),
+    h('p', { class: 'muted' }, '加入你手上的股票之後，每天打開這一頁就會看到當日損益、市值與除權息提醒。'),
+    h('a', { class: 'btn btn-primary', href: '#/holdings' }, '新增第一檔持股'),
+    h('p', { class: 'muted sm' }, '只做定期定額也可以，先建一個計畫，扣款日過了就會提醒你確認。'),
+    h('a', { class: 'btn', href: '#/plans' }, '建立定期定額計畫'),
+  );
 }
 
 /** 進新聞頁的入口。新聞不進底部分頁（那五格是每天一定會看的），放在總覽上。 */
@@ -84,7 +109,9 @@ function dividendCard(s) {
       `${new Date().getFullYear()} 年 `,
       num(s.yearMicro != null ? fmtMoneyMicro(s.yearMicro) : NO_VALUE), ' 元'),
     s.unknown > 0
-      ? h('p', { class: 'warn sm' }, `另有 ${s.unknown} 筆已確認但沒有填金額，不計入總計`)
+      ? h('p', { class: 'warn sm' }, s.totalMicro == null
+        ? `${s.unknown} 筆已確認但都還沒有填金額，所以加不出總計`
+        : `另有 ${s.unknown} 筆已確認但沒有填金額，不計入總計`)
       : null,
     h('a', { class: 'btn', href: '#/dividends' }, '看股利明細'),
   );

@@ -10,6 +10,7 @@ import { setTop, render } from '../shell.js';
 import * as news from '../news.js';
 import * as holdings from '../holdings.js';
 import * as catalog from '../catalog.js';
+import * as store from '../store.js';
 import * as insight from '../insight.js';
 import * as secrets from '../secrets.js';
 import * as prefs from '../prefs.js';
@@ -240,6 +241,33 @@ function disclaimerBadge() {
     'AI 整理，非投資建議。內容未經查證，請以原始新聞與公開資訊為準。');
 }
 
+// ---------- 提示內容要用的當日漲跌％（PLAN §7.2）----------
+//
+// 兩個數字都**只認「今天」那一筆**：
+//   · 結算紀錄的日期不是 today（收盤還沒公布、或今天休市）→ 個股一律不給漲跌％，
+//     提示內容會寫「當日無報價」。給前一天的數字是把舊漲跌講成今天的。
+//   · 大盤同理，拿不到就回 null，提示內容會寫「無法取得」。
+//
+// 個股的漲跌％用結算紀錄裡的 close 與 basis 算 —— basis 在除權息日是**參考價**，
+// 所以除息日不會冒出一個等於息值的假跌幅（這正是 settle.basisFor 存在的理由）。
+
+async function withChangePct(held, today) {
+  const rec = await store.latestSettle();
+  const rows = rec?.date === today ? (rec.byCode ?? []) : [];
+  const pctOf = (code) => {
+    const r = rows.find((x) => x.code === code);
+    if (!r || r.status !== 'ok') return undefined;
+    if (!Number.isFinite(r.close) || !Number.isFinite(r.basis) || r.basis === 0) return undefined;
+    return Math.round(((r.close - r.basis) / r.basis) * 10000) / 100;
+  };
+  return held.map((hd) => ({ ...hd, changePct: pctOf(hd.code) }));
+}
+
+async function marketPctFor(today) {
+  const row = await store.marketIndexFor(today);
+  return row?.date === today && Number.isFinite(row.changePct) ? row.changePct : null;
+}
+
 async function insightCard({ today, items, holdings: held, keyStatus, todayInsight }) {
   if (!keyStatus.configured) return insightSetupHint();
   if (!prefs.get('insightConsent')) return consentCard();
@@ -260,10 +288,12 @@ async function insightCard({ today, items, holdings: held, keyStatus, todayInsig
     btn.disabled = true;
     insightState = { busy: true };
     await newsView();
+    const market = await marketPctFor(today);
     const r = await insight.generate({
       date: today,
       news: items,
-      holdings: held,
+      holdings: await withChangePct(held, today),
+      marketChangePct: market,
       force: !!todayInsight,
     });
     insightState = r.ok ? null : { error: r.error, detail: r.detail, kind: r.kind, stopReason: r.stopReason };
@@ -348,8 +378,9 @@ function newsRefs(ids) {
   return h('p', { class: 'muted sm' }, '引用：', ...ids.map((id) => {
     const item = currentItems.find((x) => x.id === id);
     return item
-      ? h('a', { href: item.link, target: '_blank', rel: 'noopener noreferrer' }, `[${id}] `)
-      : h('span', {}, `[${id}] `);
+      // .news-ref 把觸控區撐到 44px（用 padding 撐、負 margin 推回去），版面看起來不變
+      ? h('a', { class: 'news-ref', href: item.link, target: '_blank', rel: 'noopener noreferrer' }, `[${id}]`)
+      : h('span', { class: 'news-ref' }, `[${id}]`);
   }));
 }
 

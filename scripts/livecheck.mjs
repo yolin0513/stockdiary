@@ -10,7 +10,7 @@
 
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ok, eq, section, done, everyOf, noneOf } from './tap.mjs';
+import { ok, eq, section, done, everyOf, noneOf, note } from './tap.mjs';
 import { parseStockDayAll, parseStockDay } from '../js/twse.js';
 import { isoToYyyymmdd, isoToRocCompact } from '../js/roc.js';
 import { parseTwt48u, parseTwt49u, refPriceFromExValue } from '../js/dividend.js';
@@ -105,11 +105,11 @@ let resultRows = [];
     // 日期參數無效這件事是 FEASIBILITY §10.8 的結論，這裡持續監看：
     // 哪天證交所修好了，這條就會變成「參數開始生效了」的提醒。
     const dates = [...new Set(resultRows.map((r) => r.date))];
-    ok(true, `回應涵蓋的日期：${dates.join('、') || '無'}（要求的是 ${iso}）`);
+    note(`回應涵蓋的日期：${dates.join('、') || '無'}（要求的是 ${iso}）`);
     everyOf(resultRows, (r) => refPriceFromExValue({ prevClose: r.prevClose, exValue: r.exValue }) === r.refPrice,
       '參考價公式（前收 − 權值息值，捨去兩位）仍與證交所公布值一致');
   } else {
-    ok(true, `今天沒有除權息結果（stat：${j.stat}）—— 不算失敗`);
+    note(`今天沒有除權息結果（stat：${j.stat}）—— 不算失敗`);
   }
 }
 
@@ -133,7 +133,7 @@ section('捕捉「預告 → 結果」的配對樣本');
     };
   }
   fs.writeFileSync(seenPath, JSON.stringify(seen, null, 1), 'utf8');
-  ok(true, `預告表紀錄：${before} → ${Object.keys(seen).length} 筆（${seenPath.replace(ROOT, '')}）`);
+  note(`預告表紀錄：${before} → ${Object.keys(seen).length} 筆（${seenPath.replace(ROOT, '')}）`);
 
   const pairs = fs.existsSync(pairPath) ? JSON.parse(fs.readFileSync(pairPath, 'utf8')) : [];
   const known = new Set(pairs.map((p) => `${p.code}-${p.exDate}`));
@@ -153,23 +153,23 @@ section('捕捉「預告 → 結果」的配對樣本');
 
   if (fresh.length) {
     fs.writeFileSync(pairPath, JSON.stringify([...pairs, ...fresh], null, 1), 'utf8');
-    ok(true, `**抓到 ${fresh.length} 筆新的配對樣本**，已寫進 ${pairPath.replace(ROOT, '')}`);
+    note(`**抓到 ${fresh.length} 筆新的配對樣本**，已寫進 ${pairPath.replace(ROOT, '')}`);
     for (const p of fresh) {
       // 證交所公式：參考價 = (前收 − 現金股利 + 增資配股率 × 認購價) ÷ (1 + 無償配股率 + 增資配股率)
       const { cashPerShare: c, stockRate: s, rightsRate: rr, rightsPrice: rp } = p.forecast;
       const derivable = c != null && s != null && rr != null && rp != null && p.result.prevClose != null;
       if (!derivable) {
-        ok(true, `  ${p.code} ${p.name}（${p.kind}）：預告資料不完整，這筆無法用來驗證推導`);
+        note(`  ${p.code} ${p.name}（${p.kind}）：預告資料不完整，這筆無法用來驗證推導`);
         continue;
       }
       const raw = (p.result.prevClose - c + rr * rp) / (1 + s + rr);
       const calc = Math.floor(raw * 100) / 100;
-      ok(true, `  ${p.code} ${p.name}（${p.kind}）：公式算出 ${calc}，證交所公布 ${p.result.refPrice}` +
+      note(`  ${p.code} ${p.name}（${p.kind}）：公式算出 ${calc}，證交所公布 ${p.result.refPrice}` +
         (calc === p.result.refPrice ? ' ✓ 一致' : ` ✗ 差 ${(calc - p.result.refPrice).toFixed(4)}`));
     }
-    ok(true, '→ 下一步見 docs/STATUS.md 的「除權息參考價的自算備援」待辦');
+    note('→ 下一步見 docs/STATUS.md 的「除權息參考價的自算備援」待辦');
   } else {
-    ok(true, '這次沒有新的配對樣本（要在除權息日的隔天跑才抓得到）—— 不算失敗');
+    note('這次沒有新的配對樣本（要在除權息日的隔天跑才抓得到）—— 不算失敗');
   }
 }
 

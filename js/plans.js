@@ -20,6 +20,9 @@ import { isTradingDay, tradingDaysBetween, covers } from './market.js';
 // ---------- 純函式 ----------
 
 /** 計畫的檢查。回錯誤字串，沒問題回 null。 */
+/** 手續費率的上限（1%）。台股券商實際是 0.1425% 打折，超過就是把百分比當成比例填了。 */
+export const MAX_FEE_RATE = 0.01;
+
 export function validatePlan({ code, amount, days, feeRate }) {
   if (!code) return '請選擇股票代號';
   const a = Number(amount);
@@ -31,7 +34,15 @@ export function validatePlan({ code, amount, days, feeRate }) {
   if (new Set(days.map(Number)).size !== days.length) return '扣款日有重複';
   if (feeRate != null && feeRate !== '') {
     const f = Number(feeRate);
-    if (!Number.isFinite(f) || f < 0 || f >= 1) return '手續費率要介於 0 與 1 之間（0.001425 代表 0.1425%）';
+    if (!Number.isFinite(f) || f < 0) return '手續費率要是不小於零的數字（0.001425 代表 0.1425%）';
+    // **單位陷阱。** 券商講的是「0.1425%」，欄位要的是比例 0.001425。
+    // 直接把 0.1425 填進來會變成 14.25%，估出來的股數少一成四，
+    // 而畫面上只會寫「手續費率 14.2500%」—— 看起來很正常，數字卻是錯的。
+    // 台股券商實際費率是 0.1425% 打折後更低，不可能到 1%，所以超過就是填錯了。
+    if (f > MAX_FEE_RATE) {
+      return `手續費率 ${f} 代表 ${(f * 100).toFixed(4)}%，看起來是把百分比直接填進來了。`
+        + `券商說的「0.1425%」要填 0.001425。`;
+    }
   }
   return null;
 }

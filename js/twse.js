@@ -170,3 +170,54 @@ export function stockNoOfStockDay(json) {
   const m = /^\s*\d{2,3}年\d{2}月\s+(\S+)\s/.exec(String(json?.title ?? ''));
   return m ? m[1] : null;
 }
+
+// ---------------------------------------------------------------------------
+
+const FMTQIK_FIELDS = ['日期', '成交股數', '成交金額', '成交筆數', '發行量加權股價指數', '漲跌點數'];
+
+/**
+ * 解析 afterTrading/FMTQIK（整月的市場成交資訊）。
+ * 回 { ok, message, rows }，rows = [{ date, index, changePoints, changePct }]
+ *
+ * 為什麼用這支而不是 MI_INDEX：
+ *   · FMTQIK 的「漲跌點數」**自己帶正負號**（"-784.00"），一個數字就講完了。
+ *     MI_INDEX 的點數是無號的，正負藏在 `<p style='color:green'>-</p>` 這段 HTML 裡 ——
+ *     要靠顏色去判斷漲跌，上游改個樣式就整片反過來。
+ *   · FMTQIK 一個請求回一整個月，回補不用再多打。
+ *   · 兩邊實測對得起來：115/09/11 收 46,184.85、點數 -755.64，
+ *     算出 -1.61%，與 MI_INDEX 自己給的漲跌百分比 -1.61 相同。
+ *
+ * changePct 是**算出來的**（點數 ÷ 前一日指數），不是上游給的，所以：
+ *   · 前一日指數（index − changePoints）算出來是 0 或非有限數 → changePct 給 null
+ *   · 拿不到 index 或 changePoints → 兩個都 null，不要用 0 代替
+ */
+export function parseFmtqik(json) {
+  const j = json || {};
+  const stat = String(j.stat ?? '');
+  if (stat !== 'OK') {
+    return { ok: false, message: stat || '沒有回應內容', rows: [] };
+  }
+  const fields = Array.isArray(j.fields) ? j.fields.map((f) => String(f).trim()) : [];
+  for (let i = 0; i < FMTQIK_FIELDS.length; i += 1) {
+    if (fields[i] !== FMTQIK_FIELDS[i]) {
+      throw new Error(`FMTQIK 欄位與預期不同：第 ${i + 1} 欄是「${fields[i] ?? '(缺)'}」，預期「${FMTQIK_FIELDS[i]}」`);
+    }
+  }
+
+  const rows = [];
+  for (const r of (Array.isArray(j.data) ? j.data : [])) {
+    const iso = rocSlashToISO(r[0]);
+    if (!iso) continue;
+    const index = num(r[4]);
+    const changePoints = num(r[5]);
+    let changePct = null;
+    if (index != null && changePoints != null) {
+      const prev = index - changePoints;
+      if (Number.isFinite(prev) && prev !== 0) {
+        changePct = Math.round((changePoints / prev) * 10000) / 100;
+      }
+    }
+    rows.push({ date: iso, index, changePoints, changePct });
+  }
+  return { ok: true, message: '', rows };
+}

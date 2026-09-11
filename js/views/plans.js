@@ -140,7 +140,7 @@ function planRow(p) {
     ),
     h('p', { class: 'row-note muted sm' },
       `每次 ${p.amount.toLocaleString('zh-Hant-TW')} 元，每月 ${p.days.join('、')} 號` +
-      (p.feeRate ? `，手續費率 ${(p.feeRate * 100).toFixed(4)}%` : '，無手續費率')),
+      (p.feeRate ? `，手續費率 ${(p.feeRate * 100).toFixed(4)}%（每次約 ${Math.round(p.amount * p.feeRate)} 元）` : '，無手續費率')),
     // 修改／停用用一般按鈕，不用底線文字連結：文字連結的點擊區太小，
     // 又跟旁邊的代號基線對不齊（使用者實機回報）。全 App 統一用 .btn。
     h('div', { class: 'row-actions' },
@@ -186,6 +186,32 @@ async function editFlow(existing) {
     class: 'field', type: 'text', inputmode: 'decimal', placeholder: '選填，例如 0.001425',
     value: existing?.feeRate ? String(existing.feeRate) : '',
   });
+  // 費率是**比例**不是百分比（0.001425 ＝ 0.1425%）。這個單位很容易填錯，
+  // 而填錯之後畫面只會寫「手續費率 14.2500%」，看起來完全正常。
+  // 所以當場把它換算成「這一次會被收走幾元」—— 錯了一眼就看得出來。
+  const feeHint = h('p', { class: 'muted sm', dataset: { hint: 'feeRate' } }, '');
+  const paintFeeHint = () => {
+    const raw = feeInput.value.replace(/,/g, '').trim();
+    const amt = Number(amountInput.value.replace(/,/g, '').trim());
+    if (raw === '') { feeHint.replaceChildren('沒填就是不扣手續費，估出來的股數會略多一點。'); feeHint.className = 'muted sm'; return; }
+    const f = Number(raw);
+    if (!Number.isFinite(f) || f < 0) { feeHint.replaceChildren('手續費率要是不小於零的數字。'); feeHint.className = 'warn sm'; return; }
+    if (f > plans.MAX_FEE_RATE) {
+      feeHint.className = 'warn sm';
+      feeHint.replaceChildren(`${raw} 代表 ${(f * 100).toFixed(4)}%，看起來是把百分比直接填進來了。`
+        + `券商說的「0.1425%」要填 0.001425。`);
+      return;
+    }
+    feeHint.className = 'muted sm';
+    const per = Number.isFinite(amt) && amt > 0
+      ? `這一次扣款 ${amt.toLocaleString('zh-Hant-TW')} 元會收 ${(amt * f).toFixed(2)} 元手續費`
+      : `每 10,000 元收 ${(10000 * f).toFixed(2)} 元手續費`;
+    feeHint.replaceChildren(`${raw} ＝ ${(f * 100).toFixed(4)}%，${per}。`);
+  };
+  feeInput.addEventListener('input', paintFeeHint);
+  amountInput.addEventListener('input', () => paintFeeHint());
+  paintFeeHint();
+
   let reinvest = existing?.reinvestDividend ?? false;
   // 切換開關（js/ui.js），跟設定頁與試算器同一套。原本是一顆寫著「開啟／關閉」的
   // 膠囊按鈕 —— 使用者實機回報看不出現在是哪一邊：寫「開啟」是目前開著、還是按了會開？
@@ -209,8 +235,8 @@ async function editFlow(existing) {
       h('label', { class: 'sm muted' }, '每次扣款金額（元）'), amountInput,
       h('label', { class: 'sm muted' }, '每月扣款日（可多個，用逗號分開）'), daysInput,
       h('p', { class: 'muted sm' }, '扣款日遇到週末或休市會順延到下一個交易日；當月沒有那一天（例如 31 號）會改用月底。'),
-      h('label', { class: 'sm muted' }, '券商手續費率（選填）'), feeInput,
-      h('p', { class: 'muted sm' }, '填了才會從扣款金額扣掉再估股數。0.001425 代表 0.1425%。'),
+      h('label', { class: 'sm muted' }, '券商手續費率（選填，0.001425 代表 0.1425%）'), feeInput,
+      feeHint,
       reinvestRow,
     ),
     actions: [

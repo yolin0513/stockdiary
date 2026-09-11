@@ -80,7 +80,10 @@ const WHICH_SRC = `window.__which = function () {
   if (v.querySelector('[data-card="calcInputs"]')) return 'calc';
   if (v.querySelector('[data-card="dividendSettings"]')) return 'settings';
   if (v.querySelector('[data-card="plansList"]')) return 'plans';
-  if (v.querySelector('.big-number')) return 'home';
+  // 總覽有兩種樣子：有資料時有大數字，全新裝置時只有「開始使用」那張卡片。
+  // 只認 .big-number 的話，沒有持股的情況下總覽會被判成 'empty'，
+  // 下面每一條「畫面是 home」就永遠不成立，而否定斷言會永遠過 —— 假斷言。
+  if (v.querySelector('.big-number') || v.querySelector('[data-card="start"]')) return 'home';
   return v.textContent.trim().slice(0, 40) || 'empty';
 };`;
 

@@ -131,15 +131,41 @@ const appVersion = /export const APP_VERSION = '([^']+)';/.exec(read('js/version
 const APP_VERSION_IN_SRC = appVersion;
 const swVersion = /const VERSION = '([^']+)';/.exec(read('sw.js'))?.[1];
 const htmlStamps = [...read('index.html').matchAll(/\?v=([^"'&]+)/g)].map((m) => m[1]);
+// 底下每一條版本一致性都走這個比對器，下面的對照組驗的也是它 ——
+// 分成兩份的話，對照組會變成「驗一個沒人在用的函式」。
+const sameVersion = (v) => v === appVersion;
 ok(/^stockdiary-v\d+\.\d+\.\d+$/.test(String(appVersion)), `js/version.js 的版本：${appVersion}`);
-eq(swVersion, appVersion, 'sw.js 的 VERSION 與 js/version.js 一致');
+ok(sameVersion(swVersion), 'sw.js 的 VERSION 與 js/version.js 一致', `sw.js 是 ${swVersion}`);
 ok(htmlStamps.length >= 2, `index.html 有 ${htmlStamps.length} 個帶版本的資源網址`);
-everyOf(htmlStamps, (v) => v === appVersion, 'index.html 每一個 ?v= 都是同一個版本');
-// 對照組：版本比對真的分得出不一樣的字串
-detects((v) => v !== appVersion, {
-  shouldHit: ['stockdiary-v0.0.1', 'stockdiary-v9.9.9', ''],
-  shouldMiss: [appVersion],
-}, '版本比對有對照組');
+everyOf(htmlStamps, sameVersion, 'index.html 每一個 ?v= 都是同一個版本');
+// 對照組：上面三條都建立在「字串相等」上，所以要證明那個相等是**嚴格**的。
+// 反例以前只有一個（appVersion 自己），等於只驗了 `x !== x` 是 false ——
+// 那條幾乎什麼都沒守到。真正會出事的是**寬鬆比對**：包含、忽略大小寫、
+// 順手 trim、或拿 startsWith 當相等。下面每一個正例都是那種比對法會放過的形狀。
+const [, major, minor, patch] = /^stockdiary-v(\d+)\.(\d+)\.(\d+)$/.exec(appVersion);
+detects((v) => !sameVersion(v), {
+  shouldHit: [
+    'stockdiary-v0.0.1',                       // 完全不同的版本
+    'stockdiary-v9.9.9',
+    '',                                        // 抓不到（regex 沒中）時的空字串
+    `${appVersion} `,                          // 尾巴多一個空白（沒 trim 的比對會過）
+    ` ${appVersion}`,
+    `${appVersion}.1`,                         // 前綴相同（startsWith 會過）
+    appVersion.slice(0, -1),                   // 被截斷（includes 會過）
+    appVersion.toUpperCase(),                  // 大小寫（不分大小寫的比對會過）
+    `stockdiary-v${major}.${minor}.${Number(patch) + 1}`, // 只差一個 patch —— 最容易真的發生
+    `stockdiary-v${major}.${Number(minor) + 1}.${patch}`,
+    `v${major}.${minor}.${patch}`,             // 少了前綴
+    `stockdiary-${major}.${minor}.${patch}`,   // 少了 v
+  ],
+  shouldMiss: [
+    appVersion,
+    String(appVersion),
+    `${appVersion}`,
+    appVersion.split('').join(''),             // 同字串不同物件
+    `stockdiary-v${major}.${minor}.${patch}`,  // 由零件重組回來的同一個版本
+  ],
+}, '版本比對是嚴格字串相等：多一個空白、少一個字、只差一個 patch 都算不同');
 
 // 上面那條只檢查「有帶版本的那些都一致」—— 少帶的那個它看不到。
 // 把 <script src="./js/app.js?v=..."> 的版本單獨拿掉，7 個 modulepreload 還帶著版本，
@@ -383,7 +409,14 @@ try {
   // 先回到一個穩定的畫面再測。上一段走過 /holdings/:code，那條路由自己會
   // location.replace 轉走，跟接下來設定的 hash 會互相追撞（實測三次有一次逾時）。
   await page.evaluate(() => { location.hash = '#/'; });
-  await page.waitForSelector('#view .big-number', { timeout: 60000 });
+  // 等的是**總覽自己的卡片**，不是 .big-number —— 一筆資料都沒有的時候，
+  // 總覽畫的是「開始使用」那張，上面根本沒有大數字。等一個只在有資料時才出現的
+  // 東西，等於在沒有資料的情況下永遠等不到（就這樣逾時過一次）。
+  await page.waitForFunction(
+    () => document.getElementById('topTitle')?.textContent === 'StockDiary 股息日記'
+      && document.querySelector('#view .card'),
+    { timeout: 60000 },
+  );
   await new Promise((r) => setTimeout(r, 400));
 
   await page.evaluate(() => { location.hash = '#/沒有這一頁'; });
@@ -401,12 +434,29 @@ try {
   ok(mismatch.hash !== '#/', `網址留在原地（${mismatch.hash}），更新之後才接得上`);
   ok(await page.$('#tabbar .tab') != null, '底部分頁還在，沒有把使用者困住');
 
-  section('尚未結算時顯示「—」，不顯示 0');
+  section('有持股但還沒結算：顯示「—」，不顯示 0');
+  // 要先**真的有一檔持股**。一筆資料都沒有的時候總覽畫的是「開始使用」那張，
+  // 上面本來就沒有大數字 —— 拿那個畫面來驗「當日損益是不是 —」等於什麼都沒驗。
+  const seeded = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const holdings = await import('./js/holdings.js');
+    for (const st of db.STORE_NAMES) await db.clear(st);
+    await holdings.addOpening({ code: '2330', shares: 1000, avgCost: null, date: '2026-01-05' });
+    return (await holdings.list()).length;
+  });
+  eq(seeded, 1, '（前提）真的有一檔持股，而且沒有任何結算紀錄');
+
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  await new Promise((r) => setTimeout(r, 300));
   await page.evaluate(() => { location.hash = '#/'; });
   await page.waitForSelector('#view .big-number', { timeout: 60000 });
   const dayPL = await page.$eval('#view .big-number', (el) => el.textContent.trim());
   eq(dayPL, '—', '當日損益在還沒結算時是「—」');
   ok(dayPL !== '0' && dayPL !== '0.00', '而且絕對不是 0', `實際「${dayPL}」`);
+  const nums = await page.$$eval('#view .num, #view .big-number, #view .mid-number',
+    (els) => els.map((e) => e.textContent.trim()));
+  noneOf(nums, (t) => /^[+-]?0(\.0+)?$/.test(t),
+    '整頁沒有任何一個數字節點是 0（「不知道」不可以變成 0）');
 } finally {
   await browser.close();
   srv.close();

@@ -32,7 +32,9 @@ export function byIndustry(holdings = [], quotes = {}) {
     // mulSharesPrecise 自己會把每股金額轉成奈刻度，這裡**不要**先 toMicro ——
     // 轉兩次會讓市值差好幾個數量級（踩過）。
     const valueMicro = mulSharesPrecise(hd.shares, close);
-    const key = hd.industry || '產業未知';
+    // ETF 本來就沒有單一產業別，那不是「資料缺了」。寫「產業未知」會讓人以為
+    // App 沒抓到東西 —— 這位使用者的定期定額三檔全是 ETF，整批都會落在那一格。
+    const key = hd.industry || (hd.type === 'ETF' ? 'ETF' : '產業未知');
     const cur = buckets.get(key) ?? { industry: key, valueMicro: 0n, codes: [] };
     cur.valueMicro += valueMicro;
     cur.codes.push(hd.code);

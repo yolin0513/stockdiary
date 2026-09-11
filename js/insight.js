@@ -161,9 +161,11 @@ export function buildSystemPrompt() {
 export function buildUserContent({ date, news, holdings, marketChangePct }) {
   const lines = [`日期：${date}`];
 
-  if (Number.isFinite(marketChangePct)) {
-    lines.push(`大盤當日漲跌：${marketChangePct > 0 ? '+' : ''}${marketChangePct}%`);
-  }
+  // 拿不到就**明講拿不到**，不是把這一行省掉。
+  // 省掉的話模型看不出差別，可能自己從新聞標題推一個大盤方向出來當事實。
+  lines.push(Number.isFinite(marketChangePct)
+    ? `大盤當日漲跌：${marketChangePct > 0 ? '+' : ''}${marketChangePct}%`
+    : '大盤當日漲跌：無法取得（不要推測，也不要當成持平）');
 
   lines.push('', '我的持股（只有代號、名稱、產業、當日漲跌％）：');
   for (const h of holdings) {

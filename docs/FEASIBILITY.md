@@ -14,7 +14,8 @@
 |---|---|---|---|---|
 | `www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date=YYYYMMDD&stockNo=` | 上市個股**當月逐日** OHLC、量 | ✅ `Access-Control-Allow-Origin: *` | ✅ 200（0.26s） | 歷史回補的主力。當日資料何時出現未實測（盤中打今天只到昨天），社群經驗約 14:00–15:00 後 |
 | `www.twse.com.tw/exchangeReport/TWT49U?response=json&strDate=&endDate=` | 上市**除權除息計算結果表**（含除權息前收盤、參考價、權值、息值、權／息） | ✅ ACAO * | ✅ 200 | 除權息自動偵測的資料源 |
-| `www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=&type=IND` | 加權指數等各指數收盤、漲跌 | ✅ ACAO * | 未測（同主機） | 大盤脈絡 |
+| `www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?response=json&date=` | 整月市場成交資訊（含發行量加權股價指數與**帶正負號的**漲跌點數） | ✅ ACAO * | **已實測**（2026-09-12，v0.7.7 接上） | 大盤脈絡 |
+| `www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=json&date=&type=IND` | 各指數收盤、漲跌、漲跌％ | ✅ ACAO * | **已實測，不採用**：漲跌的正負號寫在 `<p style='color:green'>` 這段 HTML 裡，點數本身無號。理由見 `STATUS.md`「大盤指數」 | — |
 | `www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL?response=json` | 上市**全市場**當日收盤（含 ETF），~320KB，實際回 CSV | ✅ ACAO * | ✅ | 代號→名稱表可由此生成 |
 | `www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?date=&selectType=ALL` | 個股本益比、殖利率、淨值比 | ✅ ACAO * | 未測 | 加值資訊 |
 | `openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL` 等 OpenAPI | 同上 JSON 版；另有 `opendata/t187ap03_L`（上市公司基本資料）、`opendata/t187ap45_L`（股利分派，含發放日）、`holidaySchedule/holidaySchedule`（開休市日） | ❌ **無 ACAO**（OPTIONS 回 200 但無任何 CORS 標頭） | ✅ 200（310KB 花 4.3s） | OpenAPI 檔案 Last-Modified 為前一日資料於**隔日 05:20** 更新——不適合當天結算 |

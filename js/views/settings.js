@@ -1,6 +1,6 @@
 // 設定頁。M0：字級、今日資料公布門檻、資料來源與限制說明。
 
-import { h, toast, switchRow, timeSelect } from '../ui.js';
+import { h, toast, switchRow, timeSelect, confirmDialog } from '../ui.js';
 import * as prefs from '../prefs.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
@@ -98,8 +98,14 @@ function configuredCard(st) {
     return chip;
   }));
 
-  const clearBtn = h('button', { class: 'btn' }, '清除這台裝置上的金鑰');
+  // 不可復原，而且**看不回來**（存進去之後只顯示遮罩）。
+  // App 裡其他不可復原的動作都會先問一次，只有這裡以前是按一下就沒了。
+  const clearBtn = h('button', { class: 'btn btn-danger' }, '清除這台裝置上的金鑰');
   clearBtn.addEventListener('click', async () => {
+    const yes = await confirmDialog(
+      '清除這台裝置上的金鑰？\n金鑰存進去之後就只顯示遮罩，清掉之後沒有辦法從這裡找回來，要重新貼一次。',
+      { danger: true, okLabel: '清除' });
+    if (!yes) return;
     await secrets.clear();
     toast('已清除。記得到 Anthropic 後台 Delete 才是真的停用。');
     await settings();
@@ -249,7 +255,8 @@ function backupSection() {
 
   const confirm = h('input', { type: 'checkbox', dataset: { field: 'importConfirm' } });
   const file = h('input', { type: 'file', accept: 'application/json,.json', dataset: { field: 'importFile' } });
-  const importBtn = h('button', { class: 'btn' }, '匯入並取代');
+  // 取代整份資料，不可復原 —— 視覺上要跟「匯出備份檔」分得開
+  const importBtn = h('button', { class: 'btn btn-danger' }, '匯入並取代');
 
   importBtn.addEventListener('click', async () => {
     if (!confirm.checked) { status.textContent = '匯入會蓋掉現在的資料，要先打勾確認。'; return; }

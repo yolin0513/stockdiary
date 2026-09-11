@@ -1206,6 +1206,183 @@ const MUTATIONS = [
     replace: `      '不含 ETF。'`,
     test: 'divrecordtest',
   },
+  {
+    name: '把真正持平的有成交證券也解成 null',
+    why: '「沒成交 → null」跟「持平 → 0」是兩件事。分不開的話，'
+      + '真的收平盤的那一天會變成「今天沒有這檔的報價」，畫面整格空白。',
+    file: 'js/twse.js',
+    find: 'change: traded ? num(r[9]) : null,',
+    replace: 'change: traded && num(r[9]) !== 0 ? num(r[9]) : null,',
+    test: 'parsetest',
+  },
+  {
+    name: '用成交股數判斷「有沒有成交」',
+    why: '有幾檔（1472、2024、2891B）有成交股數與筆數，價格欄卻是空的。'
+      + '用股數判斷的話，這幾檔會被當成有成交，然後帶著 null 價格走進結算。',
+    file: 'js/twse.js',
+    find: 'const traded = close != null;',
+    replace: 'const traded = num(r[3]) > 0;',
+    test: 'parsetest',
+  },
+  {
+    name: '大盤漲跌％拿當日指數當分母',
+    why: '應該除以前一日指數（當日 − 點數）。除以當日算出來的百分比每一天都偏，'
+      + '而且跌得越多偏越大 —— 這個數字會直接進「今日觀察」的提示內容。',
+    file: 'js/twse.js',
+    find: 'const prev = index - changePoints;',
+    replace: 'const prev = index;',
+    test: 'parsetest',
+  },
+  {
+    name: '大盤算不出百分比時給 0',
+    why: '「沒公布」會被講成「大盤持平」，而且是講給模型聽的。',
+    file: 'js/twse.js',
+    find: '    let changePct = null;',
+    replace: '    let changePct = 0;',
+    test: 'parsetest',
+  },
+  {
+    name: '大盤挑回應裡的第一列，不是指定的那一天',
+    why: 'FMTQIK 回的是一整個月。挑第一列等於永遠拿月初那天的漲跌當今天的。',
+    file: 'js/prices.js',
+    find: '  return r.rows.find((x) => x.date === iso) ?? null;',
+    replace: '  return r.rows[0] ?? null;',
+    test: 'insighttest',
+  },
+  {
+    name: '今日觀察的呼叫端不傳大盤與個股漲跌％',
+    why: 'PLAN §7.2 要求這兩個輸入。buildUserContent 早就會處理它們、模組測試也全綠，'
+      + '但呼叫端沒傳 —— 這正是實際發生過的漏接，只有從按鈕按下去的測試照得到。',
+    file: 'js/views/news.js',
+    find: '      holdings: await withChangePct(held, today),',
+    replace: '      holdings: held,',
+    test: 'insighttest',
+  },
+  {
+    name: '結算不是今天的也照樣拿來當今日漲跌％',
+    why: '收盤還沒公布時，手上最新的結算是前一個交易日的。'
+      + '把那一天的漲跌講成今天的，使用者與模型都會被誤導。',
+    file: 'js/views/news.js',
+    find: '  const rows = rec?.date === today ? (rec.byCode ?? []) : [];',
+    replace: '  const rows = rec?.byCode ?? [];',
+    test: 'insighttest',
+  },
+  {
+    name: '版本比對放寬成「開頭一樣就算同一版」',
+    why: '版本號只差一個 patch 也會被當成一致，新舊檔案混在一起的那個 bug 就再也擋不住。',
+    file: 'scripts/shelltest.mjs',
+    find: 'const sameVersion = (v) => v === appVersion;',
+    replace: 'const sameVersion = (v) => String(v).trim().toLowerCase().startsWith(String(appVersion).slice(0, 12).toLowerCase());',
+    test: 'shelltest',
+  },
+  {
+    name: '除權息日拿不到參考價就退回前一日收盤',
+    why: '除息日用前收當基準 ＝ 把整筆股利算成當天的虧損。'
+      + '單元測試看得到 basisFor 的回傳值，但真正會出事的是它一路走到畫面上 ——'
+      + 'scenariotest 是從 IndexedDB 與真的畫面上抓這個數字。',
+    file: 'js/settle.js',
+    find: "    if (refPrice == null) return { basis: null, source: 'none' };",
+    replace: "    if (refPrice == null) return { basis: prevClose, source: 'prevClose' };",
+    test: 'scenariotest',
+  },
+  {
+    name: '定期定額估股數拿「最近一筆」收盤價，不是扣款日那一天的',
+    why: '平常兩者一樣，所以很難發現。除息日當天差最多：扣款日收 2455、前一日收 2460，'
+      + '估出來的每股成本就錯了，而使用者按一下確認就把它記成自己的成本。',
+    file: 'js/plans.js',
+    find: "      const close = await db.get('closes', [plan.code, occ.date]);",
+    replace: "      const close = (await db.getAll('closes'))\n        .filter((c) => c.code === plan.code && c.date <= occ.date)\n        .sort((a, b) => (a.date < b.date ? 1 : -1))[1]\n        ?? await db.get('closes', [plan.code, occ.date]);",
+    test: 'scenariotest',
+  },
+  {
+    name: '沒有收盤價時把當日損益算成 0',
+    why: '「不知道」變成「持平」。停牌、沒成交、還沒公布全都會顯示一筆看起來很正常的 0。',
+    file: 'js/settle.js',
+    find: "      row.status = 'noClose';",
+    replace: "      row.status = 'noClose'; row.plMicro = 0n; plParts.push(0n); counted += 1;",
+    test: 'scenariotest',
+  },
+  {
+    name: '兩次更新並行（force 不等前一次跑完）',
+    why: '新增持股、儲存計畫、按重新整理都會 force 一次，而開機那一次通常還在飛。'
+      + '並行跑的話同一檔同一個月會被抓兩次 —— TWSE 連打是會被封 IP 的。',
+    file: 'js/store.js',
+    find: '    if (!force) return state.updating;\n    return state.updating.then(() => runUpdate({ force, onProgress }));',
+    replace: '    return state.updating;',
+    test: 'pathtest',
+  },
+  {
+    name: '沒有持股也去打全市場收盤',
+    why: '第一次開 App 的人什麼都還沒設定，那一個請求是純浪費 ——'
+      + '而且剛裝好的人最可能在網路差的地方。',
+    file: 'js/update.js',
+    find: "    return { status: STATUS.NO_HOLDINGS, settled: [], message: '還沒有持股，也還沒有定期定額計畫' };",
+    replace: "    await prices.fetchDayAll(client).catch(() => null);\n    return { status: STATUS.NO_HOLDINGS, settled: [], message: '還沒有持股，也還沒有定期定額計畫' };",
+    test: 'pathtest',
+  },
+  {
+    name: '全新裝置的總覽回到三張「—」',
+    why: '什麼都還沒設定的人看到三個破折號，分不出是 App 壞了、今天還沒開盤、還是自己還沒設定，'
+      + '而且那個畫面上**一個帶得到持股頁的按鈕都沒有**（實測過）。',
+    file: 'js/views/home.js',
+    find: '  if (held.length === 0 && plansList.length === 0) {',
+    replace: '  if (false) {',
+    test: 'pathtest',
+  },
+  {
+    name: '持股列的漲跌％用比例，不乘 100',
+    why: 'fmtPct 收的是百分比數字。直接把 0.0133 丟進去，−1.33% 會顯示成 −0.01% ——'
+      + '看起來完全正常，數字卻小了一百倍。（寫的時候真的踩到。）',
+    file: 'js/views/holdings.js',
+    find: '    ? ((r.close - r.basis) / r.basis) * 100',
+    replace: '    ? (r.close - r.basis) / r.basis',
+    test: 'uikittest',
+  },
+  {
+    name: '持股列算不出當日損益就留白',
+    why: '留白跟「今天沒漲沒跌」在畫面上長得一樣。算不出來要寫出原因'
+      + '（尚未取得收盤價、除權息日還沒有參考價…）。',
+    file: 'js/views/holdings.js',
+    find: "    return [h('span', { class: 'muted sm' }, STATUS_TEXT[r.status] ?? '沒有當日損益')];",
+    replace: '    return [];',
+    test: 'uikittest',
+  },
+  {
+    name: '按鈕的觸控區縮回 36px',
+    why: '使用者定的底線是 44px，而 .btn-sm 正好用在最常按的那幾顆：'
+      + '確認扣款、確認股利、取消確認、修改、停用。',
+    file: 'css/style.css',
+    find: '.btn-sm { padding: 6px 12px; min-height: 44px; font-size: 0.9em; }',
+    replace: '.btn-sm { padding: 6px 12px; min-height: 36px; font-size: 0.9em; }',
+    test: 'uikittest',
+  },
+  {
+    name: '手續費率填成百分比也照收',
+    why: '券商講「0.1425%」，欄位要的是 0.001425。填錯一個單位，估出來的股數少一成四，'
+      + '而畫面只會寫「手續費率 14.2500%」—— 看起來很正常。',
+    file: 'js/plans.js',
+    find: '    if (f > MAX_FEE_RATE) {',
+    replace: '    if (false) {',
+    test: 'plantest',
+  },
+  {
+    name: 'ETF 歸到「產業未知」',
+    why: 'ETF 本來就沒有單一產業別，那不是資料缺了。'
+      + '這位使用者的定期定額三檔全是 ETF，整批落在那一格會像 App 沒抓到東西。',
+    file: 'js/concentration.js',
+    find: "    const key = hd.industry || (hd.type === 'ETF' ? 'ETF' : '產業未知');",
+    replace: "    const key = hd.industry || '產業未知';",
+    test: 'concentrationtest',
+  },
+  {
+    name: '累積已領股利退回自相矛盾的文案',
+    why: '同一張卡片一邊說「還沒有確認過任何一筆股利」、一邊說「另有 2 筆已確認」，'
+      + '看的人不知道到底有沒有。',
+    file: 'js/views/dividends.js',
+    find: "      ? h('p', { class: 'muted sm' }, s.unknown > 0",
+    replace: "      ? h('p', { class: 'muted sm' }, false",
+    test: 'uikittest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

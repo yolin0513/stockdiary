@@ -6,6 +6,7 @@ import * as catalog from './catalog.js';
 import { makeCalendar, latestPublishedTradingDay, todayPending } from './market.js';
 import { createClient } from './twseclient.js';
 import * as updater from './update.js';
+import * as prices from './prices.js';
 
 const state = {
   ready: false,
@@ -64,7 +65,15 @@ export function isTodayPending(now = new Date()) {
 export function update(opts) { return runUpdate(opts); }
 
 function runUpdate({ force = false, onProgress } = {}) {
-  if (state.updating && !force) return state.updating;
+  if (state.updating) {
+    // 已經有一次在跑。force 的意思是「再算一次」，不是「同時再跑一次」——
+    // 兩次同時跑會對 TWSE 送出雙倍請求（實測過：跨月回補 2 個月份變成 4 個請求），
+    // 而 TWSE 連打是會被封 IP 的。排在後面跑，不要並行。
+    // 最常撞到的不是「重新整理」按鈕，是**開 App 的頭幾秒就新增持股**：
+    // 那裡也會 force 一次，而開機那一次通常還在飛。
+    if (!force) return state.updating;
+    return state.updating.then(() => runUpdate({ force, onProgress }));
+  }
   // 每次開頁（或按重新整理）給一個全新的客戶端 —— 請求上限是「一次開頁 30 個」
   state.client = createClient();
   const p = updater.runUpdate({
@@ -93,3 +102,19 @@ export async function lastSettledDate() { return updater.lastSettledDate(); }
 export async function loadSettle(date) { return updater.loadSettle(date); }
 /** 最後一筆結算紀錄（不管算不算得出東西）——畫面用這個才講得出「卡在哪裡」。 */
 export async function latestSettle() { return updater.latestSettleRecord(); }
+
+/**
+ * 某一天的大盤（發行量加權股價指數）。
+ *
+ * 只有「今日觀察」的提示內容用得到，所以**按下按鈕時才打**，不進開頁的更新流程
+ * —— 那條路徑上每多一個請求，每次開 App 就多一次。
+ * 拿不到（沒公布、網路壞掉、上游改格式）一律回 null：提示內容會照實寫「無法取得」，
+ * 絕不拿 0 或別天的數字頂替。
+ */
+export async function marketIndexFor(date) {
+  try {
+    return await prices.fetchMarketIndex(createClient(), date);
+  } catch {
+    return null;
+  }
+}

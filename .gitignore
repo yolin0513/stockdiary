@@ -8,3 +8,7 @@ scripts/.mutation-backup/
 
 # wrangler dev 的本機狀態與快取（workertest 跑完會留下），不進版控
 workers/.wrangler/
+assert-audit.jsonl
+
+# 走查截圖與測試輸出（本機暫存，不進版控）
+.logs/
