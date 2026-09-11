@@ -26,8 +26,14 @@ export function shellAssetsOf(swSource) {
   return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
 }
 
+/** 把註解拿掉 —— 註解裡寫的 import 不是 import。 */
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
+
 /** 從一個 JS 檔取出它 import 的同專案模組（靜態與動態都算）。 */
-export function importsOf(source) {
+export function importsOf(rawSource) {
+  const source = stripComments(rawSource);
   const out = new Set();
   const patterns = [
     /\bimport\s+[^'"]*?from\s+'([^']+)'/g,   // import x from './y.js'
@@ -74,6 +80,22 @@ export function auditShell(modules, shellAssets) {
 const swSource = read('sw.js');
 const shellAssets = shellAssetsOf(swSource);
 const readModule = (rel) => read(rel);
+
+section('import 稽核器本身');
+// 稽核器把註解裡的 import 也算進去的話，會逼著你把根本沒用到的檔案放進 SHELL
+// 清單（實際發生過：shell.js 的註解裡寫了 `from '../app.js'`）。
+detects((src) => importsOf(src).includes('./x.js'), {
+  shouldHit: [
+    "import { a } from './x.js';",
+    "await import('./x.js');",
+    "import './x.js';",
+  ],
+  shouldMiss: [
+    "// import { a } from './x.js';",
+    "/* import { a } from './x.js'; */",
+    "import { a } from './y.js';",
+  ],
+}, 'import 稽核器認得真的 import，也不會把註解裡的當真');
 
 section('SHELL 清單本身');
 ok(shellAssets.length > 5, `sw.js 列了 ${shellAssets.length} 個檔案`);
@@ -128,16 +150,37 @@ detects((v) => v !== appVersion, {
 // 一致性檢查照樣全綠（實測過，這條突變曾經無聲無息地過關）。
 // 而 app.js 正是最不能漏的那一個：它是進入點，舊的 app.js 配新的 view 就是那個 bug。
 // 所以要反過來問：**每一個** .js 引用都帶版本了嗎。
-const stamped = (u) => u.endsWith(`?v=${appVersion}`);
+//
+// 規則不是「全部都要帶版本」，是**帶不帶要跟模組圖實際請求的網址一致**：
+//   · js/app.js      index.html 自己載入，帶版本 → preload 也要帶
+//   · js/views/*.js  動態 import 帶 ${V} → preload 也要帶
+//   · 其他模組       被 app.js 用 './x.js' 靜態 import，沒帶版本 → preload 不能帶
+// 不一致的後果是「preload 了一個根本不會被用到的網址」：每次開頁多抓一份，
+// 而且真正要用的那一份完全沒被預熱（實測過 shell.js 被抓了兩次）。
+const stamped = (u) => u.includes('?');
+const shouldBeStamped = (u) => {
+  const p0 = u.split('?')[0];
+  return p0 === './js/app.js' || p0.startsWith('./js/views/');
+};
 const htmlJsRefs = [...read('index.html').matchAll(/(?:src|href)="(\.\/[^"]+\.js[^"]*)"/g)].map((m) => m[1]);
 ok(htmlJsRefs.length >= 5, `index.html 引用了 ${htmlJsRefs.length} 個本地 .js`);
 ok(htmlJsRefs.some((u) => u.split('?')[0] === './js/app.js'), 'index.html 確實有載入進入點 app.js');
-everyOf(htmlJsRefs, stamped,
-  `index.html 每一個 .js 引用都帶 ?v=${appVersion}（含 <script> 與每個 modulepreload）`);
-detects((u) => !stamped(u), {
-  shouldHit: ['./js/app.js', './js/app.js?v=stockdiary-v0.0.1', './js/router.js?v=', './js/app.js?x=1'],
-  shouldMiss: [`./js/app.js?v=${appVersion}`, `./js/views/home.js?v=${appVersion}`],
-}, '「有沒有帶對版本」的檢查器有對照組');
+everyOf(htmlJsRefs, (u) => (shouldBeStamped(u) ? u.endsWith(`?v=${appVersion}`) : !stamped(u)),
+  `index.html 每個 .js 引用的網址都跟模組圖實際請求的一致（該帶版本的帶 ?v=${appVersion}，不該帶的不帶）`);
+detects((u) => !(shouldBeStamped(u) ? u.endsWith(`?v=${appVersion}`) : !stamped(u)), {
+  shouldHit: [
+    './js/app.js',                                  // 進入點漏了版本 —— 就是那個 bug 的成因
+    './js/app.js?v=stockdiary-v0.0.1',              // 版本對不上
+    `./js/router.js?v=${appVersion}`,               // 不該帶卻帶了 —— preload 白抓一份
+    `./js/views/home.js`,                           // view 漏了版本
+  ],
+  shouldMiss: [
+    `./js/app.js?v=${appVersion}`,
+    `./js/views/home.js?v=${appVersion}`,
+    './js/router.js',
+    './js/shell.js',
+  ],
+}, '「網址該不該帶版本」的檢查器有對照組');
 
 section('app.js 的動態 import 都帶版本參數');
 // 帶了版本，「新版 app.js 配上瀏覽器快取裡的舊 view」就不可能發生 ——
@@ -177,6 +220,16 @@ everyOf(refs, (r) => shellSet.has(path.posix.normalize(r.replace(/^\.\//, ''))),
 export function viewsWritingViewDirectly(source) {
   return /getElementById\(\s*['"]view['"]\s*\)/.test(source) || /mount\(\s*view/.test(source);
 }
+
+section('沒有任何模組 import 進入點 app.js');
+// index.html 載入的是 `./js/app.js?v=<版本>`。只要有人用 './app.js'（沒帶參數）
+// import 它，瀏覽器就當成另一個網址再求值一次 —— boot() 跑兩次、路由註冊兩次、
+// **TWSE 被打兩輪**。實測確認過真的會發生，所以用稽核擋死。
+const nonEntryModules = ['sw.js', ...fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js')).map((f) => `js/${f}`),
+  ...fs.readdirSync(path.join(ROOT, 'js/views')).filter((f) => f.endsWith('.js')).map((f) => `js/views/${f}`)]
+  .filter((f) => f !== 'js/app.js');
+noneOf(nonEntryModules, (f) => importsOf(read(f)).some((spec) => spec.split('?')[0].endsWith('/app.js')),
+  '沒有任何模組 import app.js（view 要的東西在 js/shell.js）');
 
 section('沒有任何一頁繞過 render() 直接寫 #view');
 const viewFiles = fs.readdirSync(path.join(ROOT, 'js/views')).filter((f) => f.endsWith('.js'));

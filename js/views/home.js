@@ -13,7 +13,7 @@ import * as events from '../events.js';
 import * as plans from '../plans.js';
 import { computeUnrealized, exclusionNote, partialCostNote, STATUS_TEXT, BASIS_SOURCE_TEXT } from '../settle.js';
 import { STATUS } from '../update.js';
-import { setTop, render } from '../app.js';
+import { setTop, render } from '../shell.js';
 
 export default async function home() {
   setTop({ title: 'StockDiary 股息日記', back: false });

@@ -39,7 +39,8 @@
     "calcviewtest": "node scripts/calcviewtest.mjs",
     "bump": "node scripts/bump-version.mjs",
     "versionmixtest": "node scripts/versionmixtest.mjs",
-    "racetest": "node scripts/racetest.mjs"
+    "racetest": "node scripts/racetest.mjs",
+    "upgradecheck": "node scripts/upgradecheck.mjs"
   },
   "devDependencies": {
     "puppeteer": "^23.0.0",

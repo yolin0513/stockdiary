@@ -4,7 +4,7 @@ import { h, toast } from '../ui.js';
 import * as prefs from '../prefs.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
-import { setTop, render } from '../app.js';
+import { setTop, render } from '../shell.js';
 
 export default async function settings() {
   setTop({ title: '設定' });

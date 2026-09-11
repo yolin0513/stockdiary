@@ -15,7 +15,7 @@ import {
   validateInputs, compareScenarios, methodGap, displayTotals,
   CONTRIB_FREQ, DIVIDEND_FREQ, DIVIDEND_FREQ_LABEL,
 } from '../calc.js';
-import { setTop, render } from '../app.js';
+import { setTop, render } from '../shell.js';
 
 const DISCLAIMER = '以下結果完全由你輸入的假設算出，不是預測，也不是投資判斷。';
 

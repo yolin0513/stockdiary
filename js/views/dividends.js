@@ -11,7 +11,7 @@ import * as events from '../events.js';
 import * as holdings from '../holdings.js';
 import * as prefs from '../prefs.js';
 import { dividendAmount, stockDividendShares, KIND_LABEL } from '../dividend.js';
-import { setTop, render } from '../app.js';
+import { setTop, render } from '../shell.js';
 
 export default async function dividendsView() {
   setTop({ title: '股利' });

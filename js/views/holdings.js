@@ -10,7 +10,7 @@ import * as holdings from '../holdings.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
 import { STATUS_TEXT } from '../settle.js';
-import { setTop, render } from '../app.js';
+import { setTop, render } from '../shell.js';
 import { localISODate } from '../roc.js';
 
 export default async function holdingsView() {

@@ -10,7 +10,7 @@ import * as plans from '../plans.js';
 import * as holdings from '../holdings.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
-import { setTop, render } from '../app.js';
+import { setTop, render } from '../shell.js';
 
 const KIND_LABEL = {
   dca: '定期定額扣款',

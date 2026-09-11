@@ -632,7 +632,7 @@ const MUTATIONS = [
     name: '過期的畫面照畫不誤',
     why: 'view 是 async 的，畫到一半使用者換頁是常態。少了這道守門，最後畫完的那個贏 —— '
       + '網址是新的、畫面是舊的。',
-    file: 'js/app.js',
+    file: 'js/shell.js',
     find: `  if (renderIsStale()) return;
   mount(view, node);`,
     replace: '  mount(view, node);',
@@ -672,7 +672,7 @@ const MUTATIONS = [
   {
     name: '過期的畫面還是可以改頂列標題',
     why: '會變成「內容是這一頁、標題是上一頁」，使用者以為自己在別的地方。',
-    file: 'js/app.js',
+    file: 'js/shell.js',
     find: `  if (renderIsStale()) return;
   document.getElementById('topTitle')`,
     replace: "  document.getElementById('topTitle')",
