@@ -12,7 +12,8 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, everyOf, noneOf } from './tap.mjs';
 import { parseStockDayAll, parseStockDay } from '../js/twse.js';
-import { isoToYyyymmdd } from '../js/roc.js';
+import { isoToYyyymmdd, isoToRocCompact } from '../js/roc.js';
+import { parseTwt48u, parseTwt49u, refPriceFromExValue } from '../js/dividend.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GAP_MS = 2200;
@@ -75,14 +76,101 @@ section('上櫃代號在 TWSE 查不到 —— 「不支援」的設計前提');
 }
 
 section('除權息預告表 TWT48U（日曆用的那張）');
+let forecastRows = [];
 {
   const { res, text } = await get(`${TWSE}/exchangeReport/TWT48U?response=json`);
   ok(res.status === 200, `HTTP ${res.status}`);
   eq(res.headers.get('access-control-allow-origin'), '*', 'CORS 標頭還在');
+  const parsed = parseTwt48u(JSON.parse(text));
+  ok(parsed.ok, `解析成功（${parsed.rows.length} 筆未來的除權息公告）`);
+  forecastRows = parsed.rows;
+  ok(forecastRows.length > 0, '有資料');
+  ok(forecastRows.some((r) => r.cashPerShare != null),
+    `其中 ${forecastRows.filter((r) => r.cashPerShare != null).length} 筆的金額已公告`);
+}
+
+section('除權息結果表 TWT49U（參考價用的那張）');
+let resultRows = [];
+{
+  const today = new Date();
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const { res, text } = await get(
+    `${TWSE}/exchangeReport/TWT49U?response=json&strDate=${isoToRocCompact(iso)}&endDate=${isoToRocCompact(iso)}`);
+  ok(res.status === 200, `HTTP ${res.status}`);
   const j = JSON.parse(text);
-  ok(j.stat === 'OK', `stat=${j.stat}`);
-  ok(Array.isArray(j.data) && j.data.length > 0, `${j.data?.length ?? 0} 筆未來的除權息公告`);
-  ok(Array.isArray(j.fields) && j.fields.length > 0, `欄位：${(j.fields || []).join('、')}`);
+  if (j.stat === 'OK') {
+    const parsed = parseTwt49u(j);
+    resultRows = parsed.rows;
+    ok(parsed.ok, `解析成功（${resultRows.length} 筆，title「${j.title}」）`);
+    // 日期參數無效這件事是 FEASIBILITY §10.8 的結論，這裡持續監看：
+    // 哪天證交所修好了，這條就會變成「參數開始生效了」的提醒。
+    const dates = [...new Set(resultRows.map((r) => r.date))];
+    ok(true, `回應涵蓋的日期：${dates.join('、') || '無'}（要求的是 ${iso}）`);
+    everyOf(resultRows, (r) => refPriceFromExValue({ prevClose: r.prevClose, exValue: r.exValue }) === r.refPrice,
+      '參考價公式（前收 − 權值息值，捨去兩位）仍與證交所公布值一致');
+  } else {
+    ok(true, `今天沒有除權息結果（stat：${j.stat}）—— 不算失敗`);
+  }
+}
+
+section('捕捉「預告 → 結果」的配對樣本');
+{
+  // 為什麼要做這件事：參考價的自算備援還缺一段驗證（見 docs/STATUS.md 的待辦）。
+  // 需要同一檔先出現在預告表、之後出現在結果表的配對樣本，而 TWT49U 只給得到
+  // 最近一次的結果 —— 只能靠每次 livecheck 把預告記下來，等它變成結果。
+  const seenPath = `${ROOT}docs/measurements/twt48u-seen.json`;
+  const pairPath = `${ROOT}scripts/fixtures/refprice-pairs.json`;
+  fs.mkdirSync(`${ROOT}docs/measurements`, { recursive: true });
+
+  const seen = fs.existsSync(seenPath) ? JSON.parse(fs.readFileSync(seenPath, 'utf8')) : {};
+  const before = Object.keys(seen).length;
+  for (const r of forecastRows) {
+    seen[`${r.code}-${r.exDate}`] = {
+      code: r.code, name: r.name, exDate: r.exDate, kind: r.kind,
+      cashPerShare: r.cashPerShare, stockRate: r.stockRate,
+      rightsRate: r.rightsRate, rightsPrice: r.rightsPrice,
+      seenAt: new Date().toISOString().slice(0, 10),
+    };
+  }
+  fs.writeFileSync(seenPath, JSON.stringify(seen, null, 1), 'utf8');
+  ok(true, `預告表紀錄：${before} → ${Object.keys(seen).length} 筆（${seenPath.replace(ROOT, '')}）`);
+
+  const pairs = fs.existsSync(pairPath) ? JSON.parse(fs.readFileSync(pairPath, 'utf8')) : [];
+  const known = new Set(pairs.map((p) => `${p.code}-${p.exDate}`));
+  const fresh = [];
+  for (const r of resultRows) {
+    const key = `${r.code}-${r.date}`;
+    if (known.has(key)) continue;
+    const f = seen[key];
+    if (!f) continue;            // 這一筆的預告我們沒記到（第一次跑，或那時候還沒公告）
+    fresh.push({
+      code: r.code, name: r.name, exDate: r.date, kind: r.kind,
+      forecast: { cashPerShare: f.cashPerShare, stockRate: f.stockRate, rightsRate: f.rightsRate, rightsPrice: f.rightsPrice },
+      result: { prevClose: r.prevClose, refPrice: r.refPrice, exValue: r.exValue },
+      capturedAt: new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  if (fresh.length) {
+    fs.writeFileSync(pairPath, JSON.stringify([...pairs, ...fresh], null, 1), 'utf8');
+    ok(true, `**抓到 ${fresh.length} 筆新的配對樣本**，已寫進 ${pairPath.replace(ROOT, '')}`);
+    for (const p of fresh) {
+      // 證交所公式：參考價 = (前收 − 現金股利 + 增資配股率 × 認購價) ÷ (1 + 無償配股率 + 增資配股率)
+      const { cashPerShare: c, stockRate: s, rightsRate: rr, rightsPrice: rp } = p.forecast;
+      const derivable = c != null && s != null && rr != null && rp != null && p.result.prevClose != null;
+      if (!derivable) {
+        ok(true, `  ${p.code} ${p.name}（${p.kind}）：預告資料不完整，這筆無法用來驗證推導`);
+        continue;
+      }
+      const raw = (p.result.prevClose - c + rr * rp) / (1 + s + rr);
+      const calc = Math.floor(raw * 100) / 100;
+      ok(true, `  ${p.code} ${p.name}（${p.kind}）：公式算出 ${calc}，證交所公布 ${p.result.refPrice}` +
+        (calc === p.result.refPrice ? ' ✓ 一致' : ` ✗ 差 ${(calc - p.result.refPrice).toFixed(4)}`));
+    }
+    ok(true, '→ 下一步見 docs/STATUS.md 的「除權息參考價的自算備援」待辦');
+  } else {
+    ok(true, '這次沒有新的配對樣本（要在除權息日的隔天跑才抓得到）—— 不算失敗');
+  }
 }
 
 section('data/calendar.json 與 TWSE 實際成交日一致');

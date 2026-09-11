@@ -1,0 +1,110 @@
+[
+ {
+  "code": "2062",
+  "name": "橋椿",
+  "exDate": "2026-09-10",
+  "kind": "cash",
+  "forecast": {
+   "cashPerShare": 1,
+   "stockRate": 0,
+   "rightsRate": 0,
+   "rightsPrice": 0
+  },
+  "result": {
+   "prevClose": 19.55,
+   "refPrice": 18.55,
+   "exValue": 1
+  },
+  "capturedAt": "2026-09-11"
+ },
+ {
+  "code": "4912",
+  "name": "聯德控股-KY",
+  "exDate": "2026-09-10",
+  "kind": "cash",
+  "forecast": {
+   "cashPerShare": 0.800477,
+   "stockRate": 0,
+   "rightsRate": 0,
+   "rightsPrice": 0
+  },
+  "result": {
+   "prevClose": 97.5,
+   "refPrice": 96.69,
+   "exValue": 0.800477
+  },
+  "capturedAt": "2026-09-11"
+ },
+ {
+  "code": "5906",
+  "name": "台南-KY",
+  "exDate": "2026-09-10",
+  "kind": "both",
+  "forecast": {
+   "cashPerShare": 0.2,
+   "stockRate": 0.05000001,
+   "rightsRate": 0,
+   "rightsPrice": 0
+  },
+  "result": {
+   "prevClose": 41.55,
+   "refPrice": 39.38,
+   "exValue": 2.169048
+  },
+  "capturedAt": "2026-09-11"
+ },
+ {
+  "code": "6504",
+  "name": "南六",
+  "exDate": "2026-09-10",
+  "kind": "cash",
+  "forecast": {
+   "cashPerShare": 1,
+   "stockRate": 0,
+   "rightsRate": 0,
+   "rightsPrice": 0
+  },
+  "result": {
+   "prevClose": 37.9,
+   "refPrice": 36.9,
+   "exValue": 1
+  },
+  "capturedAt": "2026-09-11"
+ },
+ {
+  "code": "9802",
+  "name": "鈺齊-KY",
+  "exDate": "2026-09-10",
+  "kind": "cash",
+  "forecast": {
+   "cashPerShare": 3.1,
+   "stockRate": 0,
+   "rightsRate": 0,
+   "rightsPrice": 0
+  },
+  "result": {
+   "prevClose": 71.2,
+   "refPrice": 68.1,
+   "exValue": 3.1
+  },
+  "capturedAt": "2026-09-11"
+ },
+ {
+  "code": "9906",
+  "name": "欣巴巴",
+  "exDate": "2026-09-10",
+  "kind": "stock",
+  "forecast": {
+   "cashPerShare": 0,
+   "stockRate": 0.00848624,
+   "rightsRate": 0,
+   "rightsPrice": 0
+  },
+  "result": {
+   "prevClose": 41.4,
+   "refPrice": 41.05,
+   "exValue": 0.348374
+  },
+  "capturedAt": "2026-09-11"
+ }
+]

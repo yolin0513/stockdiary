@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, throws, section, done, noneOf, everyOf, detects } from './tap.mjs';
 import {
   parseTwt48u, parseTwt49u, kindOf, refPriceFromExValue,
-  dividendAmount, stockDividendShares, dividendSummary,
+  dividendAmount, stockDividendShares, dividendSummary, refPriceFromForecast,
   WIRE_FEE, NHI_THRESHOLD,
 } from '../js/dividend.js';
 import { toMicro } from '../js/money.js';
@@ -124,6 +124,46 @@ eq(refPriceFromExValue({ prevClose: 100, exValue: null }), null, '沒有權值�
 
 throws(() => parseTwt49u({ stat: 'OK', fields: ['資料日期'], data: [] }),
   /TWT49U 欄位與預期不同/, '欄位對不上 → 丟錯');
+
+// ---------- 從預告表推導參考價（配對樣本驗證） ----------
+section('從 TWT48U 的資料推算參考價（目前 App 沒有在用，這裡是驗證）');
+// scripts/fixtures/refprice-pairs.json 由 npm run livecheck 自動捕捉：
+// 同一檔股票同時出現在預告表（現金股利、無償配股率）與結果表（前收、參考價）時就存一筆。
+// 沒有這個配對樣本的話，「(前收 − 現金股利 + 增資配股率 × 認購價) ÷ (1 + 無償配股率 + 增資配股率)」
+// 這一段就只是「看起來合理」，沒被驗證過 —— 那種數字不上線。
+const pairs = read('refprice-pairs.json');
+ok(pairs.length >= 6, `有 ${pairs.length} 筆配對樣本`);
+const pairKinds = {};
+for (const p of pairs) pairKinds[p.kind] = (pairKinds[p.kind] ?? 0) + 1;
+ok(pairKinds.cash > 0 && pairKinds.stock > 0 && pairKinds.both > 0,
+  `三種都有：息 ${pairKinds.cash ?? 0}、權 ${pairKinds.stock ?? 0}、權息 ${pairKinds.both ?? 0}`);
+
+for (const p of pairs) {
+  eq(refPriceFromForecast({ prevClose: p.result.prevClose, ...p.forecast }), p.result.refPrice,
+    `${p.code} ${p.name}（${p.kind}）：前收 ${p.result.prevClose}、現金股利 ${p.forecast.cashPerShare}、` +
+    `配股率 ${p.forecast.stockRate} → ${p.result.refPrice}`);
+}
+everyOf(pairs, (p) => refPriceFromForecast({ prevClose: p.result.prevClose, ...p.forecast }) === p.result.refPrice,
+  '每一筆推導出來的參考價都跟證交所公布值一模一樣');
+// 對照組：把現金股利抹掉，就一定算不出正確的參考價（證明上面不是恆真）
+noneOf(pairs.filter((p) => p.forecast.cashPerShare > 0),
+  (p) => refPriceFromForecast({ prevClose: p.result.prevClose, ...p.forecast, cashPerShare: 0 }) === p.result.refPrice,
+  '（對照）把現金股利改成 0，每一筆都算不出公布的參考價');
+
+section('推導用整數算，不用浮點數');
+// 實際會出錯的例子：1 − 0.34，在 double 上是 0.6599999999999999，
+// 乘 100 捨去會得到 65 → 0.65，少了一分錢。
+ok(Math.floor((1 - 0.34) * 100) / 100 === 0.65,
+  '（對照）浮點數上 1 − 0.34 捨去到兩位會得到 0.65 —— 少一分');
+eq(refPriceFromForecast({ prevClose: 1, cashPerShare: 0.34 }), 0.66, '整數運算得到正確的 0.66');
+eq(refPriceFromExValue({ prevClose: 1, exValue: 0.34 }), 0.66, 'refPriceFromExValue 也是 0.66');
+everyOf([[1, 0.55], [1, 0.56], [1, 0.67], [1, 0.68]],
+  ([prev, cash]) => refPriceFromForecast({ prevClose: prev, cashPerShare: cash })
+    === Math.round((prev - cash) * 100) / 100,
+  '其他幾個浮點數會出錯的組合也都算對');
+
+eq(refPriceFromForecast({ prevClose: null, cashPerShare: 1 }), null, '沒有前收回 null');
+eq(refPriceFromForecast({ prevClose: 100, cashPerShare: null }), 100, '沒有配息就當 0（純除權的情況）');
 
 // ---------- 股利金額 ----------
 section('股利金額：自動扣費預設關閉');

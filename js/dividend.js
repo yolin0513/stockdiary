@@ -16,7 +16,7 @@
 //   事後回補的除權息日拿不到參考價 —— 那時候 settle.js 會標 exNoRef，不會硬算。
 
 import { anyRocToISO } from './roc.js';
-import { toMicro, mulSharesPrecise, sharesTimesRate, MICRO } from './money.js';
+import { toMicro, toNano, mulSharesPrecise, sharesTimesRate, MICRO, NANO } from './money.js';
 
 /** 去掉 HTML 標記、取出純文字。TWSE 會在數字欄位裡塞 <p>…</p>。 */
 export function textOf(raw) {
@@ -247,4 +247,52 @@ export function dividendSummary(events, { year = null } = {}) {
     counted,
     unknown,
   };
+}
+
+/**
+ * 依證交所公式，從**預告表的資料**推算除權息參考價：
+ *
+ *   參考價 = (前收 − 現金股利 + 現金增資配股率 × 認購價) ÷ (1 + 無償配股率 + 現金增資配股率)
+ *
+ * 捨去到小數兩位。全程整數運算（奈刻度 BigInt）——浮點數在這裡會咬人：
+ * 4.6 − 1.9 在 double 上可能是 2.6999999999999997，乘 100 捨去就變成 2.69 而不是 2.70。
+ *
+ * ⚠ **這個函式目前沒有被 App 呼叫。**
+ *
+ * 它存在的目的是驗證：`scripts/dividendtest.mjs` 拿 `scripts/fixtures/refprice-pairs.json`
+ * 的配對樣本（同一檔同時出現在 TWT48U 預告表與 TWT49U 結果表）核對它算出來的數字
+ * 跟證交所公布的參考價一不一樣。
+ *
+ * 要不要把它接成「拿不到 TWT49U 時的備援」是另一個決定（見 docs/STATUS.md 的待辦）：
+ * 那會讓畫面上出現一個不是證交所直接給的數字，必須標示「依證交所公式試算」。
+ * 在那個決定做出來之前，回補到的除權息日維持標 exNoRef，不算。
+ */
+export function refPriceFromForecast({ prevClose, cashPerShare, stockRate = 0, rightsRate = 0, rightsPrice = 0 }) {
+  const prev = toNano(prevClose);
+  const cash = toNano(cashPerShare ?? 0);
+  const sRate = toNano(stockRate ?? 0);
+  const rRate = toNano(rightsRate ?? 0);
+  const rPrice = toNano(rightsPrice ?? 0);
+  if (prev == null || cash == null || sRate == null || rRate == null || rPrice == null) return null;
+
+  // 現金增資的認購款（奈 × 奈 → 奈，四捨五入）
+  const rightsCash = divRound(rRate * rPrice, NANO);
+  const numerator = prev - cash + rightsCash;          // 奈元
+  const denominator = NANO + sRate + rRate;            // 奈（無單位）
+  if (denominator <= 0n) return null;
+  if (numerator < 0n) return null;
+
+  // 捨去到小數兩位：先放大 100 倍再整數除（BigInt 除法對正數就是捨去）
+  const hundredths = (numerator * 100n) / denominator;
+  return Number(hundredths) / 100;
+}
+
+function divRound(a, b) {
+  const neg = (a < 0n) !== (b < 0n);
+  const A = a < 0n ? -a : a;
+  const B = b < 0n ? -b : b;
+  const q = A / B;
+  const r = A % B;
+  const out = r * 2n >= B ? q + 1n : q;
+  return neg ? -out : out;
 }
