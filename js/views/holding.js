@@ -77,12 +77,17 @@ function costCard(hd) {
   if (!hd.supported) return null;
   const input = h('input', {
     class: 'field', type: 'text', inputmode: 'decimal',
-    placeholder: '未填', value: hd.avgCost == null ? '' : String(hd.avgCost),
+    placeholder: '未填', value: hd.openingAvgCost == null ? '' : String(hd.openingAvgCost),
   });
   return h('section', { class: 'card' },
     h('h2', { class: 'card-title' }, '平均成本（選填）'),
     input,
+    h('p', { class: 'muted sm' }, '這裡填的是「起始持股」的平均成本。之後每一筆有填成交價的買進會自動加權進來。'),
     h('p', { class: 'muted sm' }, '填了才會算未實現損益與報酬率。不填不影響當日損益與市值。'),
+    hd.costNote ? h('p', { class: 'warn sm' }, hd.costNote) : null,
+    hd.avgCost != null && hd.openingAvgCost != null && Math.abs(hd.avgCost - hd.openingAvgCost) > 1e-6
+      ? h('p', { class: 'muted sm' }, '目前加權後的平均成本：', num(fmtPrice(hd.avgCost)), ' 元')
+      : null,
     h('button', {
       class: 'btn btn-primary',
       onclick: async () => {

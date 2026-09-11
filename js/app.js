@@ -58,6 +58,7 @@ window.addEventListener('hashchange', renderTabs);
 route('/', async () => (await import('./views/home.js')).default());
 route('/holdings', async () => (await import('./views/holdings.js')).default());
 route('/holdings/:code', async ({ params }) => (await import('./views/holding.js')).default(params.code));
+route('/plans', async () => (await import('./views/plans.js')).default());
 route('/dividends', async () => (await import('./views/dividends.js')).default());
 route('/settings', async () => (await import('./views/settings.js')).default());
 setNotFound(() => navigate('/', { replace: true }));

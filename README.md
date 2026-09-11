@@ -14,7 +14,7 @@
 
 ## 目前進度
 
-**M0／M1／M2 完成**（持股與每日結算、除權息與股利）。開發順序、驗收條件與工作慣例見 `docs/STATUS.md`。
+**M0–M3 完成**（持股與每日結算、除權息與股利、定期定額）。開發順序、驗收條件與工作慣例見 `docs/STATUS.md`。
 
 | 文件 | 內容 |
 |---|---|
@@ -46,13 +46,15 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run datatest` | `data/*.json` 內容與代號支援判斷 |
 | `npm run shelltest` | PWA 殼稽核：import 圖 ⊆ SW SHELL、`h()` 不接受 `html:` prop、每條路由畫得出東西 |
 | `npm run holdingtest` | 持股畫面：上櫃列沒有報價數字、未公布時顯示「—」、未實現區塊的出現條件 |
+| `npm run plantest` | 定期定額：扣款日展開與順延、估算股數與餘額、平均成本更新 |
 | `npm run eventtest` | 除權息端對端：除息日改用參考價、確認流程、配股加股數 |
+| `npm run dcatest` | 定期定額端對端：跳過三個月、配息再投入、拿不到收盤價時的處理 |
 | `npm run mutationtest` | **突變測試**：把邏輯改壞，確認對應的測試真的會紅 |
 
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
 
 ```
-— 41 條突變：每一條都必須讓對應的測試變紅 —
+— 55 條突變：每一條都必須讓對應的測試變紅 —
   ✓ 把「沒成交」的漲跌價差照抄成 0 → parsetest 變紅
   ✓ 不認得除權息的 "X0.00" 標記 → parsetest 變紅
   ✓ 除權息日拿不到參考價時，退回用前一日收盤當基準 → settletest 變紅
@@ -61,6 +63,9 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
   ✓ 讓上櫃代號也「支援報價」 → datatest 變紅
   ✓ 拿掉 TWSE 請求的最小間隔 → throttletest 變紅
   ✓ 讓 h() 支援 html: prop → shelltest 變紅
+  ✓ 定期定額扣款自動確認 → dcatest 變紅
+  ✓ 把扣款日收盤價直接當成成交價 → dcatest 變紅
+  ✓ 沒填成交價也更新平均成本 → plantest 變紅
   ...
 ```
 

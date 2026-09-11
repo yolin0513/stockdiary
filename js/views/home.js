@@ -10,6 +10,7 @@ import { h, num, moneyNode, fmtMoneyMicro, fmtPrice, fmtShares, fmtPct, fmtDate,
 import * as store from '../store.js';
 import * as holdings from '../holdings.js';
 import * as events from '../events.js';
+import * as plans from '../plans.js';
 import { computeUnrealized, exclusionNote, partialCostNote, STATUS_TEXT } from '../settle.js';
 import { STATUS } from '../update.js';
 import { setTop, render } from '../app.js';
@@ -31,10 +32,11 @@ export default async function home() {
   }
   const unreal = computeUnrealized({ holdings: held, quotes });
   const pendingEvents = await events.pending();
+  const pendingChanges = await plans.pendingChanges();
   const divSummary = await events.summary({ year: new Date().getFullYear() });
 
   render([
-    pendingEvents.length ? pendingBanner(pendingEvents) : null,
+    pendingBanner(pendingEvents, pendingChanges),
     dayPLCard(settled, settleDate, upd),
     marketValueCard(settled),
     unrealizedCard(unreal, held),
@@ -45,12 +47,19 @@ export default async function home() {
 }
 
 /** 有待確認的除權息事件時，首頁最上面提示一下（PLAN §2.2 第 6 點）。 */
-function pendingBanner(list) {
-  return h('a', { class: 'banner', href: '#/dividends', dataset: { card: 'pendingBanner' } },
+function pendingBanner(evts, changes) {
+  if (evts.length === 0 && changes.length === 0) return null;
+  // 兩種待確認都有的話，帶去除權息那一頁（股利金額比較容易忘），
+  // 只有扣款的話就帶去定期定額。
+  const href = evts.length ? '#/dividends' : '#/plans';
+  const parts = [];
+  if (evts.length) parts.push(`${evts.length} 筆除權息`);
+  if (changes.length) parts.push(`${changes.length} 筆扣款`);
+  return h('a', { class: 'banner', href, dataset: { card: 'pendingBanner' } },
     h('span', { class: 'banner-icon' }, '💰'),
     h('span', { class: 'banner-body' },
-      `有 ${list.length} 筆除權息等你確認`,
-      h('span', { class: 'muted sm banner-sub' }, '對照券商通知確認後才會計入累積已領股利'),
+      `有 ${parts.join('、')}等你確認`,
+      h('span', { class: 'muted sm banner-sub' }, '對照券商通知確認之後才會計入'),
     ),
     h('span', { class: 'banner-go' }, '›'),
   );

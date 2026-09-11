@@ -8,6 +8,7 @@
 import * as db from './db.js';
 import * as catalog from './catalog.js';
 import { localISODate } from './roc.js';
+import { avgCostFromChanges, costNote } from './avgcost.js';
 
 export const KINDS = ['opening', 'manual', 'dca', 'dividendReinvest', 'stockDividend'];
 export const STATUSES = ['pending', 'confirmed'];
@@ -40,14 +41,23 @@ export function pendingOf(changes) {
   return changes.filter((c) => c.status === 'pending').sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** 新增一筆變動之前的檢查。回錯誤字串，沒問題回 null。 */
+/**
+ * 新增一筆變動之前的檢查。回錯誤字串，沒問題回 null。
+ *
+ * **待確認（pending）的變動可以先沒有股數。** 定期定額扣款日的收盤價偶爾抓不到
+ * （回補失敗、當天沒成交），那時候扣款**確實發生了**，只是估不出股數 ——
+ * 把這筆吞掉比留一個空股數更糟。確認的時候才一定要有數字。
+ */
 export function validateChange({ code, date, deltaShares, kind, status }) {
   if (!code) return '沒有代號';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return '日期格式不對';
-  if (!Number.isFinite(Number(deltaShares)) || Number(deltaShares) === 0) return '股數要是不為零的數字';
-  if (!Number.isInteger(Number(deltaShares))) return '股數要是整數';
   if (!KINDS.includes(kind)) return `不認得的變動類型「${kind}」`;
   if (!STATUSES.includes(status)) return `不認得的狀態「${status}」`;
+  if (deltaShares == null) {
+    return status === 'pending' ? null : '確認的時候要填股數';
+  }
+  if (!Number.isFinite(Number(deltaShares)) || Number(deltaShares) === 0) return '股數要是不為零的數字';
+  if (!Number.isInteger(Number(deltaShares))) return '股數要是整數';
   return null;
 }
 
@@ -140,6 +150,9 @@ export async function addOpening({ code, shares, avgCost = null, date = localISO
     market: info.market,
     supported: info.supported,
     shares: 0,
+    // openingAvgCost 是使用者自己填的「起始持股平均成本」；avgCost 是重播變動紀錄算出來的結果。
+    // 分開存才能在刪除或取消確認一筆變動之後，把均價正確地重算回去。
+    openingAvgCost: avgCost == null || avgCost === '' ? null : Number(avgCost),
     avgCost: avgCost == null || avgCost === '' ? null : Number(avgCost),
     costNote: null,
   });
@@ -176,6 +189,7 @@ export async function addChange({ code, date = localISODate(), deltaShares, pric
     kind, note, status,
   });
   await recomputeShares(key);
+  await recomputeAvgCost(key);
   return id;
 }
 
@@ -183,17 +197,34 @@ export async function addChange({ code, date = localISODate(), deltaShares, pric
 export async function confirmChange(id, { deltaShares, price } = {}) {
   const row = await db.get('changes', id);
   if (!row) throw new Error('找不到這筆變動');
+  const shares = deltaShares == null || deltaShares === '' ? row.deltaShares : Number(String(deltaShares).replace(/,/g, ''));
   const next = {
     ...row,
-    deltaShares: deltaShares == null ? row.deltaShares : Number(deltaShares),
-    price: price == null ? row.price : Number(price),
+    deltaShares: shares,
+    price: price == null || price === '' ? row.price : Number(String(price).replace(/,/g, '')),
     status: 'confirmed',
   };
   const err = validateChange(next);
   if (err) throw new Error(err);
   await db.put('changes', next);
   await recomputeShares(row.code);
+  await recomputeAvgCost(row.code);
   return next;
+}
+
+/**
+ * 依變動紀錄重算平均成本。
+ * opening 那一筆的均價是使用者自己填的，當成起點；之後每一筆照 avgcost.js 的規則走。
+ * 沒填成交價的買進不會改均價，但會讓 costNote 出現。
+ */
+export async function recomputeAvgCost(code) {
+  const h = await db.get('holdings', code);
+  if (!h) return null;
+  const chs = await changesOf(code);
+  const { avgCost } = avgCostFromChanges(chs, { openingAvg: h.openingAvgCost ?? null });
+  const note = costNote(chs);
+  await db.put('holdings', { ...h, avgCost, costNote: note });
+  return avgCost;
 }
 
 export async function deleteChange(id) {
@@ -201,14 +232,18 @@ export async function deleteChange(id) {
   if (!row) return;
   await db.del('changes', id);
   await recomputeShares(row.code);
+  await recomputeAvgCost(row.code);
 }
 
 export async function setAvgCost(code, avgCost) {
   const h = await db.get('holdings', code);
   if (!h) throw new Error(`${code} 不在持股裡`);
-  const v = avgCost == null || avgCost === '' ? null : Number(avgCost);
+  const v = avgCost == null || avgCost === '' ? null : Number(String(avgCost).replace(/,/g, ''));
   if (v != null && (!Number.isFinite(v) || v < 0)) throw new Error('平均成本要是不小於零的數字');
-  await db.put('holdings', { ...h, avgCost: v });
+  // 使用者填的是「起始持股的平均成本」。之後每一筆有填成交價的買進會自動加權進來，
+  // 所以真正顯示的 avgCost 是重播出來的，不是這個欄位本身。
+  await db.put('holdings', { ...h, openingAvgCost: v });
+  await recomputeAvgCost(code);
 }
 
 /** 刪掉一檔持股與它所有的變動紀錄。 */

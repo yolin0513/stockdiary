@@ -13,6 +13,7 @@ import * as db from './db.js';
 import * as holdings from './holdings.js';
 import * as prices from './prices.js';
 import * as events from './events.js';
+import * as plans from './plans.js';
 import { settleDay } from './settle.js';
 import { missingTradingDays, prevTradingDay, latestPublishedTradingDay, todayPending } from './market.js';
 import { localISODate } from './roc.js';
@@ -38,7 +39,11 @@ export const STATUS = {
  */
 export async function runUpdate({ client, calendar, now = new Date(), threshold, includeDividend = true, onProgress = () => {} } = {}) {
   const held = await holdings.list();
-  if (held.length === 0) return { status: STATUS.NO_HOLDINGS, settled: [], message: '還沒有持股' };
+  const planList = await plans.list();
+  // 只設了定期定額計畫、還沒有任何持股，也要跑 —— 那正是「我要開始定期定額」的第一天。
+  if (held.length === 0 && planList.length === 0) {
+    return { status: STATUS.NO_HOLDINGS, settled: [], message: '還沒有持股，也還沒有定期定額計畫' };
+  }
   if (!calendar) return { status: STATUS.NO_CALENDAR, settled: [], message: '尚未取得開休市日，無法判斷交易日' };
 
   const expected = latestPublishedTradingDay(calendar, now, threshold);
@@ -50,7 +55,11 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
   const missing = missingTradingDays(calendar, lastSettled, expected);
   const pendingToday = todayPending(calendar, now, threshold);
 
-  const supportedCodes = held.filter((h) => h.supported).map((h) => h.code);
+  // 要抓價的代號＝持股 ∪ 啟用中的計畫（計畫的標的可能還不在持股裡）
+  const supportedCodes = [...new Set([
+    ...held.filter((h) => h.supported).map((h) => h.code),
+    ...planList.filter((p) => p.active && p.supported).map((p) => p.code),
+  ])];
   const settled = [];
   const problems = [];
 
@@ -59,7 +68,12 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
   // 只有兩個請求，對 30 個的額度沒有壓力。
   await syncDividendEvents({ client, held, today: expected, problems });
 
-  if (missing.length === 0) {
+  // 還缺收盤價的扣款日。跳過三個月再開 App 的話，那三個扣款日多半在別的月份，
+  // 光靠「缺漏的結算日」算出來的月份是抓不到的 —— 要一起併進回補清單。
+  const dcaNeeds = await plans.dueDatesNeedingPrices({ calendar, today: expected });
+
+  if (missing.length === 0 && dcaNeeds.length === 0) {
+    await generateDcaPending({ calendar, today: expected, problems });
     return {
       status: pendingToday ? STATUS.TODAY_PENDING : STATUS.UP_TO_DATE,
       settled: [],
@@ -73,9 +87,8 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
     };
   }
 
-  // ---- 只缺「最新那一天」：一個請求拿全市場 ----
-  if (missing.length === 1 && missing[0] === expected) {
-    // problems 在這條路徑上也要有（除權息抓不到不該讓整次更新失敗）
+  // ---- 只缺「最新那一天」、而且沒有別的日子要補價：一個請求拿全市場 ----
+  if (missing.length === 1 && missing[0] === expected && dcaNeeds.every((d) => d.date === expected)) {
     onProgress({ done: 0, total: 1, label: '取得今日收盤' });
     let dayAll;
     try {
@@ -96,6 +109,7 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
       };
     }
     await saveDayAllCloses(dayAll, supportedCodes);
+    await generateDcaPending({ calendar, today: expected, problems });
     const r = await settleOneDay({ date: expected, held, calendar, dayAllQuotes: dayAll.quotes, includeDividend });
     settled.push(r.date);
     onProgress({ done: 1, total: 1, label: '完成' });
@@ -107,10 +121,19 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
     };
   }
 
-  // ---- 缺多天：每檔持股抓需要的月份 ----
+  // ---- 缺多天：每檔抓需要的月份 ----
+  // 月份＝缺漏的結算日 ∪ 還缺收盤價的扣款日。
+  // 少了後者的話，「跳過三個月再開 App」那三筆扣款會因為估不出股數而全部留白。
   const months = [...new Set(missing.map(prices.monthOf))];
   const jobs = [];
   for (const code of supportedCodes) for (const month of months) jobs.push({ code, month });
+  for (const need of dcaNeeds) {
+    const month = prices.monthOf(need.date);
+    if (!jobs.some((j) => j.code === need.code && j.month === month)) {
+      jobs.push({ code: need.code, month });
+    }
+  }
+  jobs.sort((a, b) => a.month.localeCompare(b.month) || a.code.localeCompare(b.code));
 
   let done = 0;
   for (const job of jobs) {
@@ -124,6 +147,8 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
     done += 1;
   }
 
+  await generateDcaPending({ calendar, today: expected, problems });
+
   for (const date of missing) {
     const r = await settleOneDay({ date, held, calendar, dayAllQuotes: null, includeDividend });
     if (r.result.counted > 0 || r.result.total === r.result.excludedUnsupported) settled.push(r.date);
@@ -132,7 +157,7 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
 
   onProgress({ done: jobs.length, total: jobs.length, label: '完成' });
   return {
-    status: problems.length ? STATUS.PARTIAL : STATUS.SETTLED,
+    status: problems.length ? STATUS.PARTIAL : (settled.length ? STATUS.SETTLED : STATUS.UP_TO_DATE),
     settled,
     expected,
     problems,
@@ -170,6 +195,25 @@ async function syncDividendEvents({ client, held, today, problems }) {
     else problems.push(`除權息結果表：${result.message}`);
   } catch (e) {
     problems.push(`除權息結果表：${describeError(e)}`);
+  }
+}
+
+/**
+ * 產生定期定額與配息再投入的待確認變動。
+ * 兩者都是「先產生、等使用者對照券商通知確認」——**不會自動確認**，
+ * 因為自動確認等於幫使用者記一筆他沒對過的帳。
+ */
+async function generateDcaPending({ calendar, today, problems }) {
+  try {
+    const r = await plans.generatePending({ calendar, today });
+    for (const s of r.skipped) problems.push(s);
+  } catch (e) {
+    problems.push(`定期定額：${describeError(e)}`);
+  }
+  try {
+    await plans.generateReinvest({ calendar, today, events: await events.all() });
+  } catch (e) {
+    problems.push(`配息再投入：${describeError(e)}`);
   }
 }
 

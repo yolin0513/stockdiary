@@ -67,6 +67,7 @@ const SHOTS = demo
     { name: 'holding-detail', hash: '#/holdings/2330', wait: '#view .card' },
     { name: 'holding-unsupported', hash: '#/holdings/6488', wait: '#view .card' },
     { name: 'dividends', hash: '#/dividends', wait: '#view .card' },
+    { name: 'plans', hash: '#/plans', wait: '#view .card' },
     { name: 'settings', hash: '#/settings', wait: '#view .chip-row' },
   ]
   : [
@@ -95,7 +96,7 @@ try {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
   if (demo) {
-    await page.evaluateOnNewDocument((csv, f48, f49) => {
+    await page.evaluateOnNewDocument((csv, f48, f49, tradingDays) => {
       const real = window.fetch.bind(window);
       window.fetch = async (input, init) => {
         const url = String(input && input.url ? input.url : input);
@@ -103,9 +104,23 @@ try {
         if (url.includes('STOCK_DAY_ALL')) return new Response(csv, { status: 200 });
         if (url.includes('TWT48U')) return new Response(JSON.stringify(f48), { status: 200 });
         if (url.includes('TWT49U')) return new Response(JSON.stringify(f49), { status: 200 });
+        if (url.includes('STOCK_DAY?')) {
+          // 個股當月逐日：定期定額要用扣款日的收盤價估股數，沒有這個就只能顯示「股數待填」
+          const d = new URL(url).searchParams.get('date');
+          const month = `${d.slice(0, 4)}-${d.slice(4, 6)}`;
+          const rows = tradingDays.filter((x) => x.startsWith(month)).map((x) => {
+            const [y, m, dd] = x.split('-');
+            return [`${Number(y) - 1911}/${m}/${dd}`, '1,000', '100,000', '100.00', '100.00', '100.00', '100.00', '+0.00', '10', ''];
+          });
+          return new Response(JSON.stringify({
+            stat: 'OK', title: '月報',
+            fields: ['日期', '成交股數', '成交金額', '開盤價', '最高價', '最低價', '收盤價', '漲跌價差', '成交筆數', '註記'],
+            data: rows,
+          }), { status: 200 });
+        }
         return new Response(JSON.stringify({ stat: '很抱歉，沒有符合條件的資料!', total: 0 }), { status: 200 });
       };
-    }, CSV, TWT48U, TWT49U);
+    }, CSV, TWT48U, TWT49U, calJson.tradingDays);
   }
 
   await page.goto(base, { waitUntil: 'networkidle0' });
@@ -117,6 +132,12 @@ try {
       for (const s of db.STORE_NAMES) await db.clear(s);
       const hd = await import('./js/holdings.js');
       for (const x of list) await hd.addOpening(x);
+      const plans = await import('./js/plans.js');
+      await plans.save({
+        code: '0050', amount: 3000, days: [16], feeRate: 0.001425,
+        reinvestDividend: true, active: true,
+        startDate: '2026-06-01', createdAt: '2026-06-01T00:00:00.000Z',
+      });
       const store = await import('./js/store.js');
       await store.update({ force: true });
     }, DEMO_HOLDINGS);

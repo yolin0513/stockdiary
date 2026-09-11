@@ -23,6 +23,11 @@ export default async function holdingsView() {
       h('p', { class: 'muted sm' }, '這個版本只支援上市股票。上櫃與興櫃可以記股數，但不會顯示價格與損益。'),
       h('button', { class: 'btn btn-primary', onclick: () => addFlow() }, '新增一檔'),
     ),
+    h('section', { class: 'card' },
+      h('h2', { class: 'card-title' }, '定期定額'),
+      h('p', { class: 'muted sm' }, '設好計畫之後，扣款日過了就會自動產生一筆待確認的扣款，對照券商通知確認就好。'),
+      h('a', { class: 'btn', href: '#/plans' }, '管理定期定額計畫'),
+    ),
     held.length === 0
       ? h('section', { class: 'card' }, h('p', { class: 'muted' }, '還沒有持股。'))
       : h('section', { class: 'card' },
