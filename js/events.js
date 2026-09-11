@@ -11,7 +11,7 @@
 
 import * as db from './db.js';
 import * as holdings from './holdings.js';
-import { dividendAmount, stockDividendShares, dividendSummary, KIND_LABEL } from './dividend.js';
+import { dividendAmount, stockDividendShares, dividendSummary, refPriceFromForecast, KIND_LABEL } from './dividend.js';
 
 export const STATUS = { UPCOMING: 'upcoming', PENDING: 'pending', CONFIRMED: 'confirmed', DISMISSED: 'dismissed' };
 export { KIND_LABEL };
@@ -122,6 +122,7 @@ export async function applyResults(rows, { held }) {
     const next = {
       ...base,
       refPrice: r.refPrice,
+      refPriceSource: r.refPrice == null ? null : 'twse',
       prevClose: r.prevClose,
       exValue: r.exValue,
       kind: base.kind ?? r.kind,
@@ -133,16 +134,49 @@ export async function applyResults(rows, { held }) {
   return applied;
 }
 
-/** 某一天、某些代號的除權息報價資訊，餵給 settle.settleDay。 */
-export async function quoteExtrasFor({ codes, date }) {
+/**
+ * 某一天、某些代號的除權息報價資訊，餵給 settle.settleDay。
+ *
+ * 參考價有兩個來源，**畫面上要分得開**：
+ *   twse     證交所的除權除息計算結果表（TWT49U）直接公布的
+ *   derived  依證交所公式，用預告表的現金股利與配股率、加上前一交易日收盤價推導的
+ *
+ * 為什麼需要 derived：TWT49U 的日期參數實測無效，它只給得到「最近一次」的結果
+ * （FEASIBILITY §10.8）。除權息當天沒開 App 的話，那一天的參考價事後就抓不到了。
+ * 公式本身已用證交所公布的實際資料驗證過（見 scripts/fixtures/refprice-pairs.json）。
+ *
+ * 推導**不是退路而是補位**：推導所需的資料（前收、現金股利、配股率）缺任何一項
+ * 就回 null，讓 settle.js 標 exNoRef。**任何情況下都不會退回用前一日收盤當基準。**
+ */
+export async function quoteExtrasFor({ codes, date, prevDate = null }) {
   const out = {};
   const list = await all();
   for (const code of codes) {
     const e = list.find((x) => x.code === code && x.exDate === date && x.status !== STATUS.DISMISSED);
     if (!e) continue;
+
+    let refPrice = e.refPrice ?? null;
+    let refPriceSource = refPrice == null ? null : (e.refPriceSource ?? 'twse');
+
+    if (refPrice == null && prevDate) {
+      const prev = await db.get('closes', [code, prevDate]);
+      const derived = refPriceFromForecast({
+        prevClose: prev?.close ?? null,
+        cashPerShare: e.cashPerShare ?? null,
+        stockRate: e.stockRate ?? null,
+        rightsRate: e.rightsRate ?? null,
+        rightsPrice: e.rightsPrice ?? null,
+      });
+      if (derived != null) {
+        refPrice = derived;
+        refPriceSource = 'derived';
+      }
+    }
+
     out[code] = {
       exDay: true,
-      refPrice: e.refPrice ?? null,
+      refPrice,
+      refPriceSource,
       // 除息當天的股利是「**應收**」——錢還沒入帳，但權利已經是你的了，
       // 所以不必等使用者確認就計入當日損益（PLAN §4 的當日損益公式）。
       // 金額還沒公告（cashPerShare 為 null）時就是算不出來，不會補一個 0 進去。

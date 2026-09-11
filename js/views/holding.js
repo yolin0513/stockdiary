@@ -7,7 +7,7 @@ import { h, num, fmtShares, fmtPrice, fmtDate, toast, modal, confirmDialog, NO_V
 import * as holdings from '../holdings.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
-import { STATUS_TEXT } from '../settle.js';
+import { STATUS_TEXT, BASIS_SOURCE_TEXT } from '../settle.js';
 import { setTop, render } from '../app.js';
 import { navigate } from '../router.js';
 import { localISODate } from '../roc.js';
@@ -56,7 +56,13 @@ function summaryCard(hd, row) {
     body.push(h('p', { class: 'muted sm' },
       '收盤 ', num(fmtPrice(row.close)),
       '　基準 ', num(fmtPrice(row.basis)),
-      row.basisSource === 'refPrice' ? h('span', { class: 'tag' }, '含除息調整') : null));
+      row.basisSource === 'refPrice' ? h('span', { class: 'tag' }, BASIS_SOURCE_TEXT.refPrice) : null,
+      row.basisSource === 'refPriceDerived' ? h('span', { class: 'tag tag-warn' }, BASIS_SOURCE_TEXT.refPriceDerived) : null));
+    if (row.basisSource === 'refPriceDerived') {
+      body.push(h('p', { class: 'muted sm' },
+        '證交所的除權除息計算結果表只留最近一次，這一天的參考價已經查不到，' +
+        '所以基準價是用前一交易日收盤價與公告的配息、配股率，依證交所公式試算的。'));
+    }
     body.push(h('p', { class: 'muted sm' }, '當日損益 ', num(fmtMoneyFromMicroString(row.pl))));
   } else {
     body.push(h('p', { class: 'muted sm' }, STATUS_TEXT[row?.status] ?? '尚未結算'));

@@ -155,15 +155,48 @@ section('推導用整數算，不用浮點數');
 // 乘 100 捨去會得到 65 → 0.65，少了一分錢。
 ok(Math.floor((1 - 0.34) * 100) / 100 === 0.65,
   '（對照）浮點數上 1 − 0.34 捨去到兩位會得到 0.65 —— 少一分');
-eq(refPriceFromForecast({ prevClose: 1, cashPerShare: 0.34 }), 0.66, '整數運算得到正確的 0.66');
+// 每個欄位都明確給值：refPriceFromForecast 不接受「沒給」——沒給就是不知道，回 null。
+const noRights = { stockRate: 0, rightsRate: 0, rightsPrice: 0 };
+eq(refPriceFromForecast({ prevClose: 1, cashPerShare: 0.34, ...noRights }), 0.66, '整數運算得到正確的 0.66');
 eq(refPriceFromExValue({ prevClose: 1, exValue: 0.34 }), 0.66, 'refPriceFromExValue 也是 0.66');
 everyOf([[1, 0.55], [1, 0.56], [1, 0.67], [1, 0.68]],
-  ([prev, cash]) => refPriceFromForecast({ prevClose: prev, cashPerShare: cash })
+  ([prev, cash]) => refPriceFromForecast({ prevClose: prev, cashPerShare: cash, ...noRights })
     === Math.round((prev - cash) * 100) / 100,
   '其他幾個浮點數會出錯的組合也都算對');
 
-eq(refPriceFromForecast({ prevClose: null, cashPerShare: 1 }), null, '沒有前收回 null');
-eq(refPriceFromForecast({ prevClose: 100, cashPerShare: null }), 100, '沒有配息就當 0（純除權的情況）');
+section('推導所需的資料缺一項就回 null（不是當成 0）');
+eq(refPriceFromForecast({ prevClose: null, cashPerShare: 1, stockRate: 0, rightsRate: 0 }), null, '沒有前收 → null');
+// 這一條最重要：配息「待公告」時 cashPerShare 是 null。當成 0 的話會算出一個
+// 「完全沒扣息」的參考價 —— 除息日的當日損益會憑空多出一整筆息值。
+eq(refPriceFromForecast({ prevClose: 100, cashPerShare: null, stockRate: 0, rightsRate: 0 }), null,
+  '配息還沒公告（null）→ null，**不當成 0 元配息**');
+ok(refPriceFromForecast({ prevClose: 100, cashPerShare: null, stockRate: 0, rightsRate: 0 }) !== 100,
+  '而且不是「參考價等於前收」');
+eq(refPriceFromForecast({ prevClose: 100, cashPerShare: 1, stockRate: null, rightsRate: 0 }), null, '配股率是 null → null');
+eq(refPriceFromForecast({ prevClose: 100, cashPerShare: 1, stockRate: 0, rightsRate: null }), null, '增資配股率是 null → null');
+eq(refPriceFromForecast({ prevClose: 100, cashPerShare: 1, stockRate: 0, rightsRate: 0.1, rightsPrice: null }), null,
+  '有現金增資卻沒有認購價 → null');
+// 對照組：真的是 0 的時候要算得出來
+eq(refPriceFromForecast({ prevClose: 100, cashPerShare: 0, stockRate: 0, rightsRate: 0 }), 100,
+  '（對照）配息真的是 0（純除權沒配股也沒增資）→ 參考價等於前收');
+eq(refPriceFromForecast({ prevClose: 100, cashPerShare: 1, stockRate: 0, rightsRate: 0, rightsPrice: null }), 99,
+  '（對照）沒有現金增資時，認購價是不是 null 都無所謂');
+detects(
+  (args) => refPriceFromForecast(args) === null,
+  {
+    shouldHit: [
+      { prevClose: 100, cashPerShare: null, stockRate: 0, rightsRate: 0 },
+      { prevClose: null, cashPerShare: 1, stockRate: 0, rightsRate: 0 },
+      { prevClose: 100, cashPerShare: 1, stockRate: null, rightsRate: 0 },
+    ],
+    shouldMiss: [
+      { prevClose: 100, cashPerShare: 0, stockRate: 0, rightsRate: 0 },
+      { prevClose: 100, cashPerShare: 1, stockRate: 0, rightsRate: 0 },
+      { prevClose: 41.4, cashPerShare: 0, stockRate: 0.00848624, rightsRate: 0 },
+    ],
+  },
+  '「推導得出來嗎」的判斷有對照組'
+);
 
 // ---------- 股利金額 ----------
 section('股利金額：自動扣費預設關閉');

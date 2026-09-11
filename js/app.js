@@ -35,6 +35,7 @@ const TABS = [
   { icon: '📈', label: '總覽', path: '/' },
   { icon: '📋', label: '持股', path: '/holdings' },
   { icon: '💰', label: '股利', path: '/dividends' },
+  { icon: '🧮', label: '試算', path: '/calc' },
   { icon: '⚙️', label: '設定', path: '/settings' },
 ];
 
@@ -60,6 +61,7 @@ route('/holdings', async () => (await import('./views/holdings.js')).default());
 route('/holdings/:code', async ({ params }) => (await import('./views/holding.js')).default(params.code));
 route('/plans', async () => (await import('./views/plans.js')).default());
 route('/dividends', async () => (await import('./views/dividends.js')).default());
+route('/calc', async () => (await import('./views/calc.js')).default());
 route('/settings', async () => (await import('./views/settings.js')).default());
 setNotFound(() => navigate('/', { replace: true }));
 

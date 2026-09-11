@@ -20,10 +20,13 @@ import { toMicro, mulShares, sumMicro } from './money.js';
  *
  * 回 { basis, source }；source ∈ refPrice / prevClose / derived / none。
  */
-export function basisFor({ exDay = false, refPrice = null, prevClose = null, close = null, change = null } = {}) {
+export function basisFor({ exDay = false, refPrice = null, refPriceSource = null, prevClose = null, close = null, change = null } = {}) {
   if (exDay) {
     // 這裡刻意沒有 fallback。除權息日用前一日收盤當基準 = 把整筆股利算成虧損。
-    return refPrice == null ? { basis: null, source: 'none' } : { basis: refPrice, source: 'refPrice' };
+    // 參考價可能來自證交所的結果表（twse），也可能是依證交所公式推導的（derived）——
+    // 兩者要分得開，畫面上會標出來；推導不出來就是 null，**不退回前收**。
+    if (refPrice == null) return { basis: null, source: 'none' };
+    return { basis: refPrice, source: refPriceSource === 'derived' ? 'refPriceDerived' : 'refPrice' };
   }
   if (prevClose != null) return { basis: prevClose, source: 'prevClose' };
   if (change != null && close != null) return { basis: close - change, source: 'derived' };
@@ -85,6 +88,7 @@ export function settleDay({ date, holdings = [], quotes = {}, includeDividend = 
     const { basis, source } = basisFor({
       exDay: !!q.exDay,
       refPrice: q.refPrice ?? null,
+      refPriceSource: q.refPriceSource ?? null,
       prevClose: q.prevClose ?? null,
       close,
       change: q.change ?? null,
@@ -194,6 +198,21 @@ export function partialCostNote(u) {
   if (u.withCost === 0) return null;
   if (u.withCost >= u.total) return null;
   return `僅含 ${u.withCost} 檔有填平均成本的持股`;
+}
+
+/**
+ * 除權息基準價的來源文字。**兩種要分得開**：
+ *   refPrice        證交所的計算結果表直接公布的
+ *   refPriceDerived 依證交所公式推導的（TWT49U 只給得到最近一次的結果，事後補不到）
+ * 推導的那個一定要標出來，使用者才知道這個數字不是證交所直接給的。
+ */
+export const BASIS_SOURCE_TEXT = {
+  refPrice: '含除息調整',
+  refPriceDerived: '含除息調整（參考價為試算）',
+};
+
+export function isExAdjusted(source) {
+  return source === 'refPrice' || source === 'refPriceDerived';
 }
 
 /** 每一檔在畫面上的狀態文字。不支援的永遠不給價格。 */

@@ -417,3 +417,56 @@ body {
   order: 10;
   overflow-wrap: anywhere;
 }
+
+/* ---------- 試算器（M4） ---------- */
+.disclaimer {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-card-2);
+  border-left: 3px solid var(--gold);
+  line-height: 1.55;
+}
+
+.calc-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.calc-field label { display: block; }
+.field-error { border-color: var(--danger); }
+
+.scenarios { display: flex; flex-wrap: wrap; gap: 12px; }
+.scenario {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-card-2);
+}
+.scenario-title { margin: 0 0 2px; font-size: 1em; }
+
+.kv { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.kv-row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+
+/* 逐年長條圖。不用紅綠 —— 這裡沒有漲跌，只有「投入」與「市值」 */
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 140px;
+  padding-top: 8px;
+  overflow-x: auto;
+}
+.chart-col { flex: 1 1 0; min-width: 14px; display: flex; flex-direction: column; align-items: center; height: 100%; }
+.chart-bars { position: relative; flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.chart-bar { position: absolute; bottom: 0; width: 100%; border-radius: 3px 3px 0 0; }
+.chart-bar-value { background: var(--accent); }
+.chart-bar-invested { background: var(--fg-muted); opacity: 0.85; width: 55%; left: 22.5%; }
+.chart-label { font-size: 0.7em; color: var(--fg-muted); margin-top: 4px; }
+.legend { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
+.legend-value { background: var(--accent); }
+.legend-invested { background: var(--fg-muted); }
+
+.table-wrap { overflow-x: auto; margin-top: 8px; }
+table.yearly { border-collapse: collapse; width: 100%; font-size: 0.85em; }
+table.yearly th, table.yearly td { padding: 6px 8px; text-align: right; white-space: nowrap; border-top: 1px solid var(--line); }
+table.yearly th:first-child, table.yearly td:first-child { text-align: left; }
+table.yearly th { color: var(--fg-muted); font-weight: 600; }

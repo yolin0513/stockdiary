@@ -234,7 +234,7 @@ export async function settleOneDay({ date, held, calendar, dayAllQuotes = null, 
   const quotes = await prices.buildQuotes({ codes, date, prevDate, dayAllQuotes });
 
   // 這一天有除權息的，基準價要改用參考價（settle.basisFor 只認參考價，拿不到就不算）。
-  const extras = await events.quoteExtrasFor({ codes, date });
+  const extras = await events.quoteExtrasFor({ codes, date, prevDate });
   for (const [code, extra] of Object.entries(extras)) {
     quotes[code] = { ...(quotes[code] ?? {}), ...extra };
   }

@@ -41,7 +41,7 @@ export function throws(fn, rx, msg) {
 export function noneOf(list, pred, msg) {
   const arr = [...list];
   if (arr.length === 0) return ok(false, msg, '母體是空的 —— 這條斷言沒有檢查到任何東西');
-  const hits = arr.filter(pred);
+  const hits = arr.filter((x, i) => pred(x, i, arr));
   return ok(hits.length === 0, `${msg}（檢查了 ${arr.length} 項）`,
     hits.length ? `命中 ${hits.length} 項，例如 ${JSON.stringify(hits[0]).slice(0, 200)}` : '');
 }
@@ -50,7 +50,7 @@ export function noneOf(list, pred, msg) {
 export function everyOf(list, pred, msg) {
   const arr = [...list];
   if (arr.length === 0) return ok(false, msg, '母體是空的 —— 這條斷言沒有檢查到任何東西');
-  const bad = arr.filter((x) => !pred(x));
+  const bad = arr.filter((x, i) => !pred(x, i, arr));
   return ok(bad.length === 0, `${msg}（檢查了 ${arr.length} 項）`,
     bad.length ? `不符合 ${bad.length} 項，例如 ${JSON.stringify(bad[0]).slice(0, 200)}` : '');
 }

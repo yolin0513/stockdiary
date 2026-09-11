@@ -267,12 +267,18 @@ export function dividendSummary(events, { year = null } = {}) {
  * 那會讓畫面上出現一個不是證交所直接給的數字，必須標示「依證交所公式試算」。
  * 在那個決定做出來之前，回補到的除權息日維持標 exNoRef，不算。
  */
-export function refPriceFromForecast({ prevClose, cashPerShare, stockRate = 0, rightsRate = 0, rightsPrice = 0 }) {
+export function refPriceFromForecast({ prevClose, cashPerShare, stockRate, rightsRate, rightsPrice }) {
+  // null 代表「還沒公告」，**不是 0**。當成 0 的話，
+  // 一檔配息金額未定的股票會算出一個「完全沒扣息」的參考價 —— 那比不算還糟。
+  if (prevClose == null || cashPerShare == null || stockRate == null || rightsRate == null) return null;
+  // 認購價只有在真的有現金增資時才需要；沒有增資時它常常是「尚未公告」。
+  if (rightsRate > 0 && rightsPrice == null) return null;
+
   const prev = toNano(prevClose);
-  const cash = toNano(cashPerShare ?? 0);
-  const sRate = toNano(stockRate ?? 0);
-  const rRate = toNano(rightsRate ?? 0);
-  const rPrice = toNano(rightsPrice ?? 0);
+  const cash = toNano(cashPerShare);
+  const sRate = toNano(stockRate);
+  const rRate = toNano(rightsRate);
+  const rPrice = toNano(rightsRate > 0 ? rightsPrice : 0);
   if (prev == null || cash == null || sRate == null || rRate == null || rPrice == null) return null;
 
   // 現金增資的認購款（奈 × 奈 → 奈，四捨五入）

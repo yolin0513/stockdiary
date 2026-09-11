@@ -3,7 +3,7 @@
 // 每個案例底下都寫出手算過程，數字對不上的時候才知道是程式錯還是案例錯。
 
 import { ok, eq, section, done, noneOf, everyOf, detects } from './tap.mjs';
-import { settleDay, computeUnrealized, basisFor, exclusionNote, partialCostNote, STATUS_TEXT } from '../js/settle.js';
+import { settleDay, computeUnrealized, basisFor, exclusionNote, partialCostNote, STATUS_TEXT, BASIS_SOURCE_TEXT, isExAdjusted } from '../js/settle.js';
 import { toMicro, toYuan, sumMicro, mulShares, roundToYuan, MICRO } from '../js/money.js';
 
 const yuan = (n) => BigInt(Math.round(n * 1e6));   // 測試裡寫「元」比較好讀
@@ -46,6 +46,25 @@ eq(basisFor({ exDay: true, refPrice: null, prevClose: 2255, close: 2250, change:
   { basis: null, source: 'none' },
   '除權息日拿不到參考價 → null，**不退回前一日收盤**（退回去會生出等於息值的假虧損）');
 eq(basisFor({}), { basis: null, source: 'none' }, '什麼都沒有 → null');
+
+section('參考價的兩個來源要分得開');
+eq(basisFor({ exDay: true, refPrice: 2250, refPriceSource: 'twse', prevClose: 2255 }),
+  { basis: 2250, source: 'refPrice' }, '證交所公布的 → source 是 refPrice');
+eq(basisFor({ exDay: true, refPrice: 2250, refPriceSource: 'derived', prevClose: 2255 }),
+  { basis: 2250, source: 'refPriceDerived' }, '依公式推導的 → source 是 refPriceDerived');
+ok(basisFor({ exDay: true, refPrice: 2250, refPriceSource: 'derived' }).source
+  !== basisFor({ exDay: true, refPrice: 2250, refPriceSource: 'twse' }).source,
+  '兩者的 source 不一樣 —— 畫面才標得出來');
+// 推導失敗（refPrice 還是 null）時，行為必須跟以前一模一樣
+eq(basisFor({ exDay: true, refPrice: null, refPriceSource: 'derived', prevClose: 2255, close: 2250 }),
+  { basis: null, source: 'none' },
+  '推導不出來時仍然是 null —— **不會因為「有嘗試推導」就退回用前收**');
+eq(BASIS_SOURCE_TEXT.refPrice, '含除息調整', '證交所公布的文案');
+eq(BASIS_SOURCE_TEXT.refPriceDerived, '含除息調整（參考價為試算）', '推導的文案有標示「試算」');
+ok(BASIS_SOURCE_TEXT.refPriceDerived.includes('試算'),
+  '推導的文案一定要有「試算」兩個字，使用者才知道這不是證交所直接給的');
+everyOf(['refPrice', 'refPriceDerived'], (s) => isExAdjusted(s), '兩種都算「除息調整過」');
+noneOf(['prevClose', 'derived', 'none'], (s) => isExAdjusted(s), '一般日的基準價不算除息調整');
 detects(
   (args) => basisFor(args).basis === null,
   {

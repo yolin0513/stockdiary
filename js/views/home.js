@@ -11,7 +11,7 @@ import * as store from '../store.js';
 import * as holdings from '../holdings.js';
 import * as events from '../events.js';
 import * as plans from '../plans.js';
-import { computeUnrealized, exclusionNote, partialCostNote, STATUS_TEXT } from '../settle.js';
+import { computeUnrealized, exclusionNote, partialCostNote, STATUS_TEXT, BASIS_SOURCE_TEXT } from '../settle.js';
 import { STATUS } from '../update.js';
 import { setTop, render } from '../app.js';
 
@@ -99,13 +99,8 @@ function dayPLCard(settled, settleDate, upd) {
     pending ? h('p', { class: 'sm warn' }, '今日收盤尚未公布') : null,
     // 這一天有持股除權息 → 基準價用的是除權息參考價，要講出來，
     // 不然使用者會拿自己記的「昨天收盤」去對，怎麼算都對不上。
-    (settled?.byCode ?? []).some((r) => r.basisSource === 'refPrice')
-      ? h('p', { class: 'muted sm' }, h('span', { class: 'tag' }, '含除息調整'),
-        ' 有持股在這一天除權息，基準價用證交所的除權息參考價')
-      : null,
-    (settled?.byCode ?? []).some((r) => r.status === 'exNoRef')
-      ? h('p', { class: 'warn sm' }, '有持股在這一天除權息，但尚未取得參考價，這一檔沒有計入當日損益')
-      : null,
+    // 而且要分得出參考價是證交所公布的、還是我們依公式推導的。
+    ...exAdjustmentNotes(settled),
     settled?.dividendMicro != null
       ? h('p', { class: 'muted sm' },
         settled.includeDividend === false ? '當日應收股利（未計入）' : '其中當日應收股利',
@@ -113,6 +108,33 @@ function dayPLCard(settled, settleDate, upd) {
       : null,
     note ? h('p', { class: 'muted sm' }, note) : null,
   );
+}
+
+/**
+ * 除權息調整的說明。證交所公布的與我們推導的**分開講**——
+ * 推導的那筆使用者拿去跟證交所網站對的時候，數字理論上一樣，
+ * 但它有權利知道這個數字不是證交所直接給的。
+ */
+function exAdjustmentNotes(settled) {
+  const rows = settled?.byCode ?? [];
+  const out = [];
+  if (rows.some((r) => r.basisSource === 'refPrice')) {
+    out.push(h('p', { class: 'muted sm' },
+      h('span', { class: 'tag' }, BASIS_SOURCE_TEXT.refPrice),
+      ' 有持股在這一天除權息，基準價用證交所公布的除權息參考價'));
+  }
+  const derived = rows.filter((r) => r.basisSource === 'refPriceDerived');
+  if (derived.length) {
+    out.push(h('p', { class: 'muted sm' },
+      h('span', { class: 'tag tag-warn' }, BASIS_SOURCE_TEXT.refPriceDerived),
+      ` ${derived.map((r) => r.code).join('、')} 的參考價證交所已經查不到了（結果表只留最近一次），`,
+      '這裡的基準價是依證交所公式試算的'));
+  }
+  if (rows.some((r) => r.status === 'exNoRef')) {
+    out.push(h('p', { class: 'warn sm' },
+      '有持股在這一天除權息，但參考價既查不到也算不出來，這一檔沒有計入當日損益'));
+  }
+  return out;
 }
 
 function marketValueCard(settled) {

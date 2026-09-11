@@ -22,7 +22,7 @@
     "datatest": "node scripts/datatest.mjs",
     "shelltest": "node scripts/shelltest.mjs",
     "mutationtest": "node scripts/mutationtest.mjs",
-    "test": "node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/settletest.mjs && node scripts/changestest.mjs && node scripts/dividendtest.mjs && node scripts/plantest.mjs && node scripts/throttletest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/holdingtest.mjs && node scripts/eventtest.mjs && node scripts/dcatest.mjs && node scripts/mutationtest.mjs",
+    "test": "node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/settletest.mjs && node scripts/changestest.mjs && node scripts/dividendtest.mjs && node scripts/plantest.mjs && node scripts/calctest.mjs && node scripts/throttletest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/holdingtest.mjs && node scripts/eventtest.mjs && node scripts/dcatest.mjs && node scripts/calcviewtest.mjs && node scripts/mutationtest.mjs",
     "livecheck": "node scripts/livecheck.mjs",
     "observe-publish-time": "node scripts/observe-twse-publish-time.mjs",
     "settletest": "node scripts/settletest.mjs",
@@ -34,7 +34,9 @@
     "dividendtest": "node scripts/dividendtest.mjs",
     "eventtest": "node scripts/eventtest.mjs",
     "plantest": "node scripts/plantest.mjs",
-    "dcatest": "node scripts/dcatest.mjs"
+    "dcatest": "node scripts/dcatest.mjs",
+    "calctest": "node scripts/calctest.mjs",
+    "calcviewtest": "node scripts/calcviewtest.mjs"
   },
   "devDependencies": {
     "puppeteer": "^23.0.0",

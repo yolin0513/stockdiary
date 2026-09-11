@@ -11,6 +11,10 @@
 //
 // 開頭還會先跑一次「沒有突變」的基準：所有測試必須是綠的。
 // 少了這一步，一個「永遠回報失敗」的壞測試也會讓每條突變看起來都通過。
+//
+// ⚠ **這支程式執行期間會暫時改寫工作目錄裡的原始碼**（改完立刻還原）。
+//   所以跑的時候不要同時編輯檔案、也不要並行跑別的測試 ——
+//   那會讓基準或某幾條突變出現假性失敗，而且看起來很像真的壞了。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -152,10 +156,11 @@ const MUTATIONS = [
   // ---- M1：結算、金額運算、節流、持股 ----
   {
     name: '除權息日拿不到參考價時，退回用前一日收盤當基準',
-    why: 'STATUS 列的第 1 條，也是自製記帳最常見的錯：除息日會生出一筆等於息值的假虧損。',
+    why: 'STATUS 列的第 1 條，也是自製記帳最常見的錯：除息日會生出一筆等於息值的假虧損。'
+      + '自算備援上線之後這條更重要 —— 備援是「補位」不是「退路」，推不出來就該不計入。',
     file: 'js/settle.js',
-    find: "    return refPrice == null ? { basis: null, source: 'none' } : { basis: refPrice, source: 'refPrice' };",
-    replace: "    return refPrice == null ? { basis: prevClose, source: 'prevClose' } : { basis: refPrice, source: 'refPrice' };",
+    find: "    if (refPrice == null) return { basis: null, source: 'none' };",
+    replace: "    if (refPrice == null) return { basis: prevClose, source: 'prevClose' };",
     test: 'settletest',
   },
   {
@@ -317,15 +322,15 @@ const MUTATIONS = [
     name: '除權息事件不把參考價存下來',
     why: 'TWT49U 只給得到「最近一次」的結果，當下沒存就永遠補不回來，除息日的當日損益會一直缺一檔。',
     file: 'js/events.js',
-    find: '      refPrice: r.refPrice,\n      prevClose: r.prevClose,',
-    replace: '      refPrice: null,\n      prevClose: r.prevClose,',
+    find: "      refPrice: r.refPrice,\n      refPriceSource: r.refPrice == null ? null : 'twse',",
+    replace: '      refPrice: null,\n      refPriceSource: null,',
     test: 'eventtest',
   },
   {
     name: '結算時不理會除權息事件（不改用參考價）',
     why: 'STATUS 列的第 1 條：除息日會生出一筆等於息值的假虧損。',
     file: 'js/update.js',
-    find: '  const extras = await events.quoteExtrasFor({ codes, date });',
+    find: '  const extras = await events.quoteExtrasFor({ codes, date, prevDate });',
     replace: '  const extras = {};',
     test: 'eventtest',
   },
@@ -345,6 +350,40 @@ const MUTATIONS = [
     replace: '',
     test: 'eventtest',
   },
+  // ---- 參考價的自算備援 ----
+  {
+    name: '推導出來的參考價不標示來源（跟證交所公布的混在一起）',
+    why: '使用者有權知道畫面上這個數字不是證交所直接給的。',
+    file: 'js/settle.js',
+    find: "    return { basis: refPrice, source: refPriceSource === 'derived' ? 'refPriceDerived' : 'refPrice' };",
+    replace: "    return { basis: refPrice, source: 'refPrice' };",
+    test: 'settletest',
+  },
+  {
+    name: '推導時把「配息待公告」當成 0 元配息',
+    why: '會算出一個「完全沒扣息」的參考價，除息日的當日損益憑空多出一整筆息值。',
+    file: 'js/dividend.js',
+    find: '  if (prevClose == null || cashPerShare == null || stockRate == null || rightsRate == null) return null;',
+    replace: '  if (prevClose == null) return null;\n  cashPerShare = cashPerShare ?? 0; stockRate = stockRate ?? 0; rightsRate = rightsRate ?? 0;',
+    test: 'dividendtest',
+  },
+  {
+    name: '結算時不去推導參考價',
+    why: '除權息當天沒開 App 的話，那一天的那一檔就永遠不計入 —— 備援等於沒接。',
+    file: 'js/events.js',
+    find: '    if (refPrice == null && prevDate) {',
+    replace: '    if (false) {',
+    test: 'eventtest',
+  },
+  {
+    name: '推導時不看前一交易日（拿當天自己的收盤價當前收）',
+    why: '參考價會等於當天收盤，價格部分永遠是 0 —— 看起來很正常，其實什麼都沒算。',
+    file: 'js/update.js',
+    find: '  const extras = await events.quoteExtrasFor({ codes, date, prevDate });',
+    replace: '  const extras = await events.quoteExtrasFor({ codes, date, prevDate: date });',
+    test: 'eventtest',
+  },
+
   // ---- M3：定期定額與平均成本 ----
   {
     name: '扣款日的下界比對「順延後」的日期',
@@ -457,6 +496,71 @@ const MUTATIONS = [
     find: '  for (const need of dcaNeeds) {\n    const month = prices.monthOf(need.date);',
     replace: '  for (const need of []) {\n    const month = prices.monthOf(need.date);',
     test: 'dcatest',
+  },
+  // ---- M4：定期定額試算器 ----
+  {
+    name: '試算器把空白欄位當成 0',
+    why: '沒填成長率會變成「假設 0% 成長」並算出一個結果 —— 使用者以為那是他要的假設。',
+    file: 'js/calc.js',
+    find: "    if (v == null || String(v).trim() === '') { errors[key] = `請填${label}`; return; }",
+    replace: "    if (v == null || String(v).trim() === '') { values[key] = 0; return; }",
+    test: 'calctest',
+  },
+  {
+    name: '股數法把湊不滿一股的餘額丟掉',
+    why: 'PLAN §6 明訂餘額結轉。丟掉的話，每一期都憑空少掉最多一股的錢。',
+    file: 'js/calc.js',
+    find: '        cash -= bought * priceMicro;\n      } else {\n        value += usableEach;',
+    replace: '        cash = 0n;\n      } else {\n        value += usableEach;',
+    test: 'calctest',
+  },
+  {
+    name: '股利扣費開關關閉時照樣扣',
+    why: '開關預設是關的。關著還扣，使用者算出來的數字比他的假設少一截。',
+    file: 'js/calc.js',
+    find: '  if (!applyFees || grossMicro <= 0n) return grossMicro;',
+    replace: '  if (grossMicro <= 0n) return grossMicro;',
+    test: 'calctest',
+  },
+  {
+    name: '年化成長率用「除以 12」而不是複利換算',
+    why: '12% 年化用單利拆成每月 1% 的話，一年後會變成 12.68%，跟使用者填的假設不一樣。',
+    file: 'js/calc.js',
+    find: '  return BigInt(Math.round(Math.pow(annual, 1 / 12) * 1e12));',
+    replace: '  return BigInt(Math.round((1 + (annual - 1) / 12) * 1e12));',
+    test: 'calctest',
+  },
+  {
+    name: '股數法的期末市值不含未投入的現金',
+    why: '那筆錢還是使用者的。不算進去會讓股數法看起來比實際差，兩種算法的比較就失真。',
+    file: 'js/calc.js',
+    find: '    ? BigInt(shares) * priceMicro + cash',
+    replace: '    ? BigInt(shares) * priceMicro',
+    test: 'calctest',
+  },
+  {
+    name: '試算器不扣扣款手續費',
+    why: '使用者填了手續費率卻沒被用到，算出來的期末會偏高。',
+    file: 'js/calc.js',
+    find: '  const usableEach = contribEach - mulRate(contribEach, BigInt(Math.round(v.feeRate * 1e12)));',
+    replace: '  const usableEach = contribEach;',
+    test: 'calctest',
+  },
+  {
+    name: '試算器的欄位有預設值',
+    why: 'STATUS「最容易做錯的事」第 3 條：畫面上先出現一個數字，使用者就會把它當成我們認為合理的值。',
+    file: 'js/views/calc.js',
+    find: '    value: state[key],',
+    replace: "    value: state[key] || '5',",
+    test: 'calcviewtest',
+  },
+  {
+    name: '試算器的 placeholder 放了範例數字',
+    why: 'placeholder 裡的「例如 5%」跟預設值一樣是在暗示「大概填多少」，那是投資判斷。',
+    file: 'js/views/calc.js',
+    find: "    // placeholder 只說明格式，**不給數字**\n    placeholder: '',",
+    replace: "    placeholder: '例如 5',",
+    test: 'calcviewtest',
   },
   {
     name: '拿不到的日期顯示成今天',

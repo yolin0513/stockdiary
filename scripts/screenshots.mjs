@@ -68,6 +68,8 @@ const SHOTS = demo
     { name: 'holding-unsupported', hash: '#/holdings/6488', wait: '#view .card' },
     { name: 'dividends', hash: '#/dividends', wait: '#view .card' },
     { name: 'plans', hash: '#/plans', wait: '#view .card' },
+    { name: 'calc', hash: '#/calc', wait: '#view [data-card="calcInputs"]', fillCalc: true },
+    { name: 'calc-result', hash: '#/calc', wait: '#view [data-card="calcInputs"]', fillCalc: true, scrollTo: '[data-card="calcResult"]' },
     { name: 'settings', hash: '#/settings', wait: '#view .chip-row' },
   ]
   : [
@@ -150,6 +152,29 @@ try {
     await page.goto(base + shot.hash, { waitUntil: 'networkidle0' });
     await page.reload({ waitUntil: 'networkidle0' });
     await page.waitForSelector(shot.wait, { timeout: 60000 });
+    if (shot.fillCalc) {
+      // 試算器要先填假設才看得到結果。這些是**示範用的假設**，不是建議值 ——
+      // App 本身的欄位永遠是空的（scripts/calcviewtest.mjs 盯著這件事）。
+      await page.evaluate(() => {
+        const set = (k, v) => {
+          const el = document.querySelector(`#view [data-calc-field="${k}"]`);
+          el.value = String(v);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        set('amount', 5000); set('years', 20); set('growthRate', 6); set('yieldRate', 4);
+        [...document.querySelectorAll('#view .chip')].find((b) => b.textContent === '每季')?.click();
+      });
+      await page.evaluate(() => {
+        [...document.querySelectorAll('#view .btn-primary')].find((b) => b.textContent === '算一次').click();
+      });
+      await page.waitForSelector('#view [data-card="calcResult"]', { timeout: 60000 });
+    }
+    if (shot.scrollTo) {
+      await page.evaluate((sel) => {
+        document.querySelector(sel)?.scrollIntoView({ block: 'start' });
+      }, shot.scrollTo);
+      await new Promise((r) => setTimeout(r, 300));
+    }
     await new Promise((r) => setTimeout(r, 600));
     // 線上截圖用不同檔名，才不會蓋掉示範資料的那組
     const file = path.join(OUT, `${live ? 'live-' : ''}${shot.name}.png`);

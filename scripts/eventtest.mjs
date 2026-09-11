@@ -186,15 +186,17 @@ try {
   ok(pendNums.includes('5,000'), '而且顯示的是 5,000 元');
 
   // =================================================================
-  section('情境 2：除息日拿不到參考價 —— 整檔不算，不是算成虧損');
+  section('情境 2：除息日兩條路都拿不到參考價 —— 整檔不算，不是算成虧損');
+  // 結果表查不到，而且**前一交易日的收盤價也沒有**（回補失敗）→ 推導也做不了。
+  // 這是最壞的情況，行為必須是「不計入並講清楚」，不是拿前收硬算。
   const upd2 = await setup({
     mock: {
       dayAllCsv: CSV,
       twt48u: twt48u([[rocChars(EXDATE), '2330', '台積電', '息', '0.00000000', '0.00000000', '0.00000000', '5.00000000', '', '', '', '', '']]),
-      twt49u: { stat: '很抱歉，沒有符合條件的資料!' },     // 結果表還沒出來
+      twt49u: { stat: '很抱歉，沒有符合條件的資料!' },
     },
     holdings: [{ code: '2330', shares: 1000, date: '2026-01-05' }],
-    closes: [{ code: '2330', date: PREV, close: 2255, change: 10, exMark: false }],
+    closes: [],                                   // 連前一交易日收盤價都沒有
   });
   void upd2;
   const ev2 = await eventsOf();
@@ -209,6 +211,67 @@ try {
   ok(t2.includes('尚未取得參考價'), '畫面講清楚為什麼沒算', '實際畫面：' + t2.slice(0, 400));
   noneOf([await page.$eval('#view .big-number', (el) => el.textContent.trim())], (v) => /\d/.test(v),
     '當日損益那一格沒有任何數字');
+
+  // =================================================================
+  section('情境 2b：TWT49U 查不到，但推導得出參考價');
+  // 這是「除權息當天沒開 App」的情況：結果表只留最近一次，那一天的參考價事後查不到。
+  // 預告表還有公告的配息金額，加上前一交易日收盤價，可以依證交所公式推導出來。
+  // 前收 2255、每股配息 5 元、沒有配股 → 參考價 2250（跟證交所會公布的一樣）。
+  await setup({
+    mock: {
+      dayAllCsv: CSV,
+      twt48u: twt48u([[rocChars(EXDATE), '2330', '台積電', '息', '0.00000000', '0.00000000', '0.00000000', '5.00000000', '', '', '', '', '']]),
+      twt49u: { stat: '很抱歉，沒有符合條件的資料!' },     // 結果表查不到
+    },
+    holdings: [{ code: '2330', shares: 1000, date: '2026-01-05' }],
+    closes: [{ code: '2330', date: PREV, close: 2255, change: 10, exMark: false }],
+  });
+  const ev2b = await eventsOf();
+  eq(ev2b[0].refPrice, null, '事件本身沒有存到參考價（結果表查不到）');
+
+  const s2b = await settleOf(EXDATE);
+  const r2b = s2b.byCode.find((r) => r.code === '2330');
+  eq(r2b.basis, 2250, '推導出參考價 2250（2255 − 5，捨去兩位）');
+  eq(r2b.basisSource, 'refPriceDerived', '來源標成「推導的」，不是「證交所公布的」');
+  ok(r2b.basisSource !== 'refPrice', '跟證交所公布的分得開');
+  eq(r2b.pl, '0', '價格部分 0 —— 跟有結果表時算出來的一樣');
+  eq(s2b.dayPL, String(5000n * 1000000n), '當日損益 +5,000 元');
+  ok(r2b.pl !== String(-5000n * 1000000n), '不是 −5,000（那是退回用前收 2255 的假虧損）');
+
+  section('畫面要標示「試算」，不能跟證交所公布的混在一起');
+  const t2b = await showView('home', '#view .big-number');
+  ok(t2b.includes('含除息調整（參考價為試算）'), `首頁標了「試算」：「${t2b.slice(0, 120)}…」`);
+  noneOf([t2b], (t) => /含除息調整(?!（)/.test(t),
+    '沒有出現沒帶「試算」的那個標籤（不然兩種來源就混在一起了）');
+  const detailText = await page.evaluate(async () => {
+    location.hash = '#/holdings/2330';
+    await (await import('./js/views/holding.js')).default('2330');
+    return document.querySelector('#view').textContent.replace(/\s+/g, ' ');
+  });
+  ok(detailText.includes('依證交所公式試算'), `單檔詳情也講清楚：「${detailText.slice(0, 200)}…」`);
+
+  section('推導所需的資料缺一項 → 回到「不計入」，絕不退回前收');
+  // 配息金額待公告 ＋ 結果表查不到 → 兩條路都走不通
+  await setup({
+    mock: {
+      dayAllCsv: CSV,
+      twt48u: twt48u([[rocChars(EXDATE), '2330', '台積電', '息', '0.00000000', '0.00000000', '0.00000000',
+        '<p style= text-align:center;>待公告實際收益分配金額</p>', '', '', '', '', '']]),
+      twt49u: { stat: '很抱歉，沒有符合條件的資料!' },
+    },
+    holdings: [{ code: '2330', shares: 1000, date: '2026-01-05' }],
+    closes: [{ code: '2330', date: PREV, close: 2255, change: 10, exMark: false }],
+  });
+  const s2c = await settleOf(EXDATE);
+  const r2c = s2c.byCode.find((r) => r.code === '2330');
+  eq(r2c.status, 'exNoRef', '狀態還是「除權息日，尚未取得參考價」');
+  eq(r2c.basis, null, '基準價是 null');
+  eq(r2c.pl, null, '這一檔不計入');
+  eq(s2c.dayPL, null, '當日損益 null');
+  ok(r2c.basis !== 2255, '**沒有退回用前收 2255**');
+  ok(r2c.basis !== 2250, '也沒有把「待公告」當成 0 元配息而算出 2255');
+  const t2c = await showView('home', '#view .big-number');
+  ok(t2c.includes('既查不到也算不出來'), '畫面講清楚兩條路都走不通');
 
   // =================================================================
   section('情境 3：金額待公告 —— 不顯示 0 元');
