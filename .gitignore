@@ -5,3 +5,6 @@ Thumbs.db
 docs/measurements/*.log
 docs/measurements/observer.pid
 scripts/.mutation-backup/
+
+# wrangler dev 的本機狀態與快取（workertest 跑完會留下），不進版控
+workers/.wrangler/
