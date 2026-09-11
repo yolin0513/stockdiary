@@ -12,6 +12,8 @@ export const DEFAULTS = {
   dayPLIncludeDividend: true,
   dividendAutoFees: false,
   todayDataThreshold: DEFAULT_TODAY_THRESHOLD,
+  // 「今日觀察」的一次性同意。預設 false —— 沒有勾過就不會產生任何 AI 內容。
+  insightConsent: false,
 };
 
 const cache = new Map();

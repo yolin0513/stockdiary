@@ -470,3 +470,21 @@ table.yearly { border-collapse: collapse; width: 100%; font-size: 0.85em; }
 table.yearly th, table.yearly td { padding: 6px 8px; text-align: right; white-space: nowrap; border-top: 1px solid var(--line); }
 table.yearly th:first-child, table.yearly td:first-child { text-align: left; }
 table.yearly th { color: var(--fg-muted); font-weight: 600; }
+
+/* ---------- 新聞與今日觀察 ---------- */
+
+/* 整張卡片就是一個連結（總覽上的新聞入口） */
+.card-link { display: block; text-decoration: none; color: inherit; }
+
+/* 卡片裡的小標。比 card-title 小一級，不搶版面 */
+.sub-title { margin: 14px 0 6px; font-size: .95rem; font-weight: 600; color: var(--fg); }
+
+.news-row { display: flex; flex-direction: column; gap: 3px; text-decoration: none; color: inherit; }
+.news-title { line-height: 1.45; }
+
+/* 今日觀察的文字**刻意不用紅綠色、不用箭頭**（PLAN §7.2）：
+   那些是漲跌的視覺語言，套在 AI 的文字上會讓它讀起來像多空判斷。
+   這裡只用一般的前景色與行距。 */
+.insight-summary { line-height: 1.6; }
+.insight-section { margin-top: 10px; }
+.insight-section p { line-height: 1.6; }

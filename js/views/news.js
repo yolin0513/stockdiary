@@ -10,9 +10,15 @@ import { setTop, render } from '../shell.js';
 import * as news from '../news.js';
 import * as holdings from '../holdings.js';
 import * as catalog from '../catalog.js';
+import * as insight from '../insight.js';
+import * as secrets from '../secrets.js';
+import * as prefs from '../prefs.js';
 import { localISODate } from '../roc.js';
 
 let lastResults = null;
+let insightState = null;   // { busy } | { error } | null
+// 這一輪畫面上的新聞，給「引用：[n1]」那幾個連結查連結用。
+let currentItems = [];
 
 export default async function newsView() {
   setTop({ title: '新聞' });
@@ -34,12 +40,17 @@ export default async function newsView() {
     industry: catalog.lookup(hd.code)?.industry ?? null,
   }));
   const marked = news.markRelated(items, withIndustry);
+  currentItems = marked;
 
   const tw = marked.filter((it) => regionOf(it.source) === 'tw');
   const intl = marked.filter((it) => regionOf(it.source) === 'intl');
   const related = marked.filter((it) => it.relatedCodes?.length);
 
+  const keyStatus = await secrets.status();
+  const todayInsight = await insight.forDate(today);
+
   render([
+    await insightCard({ today, items: marked, holdings: withIndustry, keyStatus, todayInsight }),
     failureCard(lastResults),
     related.length ? listCard(`跟你的持股有關（${related.length}）`, related, { showCodes: true }) : null,
     listCard(`台股（${tw.length}）`, tw),
@@ -123,4 +134,140 @@ function footerCard() {
       '只顯示標題與連結，點了會離開 App 到原站閱讀。這裡不轉載內文，也不做摘要。'),
     h('p', { class: 'muted sm' },
       `來源：${news.SOURCES.map((s) => s.name).join('、')}。保留 ${news.KEEP_DAYS} 天。`));
+}
+
+
+// ---------------------------------------------------------------------------
+// 今日觀察
+//
+// 畫面上的規矩（PLAN §7.2），每一條都是刻意的：
+//   · 標題固定「今日觀察（AI 整理，非投資建議）」，不可改、不可關
+//   · 灰底免責標籤沒有關閉鈕 —— 它不是通知，是這塊內容的一部分
+//   · 底部固定署名（哪個模型、幾點產生、未經查證、不構成投資建議）
+//   · **不用紅綠色、不用箭頭** —— 那些是漲跌的視覺語言，會讓文字讀起來像多空判斷
+//   · 越界的段落原文保留但不顯示，標「AI 越界，已隱藏」與原因
+
+function disclaimerBadge() {
+  // 沒有 onclick、沒有關閉鈕。要關掉只能改程式，那正是重點。
+  return h('p', { class: 'disclaimer', dataset: { badge: 'insightDisclaimer' } },
+    'AI 整理，非投資建議。內容未經查證，請以原始新聞與公開資訊為準。');
+}
+
+async function insightCard({ today, items, holdings: held, keyStatus, todayInsight }) {
+  if (!keyStatus.configured) return insightSetupHint();
+  if (!prefs.get('insightConsent')) return consentCard();
+
+  const body = [];
+  if (todayInsight) {
+    body.push(...insightBody(todayInsight));
+  } else if (insightState?.busy) {
+    body.push(h('p', { class: 'muted' }, '正在整理…（大約十幾秒）'));
+  } else {
+    body.push(h('p', { class: 'muted sm' }, '今天還沒有整理過。'));
+  }
+  if (insightState?.error) body.push(h('p', { class: 'warn' }, secrets.scrub(insightState.error)));
+
+  const btn = h('button', { class: 'btn' }, todayInsight ? '重新產生' : '產生今日觀察');
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    insightState = { busy: true };
+    await newsView();
+    const r = await insight.generate({
+      date: today,
+      news: items,
+      holdings: held,
+      force: !!todayInsight,
+    });
+    insightState = r.ok ? null : { error: r.error };
+    await newsView();
+  });
+
+  return h('section', { class: 'card', dataset: { card: 'insight' } },
+    h('h2', { class: 'card-title' }, '今日觀察（AI 整理，非投資建議）'),
+    disclaimerBadge(),
+    ...body,
+    btn);
+}
+
+function insightBody(rec) {
+  const filtered = insight.filterInsight(rec.json);
+  const out = [];
+
+  out.push(filtered.summaryHidden
+    ? hiddenBlock(filtered.summaryHiddenWhy)
+    : h('p', { class: 'insight-summary' }, filtered.summary));
+
+  for (const s of filtered.sections) {
+    out.push(h('div', { class: 'insight-section' },
+      h('h3', { class: 'sub-title' }, s.theme ?? ''),
+      s.hidden ? hiddenBlock(s.hiddenWhy) : h('p', {}, s.observation ?? ''),
+      newsRefs(s.newsIds)));
+  }
+
+  if (filtered.watchDates.length) {
+    out.push(h('h3', { class: 'sub-title' }, '值得留意的日期'));
+    out.push(h('div', { class: 'rows' }, ...filtered.watchDates.map((w) =>
+      h('p', { class: 'muted sm' }, `${w.date ?? ''}　${w.what ?? ''}`))));
+  }
+
+  const m = secrets.modelById(rec.model);
+  const at = new Date(rec.createdAt);
+  const hhmm = Number.isFinite(at.getTime())
+    ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+    : '未知時間';
+  out.push(h('p', { class: 'muted sm', dataset: { badge: 'insightFooter' } },
+    `由 Claude（${m?.name ?? rec.model}）依新聞標題於 ${hhmm} 產生，未經查證，不構成投資建議。`));
+
+  if (filtered.hiddenCount > 0) {
+    out.push(h('p', { class: 'muted sm' },
+      `有 ${filtered.hiddenCount} 段因為越界被隱藏。可以按「重新產生」再試一次。`));
+  }
+  return out;
+}
+
+/** 越界的段落：講清楚發生什麼事，不要靜默消失。 */
+function hiddenBlock(why) {
+  return h('p', { class: 'warn', dataset: { block: 'insightHidden' } },
+    `這一段越界了（${(why ?? []).join('、') || '不符合界線'}），已隱藏。`);
+}
+
+/** 引用的新聞編號，點得回原文。 */
+function newsRefs(ids) {
+  if (!ids?.length) return null;
+  return h('p', { class: 'muted sm' }, '引用：', ...ids.map((id) => {
+    const item = currentItems.find((x) => x.id === id);
+    return item
+      ? h('a', { href: item.link, target: '_blank', rel: 'noopener noreferrer' }, `[${id}] `)
+      : h('span', {}, `[${id}] `);
+  }));
+}
+
+function insightSetupHint() {
+  return h('section', { class: 'card', dataset: { card: 'insightNoKey' } },
+    h('h2', { class: 'card-title' }, '今日觀察（AI 整理，非投資建議）'),
+    disclaimerBadge(),
+    h('p', { class: 'muted sm' }, '要用這個功能，先到「設定」填你自己的 Anthropic 金鑰。'),
+    h('a', { class: 'btn', href: '#/settings' }, '去設定'));
+}
+
+/** 首次啟用的一次性說明。**沒有勾選就不會產生任何 AI 內容。** */
+function consentCard() {
+  const box = h('input', { type: 'checkbox', dataset: { field: 'insightConsent' } });
+  const go = h('button', { class: 'btn btn-primary' }, '我了解，啟用今日觀察');
+  go.addEventListener('click', async () => {
+    if (!box.checked) { toast('要先勾選才能啟用'); return; }
+    await prefs.set('insightConsent', true);
+    await newsView();
+  });
+  return h('section', { class: 'card', dataset: { card: 'insightConsent' } },
+    h('h2', { class: 'card-title' }, '今日觀察（AI 整理，非投資建議）'),
+    disclaimerBadge(),
+    h('p', {}, '啟用前請先看清楚三件事：'),
+    h('p', { class: 'muted sm' }, '一、這是**資訊整理，不是投資建議**。不會有買賣建議、目標價、進出場時機或個股評等；'
+      + '真的出現了，程式會把那一段隱藏起來，但你仍然不應該把任何一句話當成建議。'),
+    h('p', { class: 'muted sm' }, '二、**費用由你付**。用的是你自己的 Anthropic 金鑰，直接跟 Anthropic 結算，這個 App 不經手。'),
+    h('p', { class: 'muted sm' }, '三、**金鑰只存在這台裝置**，不會上傳，也不會出現在匯出的備份檔裡。'),
+    h('label', { class: 'pref-row' }, box, h('span', {}, ' 我了解以上三點')),
+    go);
 }
