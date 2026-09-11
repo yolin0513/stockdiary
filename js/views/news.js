@@ -26,8 +26,15 @@ export default async function newsView() {
   const today = localISODate(new Date());
   let items = await news.forDate(today);
 
-  // 今天還沒抓過就抓一次；抓過了就直接用存下來的（30 分鐘節流在 news.refresh 裡）
+  // 今天還沒抓過就抓一次；抓過了就直接用存下來的（30 分鐘節流在 news.refresh 裡）。
+  //
+  // 抓六個來源要好幾秒。在那之前先畫一張「抓取中」——
+  // 不然標題已經變成「新聞」、內容卻還停在上一頁，看起來像當掉了。
+  // （setTop 在 view 一開始就跑，render 要等資料回來，中間那段空窗就是這個現象。）
   if (items.length === 0) {
+    render([h('section', { class: 'card', dataset: { card: 'newsLoading' } },
+      h('h2', { class: 'card-title' }, '新聞'),
+      h('p', { class: 'muted' }, '正在抓取六個來源…'))]);
     const r = await news.refresh();
     lastResults = r.results;
     items = await news.forDate(r.date);
