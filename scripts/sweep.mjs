@@ -142,14 +142,30 @@ try {
   await page.setOfflineMode(false);
 
   section('主控台與網路');
-  // 新聞來源偶爾會限速（見 STATUS「新聞來源的已知狀況」），那不算部署壞掉。
-  const realErrors = errors.filter((e) => !/502|favicon/.test(e));
+  //
+  // 新聞上游（經 Worker 的那四家）偶爾會限速回 502，換頁時還在飛的請求也會被
+  // 中止成 ERR_ABORTED。那兩種都不是部署壞掉 —— 畫面上本來就會顯示「這次沒抓到」。
+  //
+  // 但**不可以靜默丟掉**：分開數、分開報，讓人看得出「忽略了幾筆、是哪一家」。
+  // 兩邊的判準要一致（以前主控台排除了 502、失敗請求卻沒有，結果同一件事一邊過一邊紅）。
+  const isNewsUpstream = (t) => t.includes('stockdiary-news.') || /rss\?src=/.test(t);
+  const isNoise = (t) => /favicon/.test(t);
+
+  const realErrors = errors.filter((e) => !isNoise(e) && !(isNewsUpstream(e) || /502/.test(e)));
+  const newsErrors = errors.filter((e) => !isNoise(e) && (isNewsUpstream(e) || /502/.test(e)));
   eq(realErrors, [], '沒有未攔截的例外，也沒有主控台錯誤');
-  const realFailed = failed.filter((f) => !/favicon/.test(f));
-  eq(realFailed, [], '沒有失敗的請求');
-  if (errors.length !== realErrors.length) {
-    console.log(`      （忽略了 ${errors.length - realErrors.length} 筆新聞上游限速造成的 502，畫面上會顯示「這次沒抓到」）`);
-  }
+
+  const realFailed = failed.filter((f) => !isNoise(f) && !isNewsUpstream(f));
+  const newsFailed = failed.filter((f) => !isNoise(f) && isNewsUpstream(f));
+  eq(realFailed, [], '沒有失敗的請求（新聞上游另外算，見下）');
+
+  // 這一條不是斷言「一定沒事」，是把忽略掉的東西攤開來講。
+  ok(true, newsFailed.length + newsErrors.length === 0
+    ? '新聞上游這次全部正常'
+    : `新聞上游有 ${newsFailed.length + newsErrors.length} 筆失敗（限速或換頁中止），`
+      + '畫面上會顯示「這次沒抓到」，不算部署問題',
+  [...newsFailed, ...newsErrors].slice(0, 3).join(' ／ '));
+
 } finally {
   await browser.close();
 }
