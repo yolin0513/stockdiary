@@ -19,6 +19,7 @@ import { setTop, render } from '../shell.js';
 import * as divrecord from '../divrecord.js';
 import * as events from '../events.js';
 import * as catalog from '../catalog.js';
+import * as holdings from '../holdings.js';
 
 const DISCLAIMER = '以下結果完全由你輸入的假設算出，不是預測，也不是投資判斷。';
 
@@ -30,7 +31,7 @@ const state = {
   result: null, gap: null, errors: {},
   // 「查這一檔過去配了多少」。**跟試算完全分離**：查到的數字不會、也不能
   // 流進上面任何一個欄位。看完之後要不要採用、採用什麼數字，是使用者的決定。
-  lookupCode: '', lookup: null, lookupErr: '',
+  lookupCode: '', lookup: null, lookupErr: '', holdings: [],
 };
 
 export default async function calcView() {
@@ -38,6 +39,8 @@ export default async function calcView() {
   // 配息紀錄是同源的靜態檔（data/dividends.json），讀不到就讓那張卡自己說，
   // 不要讓整頁打不開 —— 試算器本身不需要它。
   try { await divrecord.load(); } catch (e) { state.lookupErr = String(e.message || e); }
+  // 直接把他的持股列出來當按鈕 —— 他不該需要先知道哪一檔查得到。
+  try { state.holdings = await holdings.list(); } catch { state.holdings = []; }
   paint();
 }
 
@@ -265,17 +268,22 @@ function yearlyCard(result) {
 }
 
 
-// ---------- 查過去配了多少（事實，不是預測） ----------
+// ---------- 查配息紀錄（事實，不是預測） ----------
 //
 // 這張卡片的設計底線，每一條都是刻意的：
 //
-//   · **不提供「帶入」按鈕。** 只要是我們替使用者把歷史配息換算成配息率，
+//   · **不提供「帶入」按鈕。** 只要是我們替使用者把配息換算成配息率，
 //     那個假設就是我們構造的 —— 按鈕只是把責任偽裝成他的選擇。
 //   · **不出現任何百分比。** 除以股價就是殖利率，殖利率就是預期報酬的語言。
-//   · **不算平均。** 實測每檔中位數只有 1 筆紀錄，拿 1–3 筆算平均，
-//     只會讓人以為「大概就是這個數」。只做合計 —— 加總是事實，平均是推論。
-//   · **不年化。**
-//   · 兩種來源分開，各自標明，永遠不合併計算。
+//   · **不年化。**「一年配四次所以一年配 X 元」就是推算未來。
+//   · **不算平均**，只做合計。加總是事實，平均是推論。
+//   · 三種來源分開、各自標明，永遠不合併計算。
+//
+// 為什麼第一個區塊是「下一次除權息」而不是「過去配了多少」：
+// 證交所**沒有公開 ETF 的歷史收益分配**（2026-09-11 實測，見 FEASIBILITY §11），
+// 所以對持有 ETF 的人來說，「公司公告的股利分派」那份資料一筆都查不到。
+// 但 TWT48U 預告表**有 ETF** —— 下一次配多少是已公告的事實。
+// 把重心放在歷史上，這個功能對 ETF 持有人就是全空的（使用者實機回報過）。
 
 async function runLookup(code) {
   state.lookupCode = code;
@@ -285,19 +293,35 @@ async function runLookup(code) {
 
   const info = catalog.lookup(key);
   const announced = divrecord.forCode(key);
+  let upcoming = { found: false };
   let received = null;
   try {
-    received = divrecord.receivedFor(await events.all(), key);
-  } catch { received = null; }
+    const evs = await events.all();
+    upcoming = divrecord.upcomingFor(evs, key);
+    received = divrecord.receivedFor(evs, key);
+  } catch { /* 沒有紀錄就是沒有，不要讓整張卡片壞掉 */ }
 
-  state.lookup = { key, info, announced, received };
+  state.lookup = { key, info, announced, upcoming, received };
   paint();
 }
 
 function dividendLookupCard() {
+  // 直接列出他自己的持股當按鈕 —— 他不該需要先知道哪一檔查得到。
+  const chips = h('div', { class: 'chip-row', dataset: { row: 'lookupHoldings' } },
+    ...(state.holdings ?? []).map((hd) => {
+      const on = state.lookup?.key === hd.code;
+      const b = h('button', {
+        class: 'chip' + (on ? ' on' : ''),
+        'aria-pressed': on ? 'true' : 'false',
+        dataset: { lookup: hd.code },
+      }, `${hd.code} ${hd.name ?? ''}`.trim());
+      b.addEventListener('click', () => runLookup(hd.code));
+      return b;
+    }));
+
   const input = h('input', {
     class: 'field', type: 'text', inputmode: 'numeric',
-    placeholder: '例如 2330', value: state.lookupCode, autocomplete: 'off',
+    placeholder: '或輸入其他代號', value: state.lookupCode, autocomplete: 'off',
     dataset: { field: 'lookupCode' },
   });
   const go = h('button', { class: 'btn' }, '查詢');
@@ -305,60 +329,54 @@ function dividendLookupCard() {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') runLookup(input.value); });
 
   const body = [];
-  if (state.lookupErr) {
-    body.push(h('p', { class: 'warn' }, `讀不到配息資料：${state.lookupErr}`));
-  } else if (state.lookup) {
-    body.push(...lookupBody(state.lookup));
-  }
+  if (state.lookupErr) body.push(h('p', { class: 'warn' }, `讀不到配息資料：${state.lookupErr}`));
+  else if (state.lookup) body.push(...lookupBody(state.lookup));
 
   const st = divrecord.staleness();
   return h('section', { class: 'card', dataset: { card: 'dividendLookup' } },
-    h('h2', { class: 'card-title' }, '查這一檔過去配了多少'),
+    h('h2', { class: 'card-title' }, '查配息紀錄'),
     h('p', { class: 'disclaimer' },
-      '以下都是過去實際發生的紀錄，不是未來的預測，也不會自動填進上面的試算欄位。'
+      '以下都是已經公告或已經發生的事實，不是未來的預測，也不會自動填進上面的試算欄位。'
       + '要不要採用、採用什麼數字，由你決定。'),
+    (state.holdings ?? []).length
+      ? chips
+      : h('p', { class: 'muted sm' }, '還沒有持股。可以直接輸入代號查。'),
     h('div', { class: 'row-actions' }, input, go),
     ...body,
     st.known
       ? h('p', { class: 'muted sm', dataset: { note: 'dividendDataDate' } },
-        `公告配息資料出表日期：${st.iso}`
+        `公司股利分派資料出表日期：${st.iso}`
         + (st.stale ? `（距今 ${st.days} 天，可能已經有新的決議沒收進來）` : ''))
       : null);
 }
 
-function lookupBody({ key, info, announced, received }) {
+function lookupBody({ key, info, announced, upcoming, received }) {
   const out = [];
   out.push(h('p', {}, info.found ? `${key} ${info.name}` : `代號 ${key}`));
   if (!info.found) out.push(h('p', { class: 'warn sm' }, '這個代號不在上市清單裡。'));
 
-  // ---- A. 公司公告的 ----
-  out.push(h('h3', { class: 'sub-title' }, '公司公告的股利分派'));
-  if (!announced.found) {
+  // ---- 1. 下一次除權息（已公告的預告） ----
+  out.push(h('h3', { class: 'sub-title' }, '下一次除權息'));
+  if (!upcoming?.found) {
     out.push(h('p', { class: 'muted sm' },
-      '這份資料裡沒有這一檔的紀錄。它涵蓋的是上市公司的股利決議，'
-      + '不含 ETF；另外剛上市或這兩年沒有配發的公司也不會出現。'));
+      '目前沒有已公告的下一次除權息。證交所的預告表只涵蓋未來約七週，時間還沒到就不會出現。'));
   } else {
-    out.push(h('div', { class: 'rows' }, ...announced.records.map((r) => h('div', { class: 'row' },
-      h('div', { class: 'row-head' },
-        h('span', { class: 'row-code' }, `${r.year} 年 ${r.period}`),
-        h('span', { class: 'tag' }, r.status)),
-      h('p', { class: 'row-note muted sm' },
-        `現金 ${divrecord.fmtPerShare(r.cash)} 元/股`
-        + (r.stock ? `　配股 ${divrecord.fmtPerShare(r.stock)} 元/股` : '')
-        + (r.range ? `　（${r.range}）` : ''))))));
-    // 合計：加總是事實。不年化、不除以股價、不算平均。
-    out.push(h('p', { dataset: { note: 'announcedTotal' } },
-      `過去 ${announced.periods} 期合計實際配發現金 ${divrecord.fmtPerShare(announced.totalCash)} 元/股`
-      + (announced.totalStock ? `、配股 ${divrecord.fmtPerShare(announced.totalStock)} 元/股` : '')));
+    out.push(h('p', { dataset: { note: 'upcomingNext' } },
+      `${upcoming.exDate}`
+      + (upcoming.cashPerShare != null
+        ? `　現金 ${divrecord.fmtPerShare(upcoming.cashPerShare)} 元/股`
+        : '　金額待公告')
+      + (upcoming.stockRate ? `　配股 ${divrecord.fmtPerShare(upcoming.stockRate)}` : '')));
     out.push(h('p', { class: 'muted sm' },
-      '「董事會決議」表示還沒經股東會確認，數字可能還會變。'));
+      '來源：證交所除權除息預告表，這是已經公告的數字。這裡只寫這一次，不會拿它推算一年會配多少。'));
   }
 
-  // ---- B. 你自己實際領到的 ----
+  // ---- 2. 你自己實際領到的 ----
   out.push(h('h3', { class: 'sub-title' }, '你自己實際領到的'));
   if (!received || received.rows.length === 0) {
     out.push(h('p', { class: 'muted sm' },
-      '這台裝置上還沒有這一檔已確認的除權息紀錄。'));
+      '還沒有這一檔已確認的除權息紀錄。這一區是從你開始用這個 App 記帳之後慢慢累積起來的，'
+      + '不是歷史匯入 —— 所以剛開始會是空的。'));
   } else {
     out.push(h('div', { class: 'rows' }, ...received.rows.map((r) => h('div', { class: 'row' },
       h('span', { class: 'row-code' }, r.exDate ?? ''),
@@ -370,7 +388,31 @@ function lookupBody({ key, info, announced, received }) {
         : `過去 ${received.counted} 次合計實際領到 ${fmtMoneyMicro(received.totalMicro)} 元`
           + (received.unknown ? `（另有 ${received.unknown} 筆沒有填金額，沒算進去）` : '')));
     out.push(h('p', { class: 'muted sm' },
-      '這是你自己的紀錄，跟你當時持有的股數有關，跟上面公司公告的「元/股」不是同一種數字，不要相加。'));
+      '這是你自己的紀錄，跟你當時持有的股數有關，跟「元/股」不是同一種數字，不要相加。'));
+  }
+
+  // ---- 3. 公司公告的股利分派（查得到才顯示） ----
+  if (announced.found) {
+    out.push(h('h3', { class: 'sub-title' }, '公司公告的股利分派'));
+    out.push(h('div', { class: 'rows' }, ...announced.records.map((r) => h('div', { class: 'row' },
+      h('div', { class: 'row-head' },
+        h('span', { class: 'row-code' }, `${r.year} 年 ${r.period}`),
+        h('span', { class: 'tag' }, r.status)),
+      h('p', { class: 'row-note muted sm' },
+        `現金 ${divrecord.fmtPerShare(r.cash)} 元/股`
+        + (r.stock ? `　配股 ${divrecord.fmtPerShare(r.stock)} 元/股` : '')
+        + (r.range ? `　（${r.range}）` : ''))))));
+    out.push(h('p', { dataset: { note: 'announcedTotal' } },
+      `過去 ${announced.periods} 期合計實際配發現金 ${divrecord.fmtPerShare(announced.totalCash)} 元/股`
+      + (announced.totalStock ? `、配股 ${divrecord.fmtPerShare(announced.totalStock)} 元/股` : '')));
+    out.push(h('p', { class: 'muted sm' },
+      '「董事會決議」表示還沒經股東會確認，數字可能還會變。'));
+  } else if (info.found && info.type === 'ETF') {
+    // ETF 專屬說明。含糊地寫「不含 ETF」會讓人以為是我們偷懶 ——
+    // 要講出限制在哪裡，以及他的紀錄會怎麼長出來。
+    out.push(h('p', { class: 'muted sm', dataset: { note: 'etfNote' } },
+      'ETF 的歷史收益分配，證交所沒有公開資料可以查（我們實際查過了）。'
+      + '所以這一檔只看得到上面兩塊：已公告的下一次除權息，以及你自己記下來的紀錄。'));
   }
 
   out.push(h('p', { class: 'muted sm' }, '過去配息不代表未來。'));

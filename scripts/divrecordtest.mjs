@@ -18,7 +18,7 @@ import puppeteer from 'puppeteer';
 import { ok, eq, section, done, noneOf, everyOf } from './tap.mjs';
 import { listen } from './serve.mjs';
 import { stripComments } from './srcscan.mjs';
-import { forCode, fmtPerShare, receivedFor, staleness, __setDataForTest, STALE_DAYS } from '../js/divrecord.js';
+import { forCode, fmtPerShare, receivedFor, upcomingFor, staleness, __setDataForTest, STALE_DAYS } from '../js/divrecord.js';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const real = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'dividends.json'), 'utf8'));
@@ -78,6 +78,40 @@ __setDataForTest({ codes: {} });
 eq(staleness().known, false, '沒有出表日期時就說不知道，不要假裝是新的');
 __setDataForTest(real);
 
+section('下一次除權息：已公告的事實，不是預測');
+// 這一塊是為 ETF 加的：證交所沒有 ETF 的歷史收益分配，但 TWT48U 預告表有 ETF，
+// 而那是投信已經公告的數字。
+const upEvents = [
+  { code: '00878', exDate: '2026-09-21', cashPerShare: 0.55, status: 'upcoming' },
+  { code: '00878', exDate: '2026-12-21', cashPerShare: 0.6, status: 'upcoming' },
+  { code: '00878', exDate: '2026-06-21', cashPerShare: 0.5, status: 'confirmed' },
+  { code: '00404A', exDate: '2026-09-16', cashPerShare: null, status: 'upcoming' },
+  { code: '0056', exDate: '2026-09-18', cashPerShare: 0.72, status: 'dismissed' },
+];
+const NOW = new Date('2026-09-11T12:00:00+08:00');
+const up = upcomingFor(upEvents, '00878', { now: NOW });
+ok(up.found, '找得到下一次');
+eq(up.exDate, '2026-09-21', '取最近的那一次，不是最遠的');
+eq(up.cashPerShare, 0.55, '每股金額是公告值');
+eq(upcomingFor(upEvents, '00878', { now: new Date('2026-10-01T12:00:00+08:00') }).exDate,
+  '2026-12-21', '過了就換下一次');
+eq(upcomingFor(upEvents, '00404A', { now: NOW }).cashPerShare, null,
+  '金額未公告時回 null —— **不是 0**，畫面才分得出「待公告」與「不配」');
+eq(upcomingFor(upEvents, '0056', { now: NOW }).found, false, '已忽略的不算');
+eq(upcomingFor(upEvents, '9999', { now: NOW }).found, false, '沒有就是沒有');
+// 已確認的是「過去」，不是「下一次」
+eq(upcomingFor([{ code: 'X', exDate: '2026-12-01', cashPerShare: 1, status: 'confirmed' }], 'X', { now: NOW }).found,
+  false, '已確認的不會被當成下一次');
+
+section('不年化、不除以股價（界線）');
+// 使用者確認的三個附帶條件之一。upcomingFor 只回「這一次」的數字，
+// 不提供任何「一年配幾次」「一年配多少」的欄位。
+const upKeys = Object.keys(upcomingFor(upEvents, '00878', { now: NOW })).sort();
+eq(upKeys, ['cashPerShare', 'exDate', 'found', 'kind', 'stockRate'],
+  '回傳的欄位就這幾個 —— 沒有 annual、perYear、times 之類的東西');
+noneOf(upKeys, (k) => /annual|year|yield|rate$/i.test(k) && k !== 'stockRate',
+  '沒有任何欄位在講年化或殖利率');
+
 section('自己實際領到的：只算已確認、有金額的');
 const evs = [
   { code: '2330', status: 'confirmed', exDate: '2026-03-15', amountActual: '12000000000' },
@@ -123,6 +157,70 @@ try {
   await page.goto(`http://localhost:${port}/`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#view .card');
 
+  section('持股直接列成按鈕 —— 使用者不必先知道哪一檔查得到');
+  // 這是這次修正的重點：使用者的三檔全是 ETF，原本的設計（自己打代號 → 查歷史配息）
+  // 對他一檔都查不到。現在一進來就看得到自己的持股。
+  const chipsProbe = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const holdings = await import('./js/holdings.js');
+    for (const s of db.EXPORTABLE_STORES) await db.clear(s);
+    await db.clear('events');
+    await holdings.addOpening({ code: '0050', shares: 1000, date: '2026-01-05' });
+    await holdings.addOpening({ code: '00878', shares: 3000, date: '2026-01-05' });
+    // 一筆已公告的下次除息、一筆已確認領過的
+    await db.put('events', { id: '00878-2026-09-21', code: '00878', exDate: '2026-09-21', cashPerShare: 0.55, status: 'upcoming' });
+    await db.put('events', { id: '0050-2026-07-18', code: '0050', exDate: '2026-07-18', cashPerShare: 0.9, status: 'confirmed', amountActual: '900000000' });
+
+    location.hash = '#/';
+    await new Promise((r) => setTimeout(r, 400));
+    location.hash = '#/calc';
+    for (let i = 0; i < 100; i += 1) {
+      if (document.querySelector('#view [data-row="lookupHoldings"] .chip')) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const chips = [...document.querySelectorAll('#view [data-lookup]')];
+    const read = () => {
+      const c = document.querySelector('#view [data-card="dividendLookup"]');
+      return {
+        text: c.textContent.replace(/\s+/g, ' '),
+        upcoming: c.querySelector('[data-note="upcomingNext"]')?.textContent ?? '',
+        received: c.querySelector('[data-note="receivedTotal"]')?.textContent ?? '',
+        announced: c.querySelector('[data-note="announcedTotal"]')?.textContent ?? '',
+        etfNote: c.querySelector('[data-note="etfNote"]')?.textContent ?? '',
+        percents: (c.textContent.match(/%/g) || []).length,
+      };
+    };
+    const codes = chips.map((b) => b.dataset.lookup);
+    const heights = chips.map((b) => Math.round(b.getBoundingClientRect().height));
+    document.querySelector('#view [data-lookup="00878"]').click();
+    await new Promise((r) => setTimeout(r, 700));
+    const etfWithUpcoming = read();
+    document.querySelector('#view [data-lookup="0050"]').click();
+    await new Promise((r) => setTimeout(r, 700));
+    const etfWithReceived = read();
+    return { codes, heights, etfWithUpcoming, etfWithReceived };
+  });
+
+  eq(chipsProbe.codes.sort(), ['0050', '00878'], '持股直接列成按鈕，不必打字');
+  everyOf(chipsProbe.heights, (hh) => hh >= 44, `按鈕夠大（${chipsProbe.heights.join('、')}px）`);
+
+  ok(chipsProbe.etfWithUpcoming.upcoming.includes('2026-09-21'),
+    `ETF 看得到下一次除權息：「${chipsProbe.etfWithUpcoming.upcoming}」`);
+  ok(chipsProbe.etfWithUpcoming.upcoming.includes('0.55'), '而且有已公告的每股金額');
+  ok(chipsProbe.etfWithUpcoming.text.includes('已經公告的數字'), '標明那是公告值');
+  ok(chipsProbe.etfWithUpcoming.text.includes('不會拿它推算一年會配多少'),
+    '明講不年化 —— 使用者確認的三個附帶條件之一');
+  eq(chipsProbe.etfWithUpcoming.percents, 0, 'ETF 這一頁也是零個百分比');
+  eq(chipsProbe.etfWithUpcoming.announced, '', 'ETF 沒有「公司公告的股利分派」那一塊（查不到就不顯示空殼）');
+  ok(chipsProbe.etfWithUpcoming.etfNote.includes('沒有公開資料'),
+    `而且講清楚為什麼：「${chipsProbe.etfWithUpcoming.etfNote.slice(0, 50)}」`);
+  ok(chipsProbe.etfWithUpcoming.text.includes('從你開始用這個 App 記帳之後'),
+    '「你自己領到的」是空的時候，講明是從開始記帳才累積，不是歷史匯入');
+
+  ok(chipsProbe.etfWithReceived.received.includes('合計實際領到'),
+    `另一檔 ETF 看得到自己領到的合計：「${chipsProbe.etfWithReceived.received}」`);
+  ok(!chipsProbe.etfWithReceived.received.includes('平均'), '是合計不是平均');
+
   section('查詢結果不會流進任何試算欄位（執行期實測）');
   const probe = await page.evaluate(async () => {
     location.hash = '#/calc';
@@ -146,6 +244,8 @@ try {
       after: fieldValues(),
       cardText: card.textContent.replace(/\s+/g, ' '),
       buttons: [...card.querySelectorAll('button')].map((b) => b.textContent.trim()),
+      nonLookupButtons: [...card.querySelectorAll('button')]
+        .filter((b) => !b.dataset.lookup).map((b) => b.textContent.trim()),
       percents: (card.textContent.match(/%/g) || []).length,
       announcedTotal: card.querySelector('[data-note="announcedTotal"]')?.textContent ?? '',
       dataDate: card.querySelector('[data-note="dividendDataDate"]')?.textContent ?? '',
@@ -154,7 +254,10 @@ try {
 
   eq(probe.after, probe.before, '**查詢前後，每一個試算欄位的值都沒有變**');
   everyOf(Object.values(probe.after), (v) => v === '', '（對照）而且它們本來就全是空的');
-  eq(probe.buttons, ['查詢'], '這張卡片上只有「查詢」一顆按鈕 —— 沒有「帶入」');
+  // 卡片上每一顆按鈕都必須是「選一檔來查」或「查詢」——
+  // 沒有任何一顆會把數字送進試算欄位。
+  eq(probe.nonLookupButtons, ['查詢'],
+    '除了持股選擇之外只有「查詢」一顆按鈕 —— 沒有「帶入」');
   noneOf(probe.buttons, (b) => /帶入|套用|填入|使用/.test(b), '沒有任何把數字送進試算的按鈕');
   eq(probe.percents, 0, '**畫面上一個百分比都沒有**（除以股價就是殖利率）');
   // 「預測」這兩個字本身不是問題 —— 免責句就寫著「不是未來的預測」。
@@ -176,8 +279,9 @@ try {
     await new Promise((r) => setTimeout(r, 900));
     return document.querySelector('#view [data-card="dividendLookup"]').textContent.replace(/\s+/g, ' ');
   });
-  ok(etf.includes('不含 ETF') || etf.includes('ETF'), '講出 ETF 不在這份資料裡');
-  ok(!/合計實際配發/.test(etf), '而且沒有生出一個「合計 0 元」—— 查不到不等於沒配過');
+  ok(etf.includes('ETF 的歷史收益分配'), '講出 ETF 的歷史收益分配查不到');
+  ok(etf.includes('沒有公開資料'), '而且講出是「沒有公開資料」，不是我們沒做');
+  ok(!/合計實際配發/.test(etf), '沒有生出一個「合計 0 元」—— 查不到不等於沒配過');
 
   eq(pageErrors, [], '整段沒有未攔截的例外');
 } finally {

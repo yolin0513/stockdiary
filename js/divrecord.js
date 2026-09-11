@@ -89,6 +89,36 @@ export function fmtPerShare(n) {
 }
 
 /**
+ * 下一次除息（**已公告的預告**，來自 TWT48U 經 App 的 events）。
+ *
+ * 為什麼這一塊對 ETF 特別重要：證交所**沒有公開 ETF 的歷史收益分配**
+ * （2026-09-11 實測，見 FEASIBILITY §11），所以「公司公告的股利分派」那份資料
+ * 對 ETF 一筆都沒有。但 TWT48U 預告表**有 ETF** —— 下一次要配多少、哪天除息，
+ * 是投信已經公告的事實。
+ *
+ * 界線（使用者確認過的三個條件）：
+ *   · 金額未定就標「待公告」，**不猜**
+ *   · **不拿它去除以股價**（那是殖利率）
+ *   · **不年化**（「一年配四次所以一年配 X 元」就是推算未來，越界）
+ */
+export function upcomingFor(events, code, { now = new Date() } = {}) {
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const future = events
+    .filter((e) => e.code === code && e.exDate >= today && e.status !== 'confirmed' && e.status !== 'dismissed')
+    .sort((a, b) => String(a.exDate).localeCompare(String(b.exDate)));
+  const next = future[0] ?? null;
+  if (!next) return { found: false };
+  return {
+    found: true,
+    exDate: next.exDate,
+    // null 代表「還沒公告金額」，跟 0 完全不同 —— 畫面要分得開
+    cashPerShare: Number.isFinite(next.cashPerShare) ? next.cashPerShare : null,
+    stockRate: Number.isFinite(next.stockRate) && next.stockRate > 0 ? next.stockRate : null,
+    kind: next.kind ?? null,
+  };
+}
+
+/**
  * 使用者自己實際領到的（來自他的除權息紀錄）。
  *
  * 只算 `confirmed` 而且有金額的 —— 待確認的還不算數，沒填金額的算不出來但要講出來。

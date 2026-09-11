@@ -1106,9 +1106,9 @@ const MUTATIONS = [
       + '等於我們替使用者決定了未來會配多少 —— 那正是「試算器不得有預設值、'
       + '不得給建議值或歷史平均」要防的。',
     file: 'js/views/calc.js',
-    find: '  state.lookup = { key, info, announced, received };',
-    replace: `  state.lookup = { key, info, announced, received };
-  state.yieldRate = String(announced.totalCash || 0);`,
+    find: '  state.lookup = { key, info, announced, upcoming, received };',
+    replace: `  state.lookup = { key, info, announced, upcoming, received };
+  state.yieldRate = String(upcoming.cashPerShare || announced.totalCash || 0);`,
     test: 'divrecordtest',
   },
   {
@@ -1160,6 +1160,50 @@ const MUTATIONS = [
     file: 'js/divrecord.js',
     find: '  return String(Math.round(n * 1e4) / 1e4);',
     replace: '  return String(Math.round(n * 1e2) / 1e2);',
+    test: 'divrecordtest',
+  },
+  // ---- v0.7.6：ETF 的配息紀錄 ----
+  {
+    name: '「下一次除權息」把待公告的金額當成 0',
+    why: '「還沒公告」跟「這次配 0 元」是兩件事。ETF 的預告表常常先出日期、'
+      + '金額過幾天才公告（實測 72 筆裡有 35 筆是這樣）。',
+    file: 'js/divrecord.js',
+    find: '    cashPerShare: Number.isFinite(next.cashPerShare) ? next.cashPerShare : null,',
+    replace: '    cashPerShare: Number.isFinite(next.cashPerShare) ? next.cashPerShare : 0,',
+    test: 'divrecordtest',
+  },
+  {
+    name: '「下一次除權息」取最遠的那一次',
+    why: '使用者要知道的是「最近要除息的是哪一天」，給他三個月後那次沒有意義。',
+    file: 'js/divrecord.js',
+    find: '    .sort((a, b) => String(a.exDate).localeCompare(String(b.exDate)));',
+    replace: '    .sort((a, b) => String(b.exDate).localeCompare(String(a.exDate)));',
+    test: 'divrecordtest',
+  },
+  {
+    name: '已確認的除權息也被當成「下一次」',
+    why: '已經領過的變成「下一次要配」，使用者會以為還有一次。',
+    file: 'js/divrecord.js',
+    find: `    .filter((e) => e.code === code && e.exDate >= today && e.status !== 'confirmed' && e.status !== 'dismissed')`,
+    replace: '    .filter((e) => e.code === code && e.exDate >= today)',
+    test: 'divrecordtest',
+  },
+  {
+    name: '不把持股列成按鈕，逼使用者自己打代號',
+    why: '使用者的三檔全是 ETF，原本的設計對他一檔都查不到 —— 他甚至不知道該查什麼。'
+      + '列出他自己的持股，他不必先知道哪一檔查得到。',
+    file: 'js/views/calc.js',
+    find: '    ...(state.holdings ?? []).map((hd) => {',
+    replace: '    ...[].map((hd) => {',
+    test: 'divrecordtest',
+  },
+  {
+    name: 'ETF 查不到時只寫一句含糊的「不含 ETF」',
+    why: '含糊的說法會讓使用者以為是我們偷懶。要講出限制在哪裡（證交所沒有公開資料）'
+      + '以及他的紀錄會怎麼長出來。',
+    file: 'js/views/calc.js',
+    find: `      'ETF 的歷史收益分配，證交所沒有公開資料可以查（我們實際查過了）。'`,
+    replace: `      '不含 ETF。'`,
     test: 'divrecordtest',
   },
 ];
