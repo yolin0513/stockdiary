@@ -46,6 +46,9 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run datatest` | `data/*.json` 內容與代號支援判斷 |
 | `npm run shelltest` | PWA 殼稽核：import 圖 ⊆ SW SHELL、`h()` 不接受 `html:` prop、每條路由真的畫得出**自己那一頁**、沒有一頁繞過 `render()` |
 | `npm run versionmixtest` | 版本混搭：舊 `app.js` ＋ 新 view 會怎樣、不認得的路由要講清楚原因、離線（**真的把伺服器關掉**）開得起來 |
+| `npm run backuptest` | 匯出／匯入：round-trip、備份檔不含金鑰、壞檔案擋得下來並講出原因 |
+| `npm run concentrationtest` | 產業集中度：整數百分比、算不出市值的不計入分母、不做任何評價 |
+| `npm run layouttest` | 版面掃描：7 頁 × 4 字級 × 3 寬度 ＝ 84 組，零溢出、零重疊、零橫向捲動 |
 | `npm run insighttest` | 今日觀察的界線：禁用詞過濾（正反對照組）、越界只隱藏該段、prompt 不含股數金額、免責標籤關不掉 |
 | `npm run secret-leak-test` | 金鑰不外洩：匯出範圍、靜態掃描、真的存一把假金鑰後把所有序列化出口走一遍 |
 | `npm run newstest` | 新聞：六家真實 RSS 樣本、只存標題連結來源時間、節流、14 天清理、未允許 AI 的來源不進 prompt |
@@ -63,7 +66,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
 
 ```
-— 102 條突變：每一條都必須讓對應的測試變紅 —
+— 110 條突變：每一條都必須讓對應的測試變紅 —
   ✓ 把「沒成交」的漲跌價差照抄成 0 → parsetest 變紅
   ✓ 不認得除權息的 "X0.00" 標記 → parsetest 變紅
   ✓ 除權息日拿不到參考價時，退回用前一日收盤當基準 → settletest 變紅

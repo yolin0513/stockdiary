@@ -5,19 +5,27 @@
 //   上櫃／興櫃 → 明講不支援，問要不要「仍然記錄股數（不計損益）」
 //   查不到   → 講清楚代號表的日期，不要只說「錯誤」
 
-import { h, num, fmtShares, fmtPrice, toast, modal, confirmDialog } from '../ui.js';
+import { h, num, fmtShares, fmtPrice, fmtMoneyMicro, toast, modal, confirmDialog } from '../ui.js';
 import * as holdings from '../holdings.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
 import { STATUS_TEXT } from '../settle.js';
 import { setTop, render } from '../shell.js';
 import { localISODate } from '../roc.js';
+import * as concentration from '../concentration.js';
 
 export default async function holdingsView() {
   setTop({ title: '持股' });
   const held = await holdings.list();
 
+  // 集中度用最後一次結算的收盤價算，跟首頁的未實現損益同一個來源。
+  const settled = await store.latestSettle();
+  const quotes = {};
+  for (const row of settled?.byCode ?? []) if (row.close != null) quotes[row.code] = { close: row.close };
+  const withIndustry = held.map((hd) => ({ ...hd, industry: catalog.lookup(hd.code)?.industry ?? null }));
+
   render([
+    concentrationCard(withIndustry, quotes),
     h('section', { class: 'card' },
       h('h2', { class: 'card-title' }, '新增持股'),
       h('p', { class: 'muted sm' }, '這個版本只支援上市股票。上櫃與興櫃可以記股數，但不會顯示價格與損益。'),
@@ -136,4 +144,47 @@ async function addFlow() {
   } catch (e) {
     toast(String(e.message || e));
   }
+}
+
+
+/**
+ * 產業集中度。
+ *
+ * **只陳述事實，不做評價。** 不寫「過度集中」「建議分散」「風險偏高」——
+ * 那些都是投資建議。使用者看到百分比自己會有判斷。
+ *
+ * 條狀圖用 CSS 寬度畫，不用圖表庫：特大字級時它會跟著文字一起長，
+ * 不會像 canvas 那樣被壓成一團（layouttest 會掃這件事）。
+ */
+function concentrationCard(held, quotes) {
+  if (held.length === 0) return null;
+  const { rows, excluded, counted, totalMicro } = concentration.byIndustry(held, quotes);
+  if (rows.length === 0) {
+    return h('section', { class: 'card', dataset: { card: 'concentration' } },
+      h('h2', { class: 'card-title' }, '產業分布'),
+      h('p', { class: 'muted' }, '還算不出市值，沒有辦法顯示分布。'),
+      noteOf({ excluded, counted }));
+  }
+
+  return h('section', { class: 'card', dataset: { card: 'concentration' } },
+    h('h2', { class: 'card-title' }, '產業分布'),
+    h('p', { class: 'muted sm' }, `依最後一次結算的收盤價計算，共 ${fmtMoneyMicro(totalMicro)} 元。`),
+    h('div', { class: 'bars' }, ...rows.map((r) => bar(r))),
+    noteOf({ excluded, counted }));
+}
+
+function bar(r) {
+  const pct = r.pct ?? 0;
+  return h('div', { class: 'bar-row', dataset: { industry: r.industry } },
+    h('div', { class: 'bar-head' },
+      h('span', { class: 'bar-label' }, r.industry),
+      h('span', { class: 'bar-pct' }, `${pct.toFixed(1)}%`)),
+    h('div', { class: 'bar-track' },
+      h('div', { class: 'bar-fill', style: `width: ${Math.max(0, Math.min(100, pct))}%` })),
+    h('p', { class: 'muted sm' }, `${r.codes.join('、')}　${fmtMoneyMicro(r.valueMicro)} 元`));
+}
+
+function noteOf(x) {
+  const note = concentration.exclusionNote(x);
+  return note ? h('p', { class: 'muted sm', dataset: { note: 'concentrationExcluded' } }, note) : null;
 }

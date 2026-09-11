@@ -488,3 +488,14 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
 .insight-summary { line-height: 1.6; }
 .insight-section { margin-top: 10px; }
 .insight-section p { line-height: 1.6; }
+
+/* ---------- 產業集中度（M6） ---------- */
+/* 條狀圖用 CSS 寬度畫，不用圖表庫：特大字級時它跟著文字一起長，
+   不會像 canvas 那樣被壓成一團。 */
+.bars { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.bar-row { display: flex; flex-direction: column; gap: 4px; }
+.bar-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.bar-label { overflow-wrap: anywhere; }
+.bar-pct { flex: none; font-variant-numeric: tabular-nums; }
+.bar-track { height: .55em; min-height: 6px; border-radius: 999px; background: var(--bg-card-2); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; background: var(--gold); }

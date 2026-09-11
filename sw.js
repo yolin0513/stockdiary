@@ -6,7 +6,7 @@
  *
  * 每次改動任何 SHELL 檔案都要 bump VERSION，否則使用者拿到的還是舊程式。
  */
-const VERSION = 'stockdiary-v0.6.2';
+const VERSION = 'stockdiary-v0.7.0';
 const SHELL = `${VERSION}-shell`;
 
 const SHELL_ASSETS = [
@@ -38,6 +38,8 @@ const SHELL_ASSETS = [
   './js/rss.js',
   './js/secrets.js',
   './js/insight.js',
+  './js/backup.js',
+  './js/concentration.js',
   './js/plans.js',
   './js/avgcost.js',
   './js/calc.js',

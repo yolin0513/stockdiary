@@ -6,6 +6,7 @@ import * as catalog from '../catalog.js';
 import * as store from '../store.js';
 import { setTop, render } from '../shell.js';
 import * as secrets from '../secrets.js';
+import * as backup from '../backup.js';
 
 export default async function settings() {
   setTop({ title: '設定' });
@@ -17,6 +18,7 @@ export default async function settings() {
     dividendSection(),
     thresholdSection(),
     aiSection(key),
+    backupSection(),
     dataSection(),
     aboutSection(),
   ]);
@@ -218,4 +220,76 @@ function aboutSection() {
     h('p', { class: 'muted sm' }, '所有資料只存在這台裝置上，沒有帳號、沒有雲端。換手機請用匯出／匯入。'),
     h('p', { class: 'muted sm' }, '本 App 不提供投資建議，不顯示目標價，也不做任何買賣提示。'),
   );
+}
+
+
+/**
+ * 備份：匯出／匯入。
+ *
+ * 畫面上要講清楚兩件事：
+ *   · 備份檔**不含** API 金鑰（結構上讀不到，見 js/backup.js）
+ *   · 匯入是**取代**不是合併，而且不可復原 —— 所以先要使用者打勾確認
+ */
+function backupSection() {
+  const status = h('p', { class: 'muted sm' }, '');
+
+  const exportBtn = h('button', { class: 'btn' }, '匯出備份檔');
+  exportBtn.addEventListener('click', async () => {
+    try {
+      const payload = await backup.buildExport();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = h('a', { href: url, download: backup.filenameFor() });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      const total = Object.values(payload.counts).reduce((x, y) => x + y, 0);
+      status.textContent = `已匯出 ${total} 筆（${Object.entries(payload.counts).map(([k, v]) => `${k} ${v}`).join('、')}）。`;
+    } catch (e) {
+      status.textContent = `匯出失敗：${e?.message || e}`;
+    }
+  });
+
+  const confirm = h('input', { type: 'checkbox', dataset: { field: 'importConfirm' } });
+  const file = h('input', { type: 'file', accept: 'application/json,.json', dataset: { field: 'importFile' } });
+  const importBtn = h('button', { class: 'btn' }, '匯入並取代');
+
+  importBtn.addEventListener('click', async () => {
+    if (!confirm.checked) { status.textContent = '匯入會蓋掉現在的資料，要先打勾確認。'; return; }
+    const f = file.files?.[0];
+    if (!f) { status.textContent = '還沒有選擇檔案。'; return; }
+    importBtn.disabled = true;
+    try {
+      const parsed = backup.parseBackup(await f.text());
+      if (!parsed.ok) { status.textContent = `沒有匯入：${parsed.error}`; return; }
+      const wrote = await backup.applyImport(parsed.data);
+      const total = Object.values(wrote).reduce((x, y) => x + y, 0);
+      const note = parsed.missing.length ? `（備份檔裡沒有 ${parsed.missing.join('、')}，那幾項現在是空的）` : '';
+      toast(`已匯入 ${total} 筆${note}`);
+      await store.update().catch(() => {});
+      await settings();
+    } catch (e) {
+      status.textContent = `匯入失敗：${e?.message || e}`;
+    } finally {
+      importBtn.disabled = false;
+    }
+  });
+
+  return h('section', { class: 'card', dataset: { card: 'backup' } },
+    h('h2', { class: 'card-title' }, '備份'),
+    h('p', { class: 'muted sm' },
+      '匯出持股、異動紀錄、定期定額計畫、除權息事件與設定。'
+      + '**備份檔不含 API 金鑰** —— 金鑰存在另一個地方，匯出的程式讀不到它。'),
+    exportBtn,
+
+    h('h3', { class: 'sub-title' }, '匯入'),
+    h('p', { class: 'muted sm' },
+      '匯入是**取代**：現在這台裝置上的持股、異動、計畫、除權息、設定會被備份檔的內容蓋掉，'
+      + '不可復原。建議先匯出一份現在的資料再匯入。'),
+    h('p', { class: 'muted sm' }, '匯入不會動到這台裝置上的 API 金鑰。'),
+    file,
+    h('label', { class: 'pref-row' }, confirm, h('span', {}, ' 我知道匯入會蓋掉現在的資料')),
+    importBtn,
+    status);
 }

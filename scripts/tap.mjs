@@ -19,9 +19,15 @@ export function ok(cond, msg, extra = '') {
   return !!cond;
 }
 
+/**
+ * JSON.stringify 不會序列化 BigInt（直接丟 TypeError）。
+ * 這個 App 的金額全是 BigInt 微元，沒有這個 replacer 就沒辦法用 eq() 比對金額。
+ */
+const show = (v) => JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? `${x}n` : x));
+
 export function eq(actual, expected, msg) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
+  const a = show(actual);
+  const e = show(expected);
   return ok(a === e, msg, `實際 ${a}，預期 ${e}`);
 }
 
@@ -43,7 +49,7 @@ export function noneOf(list, pred, msg) {
   if (arr.length === 0) return ok(false, msg, '母體是空的 —— 這條斷言沒有檢查到任何東西');
   const hits = arr.filter((x, i) => pred(x, i, arr));
   return ok(hits.length === 0, `${msg}（檢查了 ${arr.length} 項）`,
-    hits.length ? `命中 ${hits.length} 項，例如 ${JSON.stringify(hits[0]).slice(0, 200)}` : '');
+    hits.length ? `命中 ${hits.length} 項，例如 ${show(hits[0]).slice(0, 200)}` : '');
 }
 
 /** 母體非空，而且每一個都符合 pred。 */
@@ -52,7 +58,7 @@ export function everyOf(list, pred, msg) {
   if (arr.length === 0) return ok(false, msg, '母體是空的 —— 這條斷言沒有檢查到任何東西');
   const bad = arr.filter((x, i) => !pred(x, i, arr));
   return ok(bad.length === 0, `${msg}（檢查了 ${arr.length} 項）`,
-    bad.length ? `不符合 ${bad.length} 項，例如 ${JSON.stringify(bad[0]).slice(0, 200)}` : '');
+    bad.length ? `不符合 ${bad.length} 項，例如 ${show(bad[0]).slice(0, 200)}` : '');
 }
 
 /**
@@ -67,8 +73,8 @@ export function detects(fn, { shouldHit, shouldMiss }, msg) {
     [
       shouldHit.length === 0 ? '沒有給正例' : '',
       shouldMiss.length === 0 ? '沒有給反例' : '',
-      missed.length ? `該抓沒抓到：${JSON.stringify(missed).slice(0, 200)}` : '',
-      falsePos.length ? `不該抓卻抓了：${JSON.stringify(falsePos).slice(0, 200)}` : '',
+      missed.length ? `該抓沒抓到：${show(missed).slice(0, 200)}` : '',
+      falsePos.length ? `不該抓卻抓了：${show(falsePos).slice(0, 200)}` : '',
     ].filter(Boolean).join('；'));
 }
 

@@ -887,6 +887,77 @@ const MUTATIONS = [
     replace: '    if (false) { return; }',
     test: 'insighttest',
   },
+  // ---- M6：匯出／匯入、集中度、版面 ----
+  {
+    name: '匯入時把認不得的 store 當成沒看到',
+    why: '夾帶 secrets 的備份檔會被靜默接受。雖然 applyImport 只走 EXPORTABLE_STORES 不會真的寫進去，'
+      + '但「悄悄忽略」跟「明確拒絕」對使用者是兩回事 —— 他會以為整份都匯入了。',
+    file: 'js/backup.js',
+    find: '  if (unknown.length) {',
+    replace: '  if (false) {',
+    test: 'backuptest',
+  },
+  {
+    name: '匯入時連 secrets 也一起寫',
+    why: '別人傳來的備份檔就能覆蓋掉你這台裝置上的 API 金鑰。',
+    file: 'js/backup.js',
+    find: `  for (const store of db.EXPORTABLE_STORES) {
+    const rows = Array.isArray(data[store]) ? data[store] : [];`,
+    replace: `  for (const store of [...db.EXPORTABLE_STORES, 'secrets']) {
+    const rows = Array.isArray(data[store]) ? data[store] : [];`,
+    test: 'backuptest',
+  },
+  {
+    name: '匯出時連 secrets 也一起倒出來',
+    why: '備份檔會夾帶 API 金鑰 —— 傳給別人或放進雲端硬碟的那一刻就外洩了。',
+    file: 'js/backup.js',
+    find: `  for (const store of db.EXPORTABLE_STORES) {
+    const rows = await db.getAll(store);`,
+    replace: `  for (const store of [...db.EXPORTABLE_STORES, 'secrets']) {
+    const rows = await db.getAll(store);`,
+    test: 'backuptest',
+  },
+  {
+    name: '匯入不先清空（變成合併）',
+    why: '講好是取代就要真的取代。殘留舊資料會讓股數重複計算，而且使用者完全看不出來。',
+    file: 'js/backup.js',
+    find: `    await db.clear(store);
+    for (const row of rows) await db.put(store, row);`,
+    replace: '    for (const row of rows) await db.put(store, row);',
+    test: 'backuptest',
+  },
+  {
+    name: '集中度把算不出市值的持股當成 0',
+    why: '分母會多出幾檔 0 元的，百分比看起來很精準其實是錯的；而且使用者不知道有幾檔沒算到。',
+    file: 'js/concentration.js',
+    find: `    if (close == null) { excluded.push({ code: hd.code, why: '沒有收盤價' }); continue; }`,
+    replace: `    if (close == null) { parts.push(0n); continue; }`,
+    test: 'concentrationtest',
+  },
+  {
+    name: '集中度把不支援報價的持股也算進去',
+    why: '上櫃股票的價格這個版本抓不到，硬算會得到一個看起來合理但錯誤的佔比。',
+    file: 'js/concentration.js',
+    find: `    if (hd.supported === false) { excluded.push({ code: hd.code, why: '不支援報價' }); continue; }`,
+    replace: '    if (false) { continue; }',
+    test: 'concentrationtest',
+  },
+  {
+    name: '佔比改用浮點數算',
+    why: '各項加起來會變成 99.9 或 100.1，使用者一看就知道哪裡不對，但看不出是哪裡。',
+    file: 'js/concentration.js',
+    find: '  return Number((partMicro * 1000n) / totalMicro) / 10;',
+    replace: '  return Math.round((Number(partMicro) / Number(totalMicro)) * 1000) / 10.0000001;',
+    test: 'concentrationtest',
+  },
+  {
+    name: '條狀圖的寬度不夾在 0–100%',
+    why: '超過 100% 的填色會撐爆容器，在窄螢幕或特大字級下把旁邊的文字擠出畫面。',
+    file: 'js/views/holdings.js',
+    find: String.raw`      h('div', { class: 'bar-fill', style: ` + '`width: ${Math.max(0, Math.min(100, pct))}%`' + String.raw` })),`,
+    replace: String.raw`      h('div', { class: 'bar-fill', style: ` + '`width: ${pct * 3}%`' + String.raw` })),`,
+    test: 'layouttest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
