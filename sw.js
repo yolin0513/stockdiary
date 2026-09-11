@@ -6,7 +6,7 @@
  *
  * 每次改動任何 SHELL 檔案都要 bump VERSION，否則使用者拿到的還是舊程式。
  */
-const VERSION = 'stockdiary-v0.2.0';
+const VERSION = 'stockdiary-v0.3.0';
 const SHELL = `${VERSION}-shell`;
 
 const SHELL_ASSETS = [
@@ -30,9 +30,12 @@ const SHELL_ASSETS = [
   './js/prices.js',
   './js/twseclient.js',
   './js/update.js',
+  './js/dividend.js',
+  './js/events.js',
   './js/views/home.js',
   './js/views/holdings.js',
   './js/views/holding.js',
+  './js/views/dividends.js',
   './js/views/settings.js',
   './data/stocks.json',
   './data/calendar.json',

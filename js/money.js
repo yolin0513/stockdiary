@@ -84,3 +84,55 @@ export function ratio(numeratorMicro, denominatorMicro) {
   if (denominatorMicro === 0n) return null;
   return Number(numeratorMicro) / Number(denominatorMicro);
 }
+
+// ---------- 比微元更細的比率 ----------
+//
+// 無償配股率有到小數第八位（實測「0.04999999」＝每仟股配 49.99999 股）。
+// 換成微元（小數第六位）會被進位成 0.05，1000 股就從「49 股 ＋ 餘 0.99999 股」
+// 變成「50 股」—— 多算一股，而且餘數的現金找零也消失了。
+// 所以比率用 1e-9 的刻度，金額才在最後一步換回微元。
+
+export const NANO = 1000000000n;
+
+/** 數字或字串 → BigInt 奈刻度（1e-9）。無效值回 null。 */
+export function toNano(x) {
+  if (x == null) return null;
+  if (typeof x === 'bigint') return x;
+  let n;
+  if (typeof x === 'number') n = x;
+  else {
+    const s = String(x).trim();
+    if (s === '') return null;
+    n = Number(s);
+  }
+  if (!Number.isFinite(n)) return null;
+  return BigInt(Math.round(n * 1e9));
+}
+
+/**
+ * 股數 × 每股金額 → 微元，每股金額用奈刻度算再收斂成微元（四捨五入）。
+ * 直接用微元乘的話，每股 0.80047712 這種八位小數會先被截掉兩位。
+ */
+export function mulSharesPrecise(shares, perShare) {
+  const nano = toNano(perShare);
+  if (shares == null || nano == null) return null;
+  const total = BigInt(Math.round(shares)) * nano;   // 單位：1e-9 元
+  // 1e-9 → 1e-6，四捨五入
+  const neg = total < 0n;
+  const abs = neg ? -total : total;
+  const q = abs / 1000n;
+  const r = abs % 1000n;
+  const out = r * 2n >= 1000n ? q + 1n : q;
+  return neg ? -out : out;
+}
+
+/** 股數 × 配股率 → { 整股, 餘數（股，小數） }，全程奈刻度，不進位。 */
+export function sharesTimesRate(shares, rate) {
+  const nano = toNano(rate);
+  if (shares == null || nano == null) return { whole: null, fraction: null };
+  const total = BigInt(Math.round(shares)) * nano;   // 單位：1e-9 股
+  return {
+    whole: Number(total / NANO),
+    fraction: Number(total % NANO) / 1e9,
+  };
+}

@@ -8,7 +8,8 @@
 
 import * as db from './db.js';
 import { parseStockDayAll, parseStockDay } from './twse.js';
-import { isoToYyyymmdd } from './roc.js';
+import { isoToYyyymmdd, isoToRocCompact } from './roc.js';
+import { parseTwt48u, parseTwt49u } from './dividend.js';
 
 const BASE = 'https://www.twse.com.tw';
 export const URL_DAY_ALL = `${BASE}/rwd/zh/afterTrading/STOCK_DAY_ALL?response=json`;
@@ -108,4 +109,20 @@ export async function buildQuotes({ codes, date, prevDate, dayAllQuotes = null }
     out[code] = q;
   }
   return out;
+}
+
+// ---------- 除權息 ----------
+
+export const URL_TWT48U = `${BASE}/exchangeReport/TWT48U?response=json`;
+// strDate／endDate 實測**沒有作用**（要求任何區間都回「最近一次」的結果），
+// 但還是照證交所的介面把參數帶上，免得哪天它又生效時我們拿到的是全表。
+export const urlTwt49u = (fromIso, toIso) =>
+  `${BASE}/exchangeReport/TWT49U?response=json&strDate=${isoToRocCompact(fromIso)}&endDate=${isoToRocCompact(toIso)}`;
+
+export async function fetchTwt48u(client) {
+  return parseTwt48u(await client.getJson(URL_TWT48U));
+}
+
+export async function fetchTwt49u(client, fromIso, toIso) {
+  return parseTwt49u(await client.getJson(urlTwt49u(fromIso, toIso)));
 }

@@ -9,6 +9,7 @@
 import { h, num, moneyNode, fmtMoneyMicro, fmtPrice, fmtShares, fmtPct, fmtDate, toast, NO_VALUE } from '../ui.js';
 import * as store from '../store.js';
 import * as holdings from '../holdings.js';
+import * as events from '../events.js';
 import { computeUnrealized, exclusionNote, partialCostNote, STATUS_TEXT } from '../settle.js';
 import { STATUS } from '../update.js';
 import { setTop, render } from '../app.js';
@@ -18,8 +19,10 @@ export default async function home() {
 
   const held = await holdings.list();
   const upd = store.lastUpdate();
-  const settleDate = await store.lastSettledDate();
-  const settled = settleDate ? await store.loadSettle(settleDate) : null;
+  // 顯示用的是「最後一筆結算紀錄」，不是「最後一次算得出東西的日子」——
+  // 一檔都算不出來的那天也要看得到原因（例如在等除權息參考價）。
+  const settled = await store.latestSettle();
+  const settleDate = settled?.date ?? null;
 
   // 未實現損益用「最後結算日的收盤價」，不用任何別的來源
   const quotes = {};
@@ -27,14 +30,47 @@ export default async function home() {
     if (row.close != null) quotes[row.code] = { close: row.close };
   }
   const unreal = computeUnrealized({ holdings: held, quotes });
+  const pendingEvents = await events.pending();
+  const divSummary = await events.summary({ year: new Date().getFullYear() });
 
   render([
+    pendingEvents.length ? pendingBanner(pendingEvents) : null,
     dayPLCard(settled, settleDate, upd),
     marketValueCard(settled),
     unrealizedCard(unreal, held),
+    dividendCard(divSummary),
     statusCard(upd, settleDate),
     holdingsCard(held, settled),
-  ]);
+  ].filter(Boolean));
+}
+
+/** 有待確認的除權息事件時，首頁最上面提示一下（PLAN §2.2 第 6 點）。 */
+function pendingBanner(list) {
+  return h('a', { class: 'banner', href: '#/dividends', dataset: { card: 'pendingBanner' } },
+    h('span', { class: 'banner-icon' }, '💰'),
+    h('span', { class: 'banner-body' },
+      `有 ${list.length} 筆除權息等你確認`,
+      h('span', { class: 'muted sm banner-sub' }, '對照券商通知確認後才會計入累積已領股利'),
+    ),
+    h('span', { class: 'banner-go' }, '›'),
+  );
+}
+
+/** 累積已領股利。一筆都還沒確認過就顯示「—」，不顯示 0。 */
+function dividendCard(s) {
+  if (s.counted === 0 && s.unknown === 0) return null;
+  return h('section', { class: 'card', dataset: { card: 'dividendTotal' } },
+    h('h2', { class: 'card-title' }, '累積已領股利'),
+    h('p', { class: 'mid-number' },
+      s.totalMicro != null ? num(fmtMoneyMicro(s.totalMicro)) : num(NO_VALUE, 'v-none')),
+    h('p', { class: 'muted sm' },
+      `${new Date().getFullYear()} 年 `,
+      num(s.yearMicro != null ? fmtMoneyMicro(s.yearMicro) : NO_VALUE), ' 元'),
+    s.unknown > 0
+      ? h('p', { class: 'warn sm' }, `另有 ${s.unknown} 筆已確認但沒有填金額，不計入總計`)
+      : null,
+    h('a', { class: 'btn', href: '#/dividends' }, '看股利明細'),
+  );
 }
 
 function dayPLCard(settled, settleDate, upd) {
@@ -52,6 +88,15 @@ function dayPLCard(settled, settleDate, upd) {
       ? h('p', { class: 'muted sm' }, `結算日：${fmtDate(settleDate)}`)
       : h('p', { class: 'muted sm' }, '尚未結算過'),
     pending ? h('p', { class: 'sm warn' }, '今日收盤尚未公布') : null,
+    // 這一天有持股除權息 → 基準價用的是除權息參考價，要講出來，
+    // 不然使用者會拿自己記的「昨天收盤」去對，怎麼算都對不上。
+    (settled?.byCode ?? []).some((r) => r.basisSource === 'refPrice')
+      ? h('p', { class: 'muted sm' }, h('span', { class: 'tag' }, '含除息調整'),
+        ' 有持股在這一天除權息，基準價用證交所的除權息參考價')
+      : null,
+    (settled?.byCode ?? []).some((r) => r.status === 'exNoRef')
+      ? h('p', { class: 'warn sm' }, '有持股在這一天除權息，但尚未取得參考價，這一檔沒有計入當日損益')
+      : null,
     settled?.dividendMicro != null
       ? h('p', { class: 'muted sm' },
         settled.includeDividend === false ? '當日應收股利（未計入）' : '其中當日應收股利',

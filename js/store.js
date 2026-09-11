@@ -91,3 +91,5 @@ function runUpdate({ force = false, onProgress } = {}) {
 export async function holdings() { return db.getAll('holdings'); }
 export async function lastSettledDate() { return updater.lastSettledDate(); }
 export async function loadSettle(date) { return updater.loadSettle(date); }
+/** 最後一筆結算紀錄（不管算不算得出東西）——畫面用這個才講得出「卡在哪裡」。 */
+export async function latestSettle() { return updater.latestSettleRecord(); }

@@ -11,9 +11,46 @@ export default async function settings() {
 
   mount(document.getElementById('view'),
     fontSection(),
+    dividendSection(),
     thresholdSection(),
     dataSection(),
     aboutSection(),
+  );
+}
+
+/** 除權息相關的兩個開關（PLAN §1：含應收股利預設開、自動扣費預設關）。 */
+function dividendSection() {
+  return h('section', { class: 'card', dataset: { card: 'dividendSettings' } },
+    h('h2', { class: 'card-title' }, '股利'),
+    toggleRow({
+      key: 'dayPLIncludeDividend',
+      label: '當日損益含當日除息的應收股利',
+      hint: '除息當天股價會扣掉息值，如果不把應收股利加回來，那天的當日損益看起來就像平白虧了一筆。',
+    }),
+    toggleRow({
+      key: 'dividendAutoFees',
+      label: '自動扣匯費與補充保費',
+      hint: '開啟後，確認股利時會預填「扣匯費 10 元；單筆達 20,000 元再扣 2.11% 二代健保補充保費」。' +
+        '各家券商與股務代理的作法不同，預設關閉；不管開或關，確認時都可以直接改成實際入帳金額。',
+    }),
+  );
+}
+
+function toggleRow({ key, label, hint }) {
+  const on = prefs.get(key) === true;
+  const btn = h('button', {
+    class: 'chip' + (on ? ' on' : ''),
+    role: 'switch',
+    'aria-checked': on ? 'true' : 'false',
+    dataset: { pref: key },
+    onclick: async () => { await prefs.set(key, !on); settings(); },
+  }, on ? '開啟' : '關閉');
+  return h('div', { class: 'pref-row' },
+    h('div', { class: 'pref-main' },
+      h('p', { class: 'pref-label' }, label),
+      h('p', { class: 'muted sm' }, hint),
+    ),
+    btn,
   );
 }
 

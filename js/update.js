@@ -12,6 +12,7 @@
 import * as db from './db.js';
 import * as holdings from './holdings.js';
 import * as prices from './prices.js';
+import * as events from './events.js';
 import { settleDay } from './settle.js';
 import { missingTradingDays, prevTradingDay, latestPublishedTradingDay, todayPending } from './market.js';
 import { localISODate } from './roc.js';
@@ -49,24 +50,32 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
   const missing = missingTradingDays(calendar, lastSettled, expected);
   const pendingToday = todayPending(calendar, now, threshold);
 
+  const supportedCodes = held.filter((h) => h.supported).map((h) => h.code);
+  const settled = [];
+  const problems = [];
+
+  // 除權息日曆**每次開頁都更新**（PLAN §2.2 第 4 點），不是只有要結算的時候。
+  // 放在結算之前，除權息日的參考價才來得及進到 quotes 裡。
+  // 只有兩個請求，對 30 個的額度沒有壓力。
+  await syncDividendEvents({ client, held, today: expected, problems });
+
   if (missing.length === 0) {
     return {
       status: pendingToday ? STATUS.TODAY_PENDING : STATUS.UP_TO_DATE,
       settled: [],
       lastSettled,
       expected,
+      problems: problems.length ? problems : undefined,
+      pendingEvents: (await events.pending()).length,
       message: pendingToday
         ? `今日收盤尚未公布（最後結算：${lastSettled ?? '無'}）`
         : `已結算到 ${expected}`,
     };
   }
 
-  const supportedCodes = held.filter((h) => h.supported).map((h) => h.code);
-  const settled = [];
-  const problems = [];
-
   // ---- 只缺「最新那一天」：一個請求拿全市場 ----
   if (missing.length === 1 && missing[0] === expected) {
+    // problems 在這條路徑上也要有（除權息抓不到不該讓整次更新失敗）
     onProgress({ done: 0, total: 1, label: '取得今日收盤' });
     let dayAll;
     try {
@@ -90,7 +99,12 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
     const r = await settleOneDay({ date: expected, held, calendar, dayAllQuotes: dayAll.quotes, includeDividend });
     settled.push(r.date);
     onProgress({ done: 1, total: 1, label: '完成' });
-    return { status: STATUS.SETTLED, settled, expected, result: r.result, message: `已結算 ${expected}` };
+    return {
+      status: STATUS.SETTLED, settled, expected, result: r.result,
+      problems: problems.length ? problems : undefined,
+      pendingEvents: (await events.pending()).length,
+      message: `已結算 ${expected}`,
+    };
   }
 
   // ---- 缺多天：每檔持股抓需要的月份 ----
@@ -122,10 +136,41 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
     settled,
     expected,
     problems,
+    pendingEvents: (await events.pending()).length,
     message: problems.length
       ? `補了 ${settled.length} 天，${problems.length} 項沒補到`
       : `補了 ${settled.length} 天，已結算到 ${expected}`,
   };
+}
+
+/**
+ * 更新除權息事件：TWT48U 建未來事件與日曆，TWT49U 補參考價。
+ *
+ * 這兩個請求失敗不該讓整次更新失敗 —— 收盤價才是主線。抓不到就把原因記進
+ * problems，畫面上說「除權息資料尚未取得」，不會因此少算或亂算當日損益
+ * （沒有參考價的除權息日，settle.js 會標 exNoRef 而不是硬拿前收當基準）。
+ */
+async function syncDividendEvents({ client, held, today, problems }) {
+  if (!held.some((h) => h.supported)) return;
+
+  try {
+    const forecast = await prices.fetchTwt48u(client);
+    if (forecast.ok) await events.syncForecast(forecast.rows, { held, today });
+    else problems.push(`除權息預告表：${forecast.message}`);
+  } catch (e) {
+    problems.push(`除權息預告表：${describeError(e)}`);
+    if (e && e.name === 'BudgetExceededError') return;
+  }
+
+  try {
+    // TWT49U 的日期參數實測無效，它永遠回「最近一次」的結果。
+    // 參數照帶，但拿到什麼就用什麼 —— 只有持股裡有、日期也對得上的才會被採用。
+    const result = await prices.fetchTwt49u(client, today, today);
+    if (result.ok) await events.applyResults(result.rows, { held });
+    else problems.push(`除權息結果表：${result.message}`);
+  } catch (e) {
+    problems.push(`除權息結果表：${describeError(e)}`);
+  }
 }
 
 async function saveDayAllCloses(dayAll, codes) {
@@ -143,6 +188,12 @@ export async function settleOneDay({ date, held, calendar, dayAllQuotes = null, 
   const prevDate = prevTradingDay(calendar, date);
   const codes = held.map((h) => h.code);
   const quotes = await prices.buildQuotes({ codes, date, prevDate, dayAllQuotes });
+
+  // 這一天有除權息的，基準價要改用參考價（settle.basisFor 只認參考價，拿不到就不算）。
+  const extras = await events.quoteExtrasFor({ codes, date });
+  for (const [code, extra] of Object.entries(extras)) {
+    quotes[code] = { ...(quotes[code] ?? {}), ...extra };
+  }
 
   // 那一天手上有幾股 —— 用變動紀錄回推，不能用現在的股數
   const asOf = [];
@@ -172,12 +223,29 @@ export async function settleOneDay({ date, held, calendar, dayAllQuotes = null, 
   return { date, result };
 }
 
+/**
+ * 最後一次**真的算出東西**的結算日。全部都是 null 的「結算」不算結算過 ——
+ * 回 null 的話下次開頁會再試一次那一天（例如在等除權息參考價出來）。
+ */
 export async function lastSettledDate() {
   const rows = await db.getAll('settle');
-  // 只認真的算出東西的那幾天。全部都是 null 的「結算」不算結算過。
   const useful = rows.filter((r) => r.counted > 0);
   if (!useful.length) return null;
   return useful.map((r) => r.date).sort().at(-1);
+}
+
+/**
+ * 最後一筆結算紀錄，**不管算不算得出東西**。
+ *
+ * 畫面要用這個而不是 lastSettledDate()：一檔都算不出來的那天（例如唯一的持股
+ * 剛好除權息、參考價還沒出來）也有一筆紀錄，裡面寫著每一檔卡在哪裡。
+ * 用 lastSettledDate() 的話畫面會整片空白，使用者不知道發生什麼事。
+ */
+export async function latestSettleRecord() {
+  const rows = await db.getAll('settle');
+  if (!rows.length) return null;
+  const date = rows.map((r) => r.date).sort().at(-1);
+  return loadSettle(date);
 }
 
 export async function loadSettle(date) {

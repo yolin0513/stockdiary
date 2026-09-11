@@ -376,3 +376,44 @@ body {
 .form-hint { margin: 0; }
 .preview { min-height: 1.6em; }
 .preview p { margin: 4px 0; }
+
+/* ---------- 設定頁的開關列（M2） ---------- */
+.pref-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.card > .pref-row:first-of-type { border-top: 0; }
+.pref-main { flex: 1 1 60%; min-width: 0; }
+.pref-label { margin: 0 0 4px; font-weight: 600; }
+
+.btn-sm { padding: 6px 12px; min-height: 36px; font-size: 0.9em; }
+
+/* ---------- 首頁頂部提示（M2） ---------- */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px var(--pad);
+  border-radius: var(--radius);
+  background: #2a3348;
+  border: 1px solid var(--gold);
+  text-decoration: none;
+  color: inherit;
+  min-height: 56px;
+}
+.banner-icon { font-size: 1.4em; line-height: 1; flex: 0 0 auto; }
+.banner-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.banner-sub { display: block; }
+.banner-go { font-size: 1.5em; line-height: 1; color: var(--fg-muted); flex: 0 0 auto; }
+
+/* 清單列底下的整行說明（除權息的細節句子會很長） */
+.row-note {
+  flex: 1 1 100%;
+  margin: 0;
+  order: 10;
+  overflow-wrap: anywhere;
+}

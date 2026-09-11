@@ -39,12 +39,34 @@ const DEMO_HOLDINGS = [
   { code: '6488', shares: 500, date: '2026-03-02' },
 ];
 
+const rocChars = (iso) => {
+  const [y, m, d] = iso.split('-');
+  return `${Number(y) - 1911}年${m}月${d}日`;
+};
+const TWT48U = {
+  stat: 'OK',
+  fields: ['除權除息日期', '股票代號', '名稱', '除權息', '無償配股率', '現金增資配股率', '現金增資認購價', '現金股利',
+    '詳細資料', '參考價<br>試算', '最近一次申報資料 季別/日期', '最近一次申報每股 (單位)淨值', '最近一次申報每股 (單位)盈餘'],
+  data: [
+    [rocChars(EXPECTED), '2330', '台積電', '息', '0.00000000', '0.00000000', '0.00000000', '5.00000000', '', '', '', '', ''],
+    ['115年10月16日', '2317', '鴻海', '息', '0.00000000', '0.00000000', '0.00000000', '5.80000000', '', '', '', '', ''],
+  ],
+};
+const TWT49U = {
+  stat: 'OK',
+  fields: ['資料日期', '股票代號', '股票名稱', '除權息前收盤價', '除權息參考價', '權值+息值', '權/息',
+    '漲停價格', '跌停價格', '開盤競價基準', '減除股利參考價', '詳細資料',
+    '最近一次申報資料 季別/日期', '最近一次申報每股 (單位)淨值', '最近一次申報每股 (單位)盈餘'],
+  data: [[rocChars(EXPECTED), '2330', '台積電', '2455.00', '2450.00', '5.000000', '息', '2700.00', '2210.00', '2450.00', '2450.00', '', '', '', '']],
+};
+
 const SHOTS = demo
   ? [
     { name: 'home', hash: '#/', wait: '#view .big-number' },
     { name: 'holdings', hash: '#/holdings', wait: '#view .rows' },
     { name: 'holding-detail', hash: '#/holdings/2330', wait: '#view .card' },
     { name: 'holding-unsupported', hash: '#/holdings/6488', wait: '#view .card' },
+    { name: 'dividends', hash: '#/dividends', wait: '#view .card' },
     { name: 'settings', hash: '#/settings', wait: '#view .chip-row' },
   ]
   : [
@@ -73,15 +95,17 @@ try {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
   if (demo) {
-    await page.evaluateOnNewDocument((csv) => {
+    await page.evaluateOnNewDocument((csv, f48, f49) => {
       const real = window.fetch.bind(window);
       window.fetch = async (input, init) => {
         const url = String(input && input.url ? input.url : input);
         if (!url.includes('twse.com.tw')) return real(input, init);
         if (url.includes('STOCK_DAY_ALL')) return new Response(csv, { status: 200 });
+        if (url.includes('TWT48U')) return new Response(JSON.stringify(f48), { status: 200 });
+        if (url.includes('TWT49U')) return new Response(JSON.stringify(f49), { status: 200 });
         return new Response(JSON.stringify({ stat: '很抱歉，沒有符合條件的資料!', total: 0 }), { status: 200 });
       };
-    }, CSV);
+    }, CSV, TWT48U, TWT49U);
   }
 
   await page.goto(base, { waitUntil: 'networkidle0' });

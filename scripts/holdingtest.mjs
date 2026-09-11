@@ -252,9 +252,16 @@ try {
     [...document.querySelectorAll('.modal-actions .btn')].find((b) => b.textContent === '取消')?.click();
   });
 
-  section('請求次數');
-  const calls = await page.evaluate(() => window.__twseCalls.length);
-  ok(calls <= 2, `這一輪只打了 ${calls} 次證交所（只缺一天時應該只要 1 次）`);
+  section('請求次數與對象');
+  // 只缺一天時，全市場收盤只要打一次（不是每檔打一次），
+  // 另外加上除權息的預告表與結果表，總共三個。
+  const calls = await page.evaluate(() => window.__twseCalls);
+  const count = (rx) => calls.filter((u) => rx.test(u)).length;
+  eq(count(/STOCK_DAY_ALL/), 1, '全市場收盤只打一次');
+  eq(count(/TWT48U/), 1, '除權息預告表打一次');
+  eq(count(/TWT49U/), 1, '除權息結果表打一次');
+  eq(count(/STOCK_DAY\?/), 0, '只缺一天時不需要逐檔抓當月逐日');
+  eq(calls.length, 3, `總共 3 個請求（實際：${calls.length}）`);
 
   section('沒有頁面錯誤');
   eq(pageErrors.filter((t) => !/favicon|503|Failed to load resource/i.test(t)), [], '沒有未預期的錯誤');
