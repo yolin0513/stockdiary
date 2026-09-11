@@ -15,7 +15,7 @@
 // 改版本號用 `npm run bump -- <版本>`，它會一次改完三個地方；
 // shelltest 會斷言三者一致，漏改一個就紅。
 
-export const APP_VERSION = 'stockdiary-v0.5.3';
+export const APP_VERSION = 'stockdiary-v0.6.0';
 
 /** 給動態 import 與資源網址用的版本參數。 */
 export const V = `?v=${APP_VERSION}`;

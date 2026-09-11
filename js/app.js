@@ -19,6 +19,7 @@ route('/holdings', async () => (await import(`./views/holdings.js${V}`)).default
 route('/holdings/:code', async ({ params }) => (await import(`./views/holding.js${V}`)).default(params.code));
 route('/plans', async () => (await import(`./views/plans.js${V}`)).default());
 route('/dividends', async () => (await import(`./views/dividends.js${V}`)).default());
+route('/news', async () => (await import(`./views/news.js${V}`)).default());
 route('/calc', async () => (await import(`./views/calc.js${V}`)).default());
 route('/settings', async () => (await import(`./views/settings.js${V}`)).default());
 /**

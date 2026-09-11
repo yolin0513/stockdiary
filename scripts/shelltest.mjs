@@ -339,6 +339,7 @@ try {
     '/holdings/:code': '持股',
     '/plans': '定期定額',
     '/dividends': '股利',
+    '/news': '新聞',
     '/calc': '定期定額試算',
     '/settings': '設定',
   };

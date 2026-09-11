@@ -41,9 +41,17 @@ export default async function home() {
     marketValueCard(settled),
     unrealizedCard(unreal, held),
     dividendCard(divSummary),
+    newsCard(),
     statusCard(upd, settleDate),
     holdingsCard(held, settled),
   ].filter(Boolean));
+}
+
+/** 進新聞頁的入口。新聞不進底部分頁（那五格是每天一定會看的），放在總覽上。 */
+function newsCard() {
+  return h('a', { class: 'card card-link', href: '#/news', dataset: { card: 'newsEntry' } },
+    h('h2', { class: 'card-title' }, '新聞'),
+    h('p', { class: 'muted sm' }, '台股與國際財經標題，只顯示標題與連結，點了到原站看。'));
 }
 
 /** 有待確認的除權息事件時，首頁最上面提示一下（PLAN §2.2 第 6 點）。 */

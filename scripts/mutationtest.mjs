@@ -678,6 +678,72 @@ const MUTATIONS = [
     replace: "  document.getElementById('topTitle')",
     test: 'racetest',
   },
+  // ---- M5：新聞 ----
+  {
+    name: '未明示允許 AI 輸入的來源也拿去餵模型',
+    why: 'ltn／yahoo 的 robots 沒有明示允許 AI 輸入。放寬這個過濾，等於拿別人明確沒答應的內容去餵模型。'
+      + '使用者已經定調：未標記允許的來源連標題都不進 prompt。',
+    file: 'js/news.js',
+    find: `  const allowed = new Set(SOURCES.filter((s) => s.aiInput).map((s) => s.id));`,
+    replace: '  const allowed = new Set(SOURCES.map((s) => s.id));',
+    test: 'newstest',
+  },
+  {
+    name: '解析 RSS 時順手把內文也收進來',
+    why: 'PLAN §7.1：只存標題、連結、來源、時間，不重製全文。收了內文就是轉載別人的文章。',
+    file: 'js/rss.js',
+    find: "    out.push({ title, link, publishedAt: publishedOf(block) });",
+    replace: "    out.push({ title, link, publishedAt: publishedOf(block), description: text(tagContent(block, 'description')) });",
+    test: 'newstest',
+  },
+  {
+    name: '新聞時間解析不出來就當成現在',
+    why: '會讓一則不知道什麼時候發的舊聞，在畫面上顯示成「剛剛」。',
+    file: 'js/rss.js',
+    find: `  return null;
+}
+
+/**
+ * 解析一份 RSS／Atom`,
+    replace: `  return new Date().toISOString();
+}
+
+/**
+ * 解析一份 RSS／Atom`,
+    test: 'newstest',
+  },
+  {
+    name: '同一則新聞每次重抓都算成新的一筆',
+    why: 'id 改用流水號的話，同一則在多次抓取之間會變成好幾筆，清單會被同樣的標題灌爆。',
+    file: 'js/news.js',
+    find: '  for (const it of [...(oldItems ?? []), ...(newItems ?? [])]) byId.set(it.id, it);',
+    replace: '  for (const it of [...(oldItems ?? []), ...(newItems ?? [])]) byId.set(it.id + Math.random(), it);',
+    test: 'newstest',
+  },
+  {
+    name: '新聞不做 14 天清理',
+    why: '只存標題連結也一樣 —— 講好保留 14 天就要真的清掉，不然 IndexedDB 會一直長。',
+    file: 'js/news.js',
+    find: '  const stale = all.filter((r) => r.date < cutoffDate);',
+    replace: '  const stale = [];',
+    test: 'newstest',
+  },
+  {
+    name: '30 分鐘節流失效，每次開頁都重抓六家',
+    why: '對六個來源連打，而且沒有必要 —— 新聞不會每分鐘都變。',
+    file: 'js/news.js',
+    find: '    const fresh = last && now.getTime() - Date.parse(last) < REFETCH_MS;',
+    replace: '    const fresh = false;',
+    test: 'newstest',
+  },
+  {
+    name: '外部來源的 javascript: 連結照收',
+    why: '外部資料流進畫面的連結必須只收 http(s)。收了 javascript: 就是讓別人的 RSS 決定按下去會執行什麼。',
+    file: 'js/rss.js',
+    find: String.raw`    if (cand && /^https?:\/\//i.test(cand)) return cand;`,
+    replace: '    if (cand) return cand;',
+    test: 'newstest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
