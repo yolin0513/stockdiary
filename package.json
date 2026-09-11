@@ -22,9 +22,15 @@
     "datatest": "node scripts/datatest.mjs",
     "shelltest": "node scripts/shelltest.mjs",
     "mutationtest": "node scripts/mutationtest.mjs",
-    "test": "node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/mutationtest.mjs",
+    "test": "node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/settletest.mjs && node scripts/changestest.mjs && node scripts/throttletest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/holdingtest.mjs && node scripts/mutationtest.mjs",
     "livecheck": "node scripts/livecheck.mjs",
-    "observe-publish-time": "node scripts/observe-twse-publish-time.mjs"
+    "observe-publish-time": "node scripts/observe-twse-publish-time.mjs",
+    "settletest": "node scripts/settletest.mjs",
+    "changestest": "node scripts/changestest.mjs",
+    "throttletest": "node scripts/throttletest.mjs",
+    "holdingtest": "node scripts/holdingtest.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "devDependencies": {
     "puppeteer": "^23.0.0",

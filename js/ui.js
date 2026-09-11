@@ -5,6 +5,8 @@
 //      h() 沒有、也不會有 `html:` prop。要顯示什麼就傳字串，它就只是字。
 //   2. 網址屬性走白名單，javascript: / data:text 之類進不來。
 
+import { toYuan } from './money.js';
+
 const SAFE_URL = /^(https?:|blob:|mailto:|tel:|#|\.?\/|data:image\/)/i;
 const URL_ATTRS = new Set(['href', 'src', 'xlink:href', 'formaction', 'action', 'poster']);
 
@@ -126,4 +128,25 @@ export function fmtDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? ''));
   if (!m) return NO_VALUE;
   return `${Number(m[2])}/${Number(m[3])}`;
+}
+
+// ---------- 微元（BigInt）的顯示 ----------
+//
+// 金額在程式裡一律是 BigInt 微元（見 money.js）。畫面上每一個金額、價格、
+// 報酬率都包在 <span class="num"> 裡 —— 測試靠這個 class 斷言
+// 「不支援報價的持股，那一列連一個數字都沒有」。
+
+export function num(text, extraClass = '') {
+  return h('span', { class: 'num' + (extraClass ? ' ' + extraClass : '') }, text);
+}
+
+export function fmtMoneyMicro(micro, opts) {
+  return fmtMoney(micro == null ? null : toYuan(micro), opts);
+}
+
+/** 金額節點。正負會帶上對應的 class（顏色由 CSS 決定，AI 文字區塊不用這個）。 */
+export function moneyNode(micro, { sign = true } = {}) {
+  const v = micro == null ? null : toYuan(micro);
+  const cls = v == null ? 'v-none' : v > 0 ? 'v-up' : v < 0 ? 'v-down' : 'v-flat';
+  return num(fmtMoney(v, { sign }), cls);
 }

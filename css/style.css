@@ -49,8 +49,9 @@ body {
   align-items: center;
   gap: 8px;
   padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--pad) 10px;
-  background: rgba(16, 22, 31, 0.92);
-  backdrop-filter: blur(8px);
+  /* 不透明背景 ＋ 不用 backdrop-filter：深色主題下看不出差別，但少一層合成層，
+     截圖與部分瀏覽器的 position:fixed 合成假影也一起消失。 */
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 
@@ -165,8 +166,7 @@ body {
   bottom: 0;
   z-index: 20;
   display: flex;
-  background: rgba(16, 22, 31, 0.96);
-  backdrop-filter: blur(8px);
+  background: var(--bg);
   border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -295,3 +295,84 @@ body {
   min-height: 40px;
   cursor: pointer;
 }
+
+/* ---------- 數字、漲跌、清單列（M1） ---------- */
+
+/* 所有「報價相關的數字」都包在 .num 裡。測試靠這個 class 斷言
+   「不支援報價的持股，那一列連一個 .num 都沒有」。 */
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* 漲跌顏色：台股習慣紅漲綠跌。AI 文字區塊不用這組顏色（PLAN §7.2）。 */
+.v-up { color: #ff8080; }
+.v-down { color: #6fd3a4; }
+.v-flat { color: var(--fg); }
+.v-none { color: var(--fg-muted); }
+
+.mid-number {
+  margin: 0;
+  font-size: 1.5em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.warn { color: var(--gold); }
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-card-2);
+  border: 1px solid var(--line);
+  font-size: 0.78em;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.tag-warn { color: var(--gold); border-color: var(--gold); }
+
+.rows { display: flex; flex-direction: column; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+  min-height: 52px;
+}
+.rows > .row:first-child { border-top: 0; }
+
+.row-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
+.row-code { font-weight: 700; font-variant-numeric: tabular-nums; }
+.row-name { color: var(--fg-muted); overflow-wrap: anywhere; }
+.row-mid { flex: 0 0 auto; }
+.row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  text-align: right;
+}
+
+.link-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  padding: 6px 2px;
+  min-height: 32px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.form { display: flex; flex-direction: column; gap: 6px; }
+.form label { margin-top: 6px; }
+.form-hint { margin: 0; }
+.preview { min-height: 1.6em; }
+.preview p { margin: 4px 0; }

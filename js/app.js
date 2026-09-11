@@ -33,6 +33,7 @@ document.getElementById('backBtn').addEventListener('click', () => back('/'));
 // ---------- 底部分頁 ----------
 const TABS = [
   { icon: '📈', label: '總覽', path: '/' },
+  { icon: '📋', label: '持股', path: '/holdings' },
   { icon: '⚙️', label: '設定', path: '/settings' },
 ];
 
@@ -54,6 +55,8 @@ window.addEventListener('hashchange', renderTabs);
 
 // ---------- 路由 ----------
 route('/', async () => (await import('./views/home.js')).default());
+route('/holdings', async () => (await import('./views/holdings.js')).default());
+route('/holdings/:code', async ({ params }) => (await import('./views/holding.js')).default(params.code));
 route('/settings', async () => (await import('./views/settings.js')).default());
 setNotFound(() => navigate('/', { replace: true }));
 
@@ -66,6 +69,12 @@ setNotFound(() => navigate('/', { replace: true }));
   startRouter();
   renderTabs();
   void currentRoute;
+
+  // 開頁自動更新一次。不 await —— 畫面先出來，資料回來再重畫。
+  store.update().then(() => {
+    const here = (location.hash.replace(/^#/, '') || '/').split('?')[0];
+    if (here === '/') import('./views/home.js').then((m) => m.default());
+  });
 
   if ('serviceWorker' in navigator) {
     // boot() 前面有 await，load 事件很可能早就發生過了 —— 只掛 listener 會永遠不註冊。

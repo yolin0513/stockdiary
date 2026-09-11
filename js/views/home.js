@@ -1,51 +1,172 @@
-// 首頁。M0 只有空狀態與資料狀態列 —— 持股與當日損益在 M1 接上。
+// 首頁：當日損益放最上面（那是每天打開 App 的理由），其餘依序是市值、未實現、
+// 資料狀態、持股明細。
+//
+// 畫面規則：
+//   · 算不出來就寫「—」，絕不寫 0
+//   · 不支援報價的持股那一列**不產生任何 .num 節點**（測試靠這個斷言）
+//   · 沒有任何一檔填平均成本時，「未實現損益」整個區塊不出現（不是顯示「—」）
 
-import { h, mount, fmtDate, NO_VALUE } from '../ui.js';
+import { h, num, moneyNode, fmtMoneyMicro, fmtPrice, fmtShares, fmtPct, fmtDate, toast, NO_VALUE } from '../ui.js';
 import * as store from '../store.js';
-import { setTop } from '../app.js';
+import * as holdings from '../holdings.js';
+import { computeUnrealized, exclusionNote, partialCostNote, STATUS_TEXT } from '../settle.js';
+import { STATUS } from '../update.js';
+import { setTop, render } from '../app.js';
 
 export default async function home() {
   setTop({ title: 'StockDiary 股息日記', back: false });
 
-  const hold = await store.holdings();
-  const lastSettled = await store.lastSettledDate();
+  const held = await holdings.list();
+  const upd = store.lastUpdate();
+  const settleDate = await store.lastSettledDate();
+  const settled = settleDate ? await store.loadSettle(settleDate) : null;
 
-  mount(document.getElementById('view'),
-    h('section', { class: 'card' },
-      h('h2', { class: 'card-title' }, '當日損益'),
-      // 還沒有持股、也還沒結算過 —— 這裡不能顯示 0，0 會被當成「今天沒賺沒賠」。
-      h('p', { class: 'big-number muted' }, NO_VALUE),
-      h('p', { class: 'muted sm' }, hold.length === 0 ? '還沒有持股' : '尚未結算'),
-    ),
-    dataStatus(lastSettled),
-    h('section', { class: 'card' },
-      h('h2', { class: 'card-title' }, '持股'),
-      hold.length === 0
-        ? h('p', { class: 'muted' }, '還沒有持股。新增持股的功能在下一個版本。')
-        : h('p', { class: 'muted' }, `${hold.length} 檔`),
-    ),
+  // 未實現損益用「最後結算日的收盤價」，不用任何別的來源
+  const quotes = {};
+  for (const row of settled?.byCode ?? []) {
+    if (row.close != null) quotes[row.code] = { close: row.close };
+  }
+  const unreal = computeUnrealized({ holdings: held, quotes });
+
+  render([
+    dayPLCard(settled, settleDate, upd),
+    marketValueCard(settled),
+    unrealizedCard(unreal, held),
+    statusCard(upd, settleDate),
+    holdingsCard(held, settled),
+  ]);
+}
+
+function dayPLCard(settled, settleDate, upd) {
+  const pending = upd?.status === STATUS.TODAY_PENDING;
+  const note = settled ? exclusionNote({
+    excludedUnsupported: settled.excludedUnsupported ?? 0,
+    excludedMissing: settled.excludedMissing ?? 0,
+  }) : null;
+
+  return h('section', { class: 'card' },
+    h('h2', { class: 'card-title' }, '當日損益'),
+    h('p', { class: 'big-number' },
+      settled?.dayPLMicro != null ? moneyNode(settled.dayPLMicro) : num(NO_VALUE, 'v-none')),
+    settleDate
+      ? h('p', { class: 'muted sm' }, `結算日：${fmtDate(settleDate)}`)
+      : h('p', { class: 'muted sm' }, '尚未結算過'),
+    pending ? h('p', { class: 'sm warn' }, '今日收盤尚未公布') : null,
+    settled?.dividendMicro != null
+      ? h('p', { class: 'muted sm' },
+        settled.includeDividend === false ? '當日應收股利（未計入）' : '其中當日應收股利',
+        ' ', num(fmtMoneyMicro(settled.dividendMicro)), ' 元')
+      : null,
+    note ? h('p', { class: 'muted sm' }, note) : null,
   );
 }
 
-function dataStatus(lastSettled) {
+function marketValueCard(settled) {
+  return h('section', { class: 'card' },
+    h('h2', { class: 'card-title' }, '持股市值'),
+    h('p', { class: 'mid-number' },
+      num(settled?.marketValueMicro != null ? fmtMoneyMicro(settled.marketValueMicro) : NO_VALUE,
+        settled?.marketValueMicro == null ? 'v-none' : '')),
+  );
+}
+
+function unrealizedCard(u, held) {
+  // 一檔都沒填平均成本 → 這個區塊整個不出現。顯示「—」也不行：
+  // 那會讓使用者以為系統算過了但算不出來，其實是根本沒有成本可以算。
+  if (u.withCost === 0) {
+    if (!held.some((x) => x.supported)) return null;
+    return h('section', { class: 'card', dataset: { card: 'costPrompt' } },
+      h('h2', { class: 'card-title' }, '平均成本'),
+      h('p', { class: 'muted sm' }, '填了平均成本之後，這裡會顯示未實現損益與報酬率。'),
+      h('a', { class: 'btn', href: '#/holdings' }, '去填平均成本'),
+    );
+  }
+  const note = partialCostNote(u);
+  return h('section', { class: 'card', dataset: { card: 'unrealized' } },
+    h('h2', { class: 'card-title' }, '未實現損益'),
+    h('p', { class: 'mid-number' }, moneyNode(u.unrealizedMicro)),
+    h('p', { class: 'muted sm' },
+      '報酬率 ', num(fmtPct(u.returnRate, { sign: true })),
+      '　成本 ', num(fmtMoneyMicro(u.costMicro))),
+    note ? h('p', { class: 'muted sm' }, note) : null,
+  );
+}
+
+function statusCard(upd, settleDate) {
   const cal = store.calendar();
-  const calErr = store.calendarError();
-  const catErr = store.catalogError();
-  const expected = store.expectedSettleDate();
-  const pending = store.isTodayPending();
-
   const lines = [];
-  if (calErr) lines.push('開休市日尚未取得，無法判斷交易日');
-  else if (!cal) lines.push('開休市日尚未取得');
-  else if (expected == null) lines.push(`開休市日只涵蓋 ${cal.year} 年，今天不在範圍內`);
-  else if (pending) lines.push(`今日收盤尚未公布（應公布的最新交易日：${fmtDate(expected)}）`);
-  else lines.push(`最新應有收盤：${fmtDate(expected)}`);
 
-  lines.push(lastSettled ? `最後結算：${fmtDate(lastSettled)}` : '尚未結算過');
-  if (catErr) lines.push('代號表尚未取得');
+  if (store.calendarError()) lines.push('開休市日尚未取得，無法判斷交易日');
+  else if (cal) lines.push(`開休市日：${cal.year} 年，${cal.days.length} 個交易日`);
+  if (store.catalogError()) lines.push('代號表尚未取得');
+
+  lines.push(upd ? upd.message : '尚未更新');
+  for (const p of (upd?.problems ?? []).slice(0, 3)) lines.push(p);
+  lines.push(settleDate ? `最後結算：${fmtDate(settleDate)}` : '尚未結算過');
+  lines.push('資料來源：臺灣證券交易所，每次開啟 App 更新一次');
+
+  const btn = h('button', {
+    class: 'btn',
+    onclick: async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = '更新中…';
+      const r = await store.update({ force: true });
+      toast(r?.message || '已更新');
+      home();
+    },
+  }, '重新整理');
 
   return h('section', { class: 'card status-card' },
     h('h2', { class: 'card-title' }, '資料狀態'),
     ...lines.map((t) => h('p', { class: 'muted sm' }, t)),
+    btn,
+  );
+}
+
+function holdingsCard(held, settled) {
+  if (held.length === 0) {
+    return h('section', { class: 'card' },
+      h('h2', { class: 'card-title' }, '持股'),
+      h('p', { class: 'muted' }, '還沒有持股。'),
+      h('a', { class: 'btn btn-primary', href: '#/holdings' }, '新增持股'),
+    );
+  }
+  const byCode = new Map((settled?.byCode ?? []).map((r) => [r.code, r]));
+  return h('section', { class: 'card' },
+    h('h2', { class: 'card-title' }, `持股（${held.length} 檔）`),
+    h('div', { class: 'rows' }, ...held.map((hd) => holdingRow(hd, byCode.get(hd.code)))),
+    h('a', { class: 'btn', href: '#/holdings' }, '管理持股'),
+  );
+}
+
+function holdingRow(hd, row) {
+  const head = h('div', { class: 'row-head' },
+    h('span', { class: 'row-code' }, hd.code),
+    h('span', { class: 'row-name' }, hd.name || ''),
+  );
+
+  // 不支援報價：這一列**不建立任何 .num 節點**。
+  // 股數用純文字寫，因為 num() 是「這是一個報價相關的數字」的標記，
+  // 測試會斷言不支援的列裡一個 .num 都沒有。
+  if (!hd.supported) {
+    return h('a', { class: 'row row-unsupported', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
+      head,
+      h('div', { class: 'row-side' },
+        h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`),
+        h('span', { class: 'tag' }, STATUS_TEXT.unsupported),
+      ),
+    );
+  }
+
+  const status = row?.status ?? 'noClose';
+  const side = status === 'ok' && row?.pl != null
+    ? h('div', { class: 'row-side' }, moneyNode(BigInt(row.pl)), num(fmtPrice(row.close), 'sm'))
+    : h('div', { class: 'row-side' }, h('span', { class: 'muted sm' }, STATUS_TEXT[status] ?? '尚未結算'));
+
+  return h('a', { class: 'row', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
+    head,
+    h('div', { class: 'row-mid' }, h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`)),
+    side,
   );
 }

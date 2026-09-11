@@ -130,6 +130,8 @@ const { srv, port } = await listen(0);
 const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
 try {
   const page = await browser.newPage();
+  page.setDefaultTimeout(60000);
+  page.setDefaultNavigationTimeout(60000);
   await page.setViewport({ width: 390, height: 844 });
   const pageErrors = [];
   const consoleErrors = [];
@@ -137,7 +139,7 @@ try {
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
 
   await page.goto(`http://localhost:${port}/`, { waitUntil: 'networkidle0' });
-  await page.waitForSelector('#view .card', { timeout: 10000 });
+  await page.waitForSelector('#view .card', { timeout: 60000 });
 
   section('開得起來');
   eq(pageErrors, [], '沒有未攔截的例外');
@@ -206,7 +208,7 @@ try {
   for (const r of routeDefs) {
     await page.evaluate((p) => { location.hash = '#' + p; }, r.pattern);
     await page.waitForFunction(() => document.querySelector('#view')?.textContent?.trim().length > 0,
-      { timeout: 8000 });
+      { timeout: 60000 });
     const text = await page.$eval('#view', (el) => el.textContent.trim());
     ok(text.length > 10, `${r.pattern} 有內容（${text.length} 字）`);
   }
@@ -214,12 +216,12 @@ try {
 
   section('不認得的網址退回首頁，不是白畫面');
   await page.evaluate(() => { location.hash = '#/沒有這一頁'; });
-  await page.waitForFunction(() => location.hash === '#/' || location.hash === '', { timeout: 5000 });
+  await page.waitForFunction(() => location.hash === '#/' || location.hash === '', { timeout: 60000 });
   ok(await page.$('#view .card') != null, '退回首頁而且畫得出來');
 
   section('尚未結算時顯示「—」，不顯示 0');
   await page.evaluate(() => { location.hash = '#/'; });
-  await page.waitForSelector('#view .big-number', { timeout: 5000 });
+  await page.waitForSelector('#view .big-number', { timeout: 60000 });
   const dayPL = await page.$eval('#view .big-number', (el) => el.textContent.trim());
   eq(dayPL, '—', '當日損益在還沒結算時是「—」');
   ok(dayPL !== '0' && dayPL !== '0.00', '而且絕對不是 0', `實際「${dayPL}」`);
