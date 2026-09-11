@@ -21,6 +21,31 @@ const SCALES = ['sm', 'md', 'lg', 'xl'];
 const WIDTHS = [320, 390, 430];
 const ROUTES = ['/', '/holdings', '/plans', '/dividends', '/news', '/calc', '/settings'];
 
+/**
+ * 新聞頁有兩種會改變版面的狀態，不掃就等於沒掃到：
+ *   · 台股那組收起來（標題列變成只有一行，而且旁邊多了「展開」）
+ *   · 「跟你的持股有關」篩選到某一檔（按鈕列會有一顆是選中的、清單變短）
+ * 一個頁面在不同狀態下會不會爆版是兩件事。
+ */
+const NEWS_STATES = [
+  { name: '預設', apply: null },
+  { name: '台股收起來', apply: async (page) => {
+    await page.evaluate(async () => {
+      const b = document.querySelector('#view [data-toggle="newsTwOpen"]');
+      if (b && b.getAttribute('aria-expanded') === 'true') b.click();
+    });
+    await new Promise((r) => setTimeout(r, 500));
+  } },
+  { name: '篩選某一檔', apply: async (page) => {
+    await page.evaluate(async () => {
+      const chips = [...document.querySelectorAll('#view [data-row="relatedFilter"] .chip')];
+      const one = chips.find((c) => c.dataset.filter !== 'all');
+      if (one) one.click();
+    });
+    await new Promise((r) => setTimeout(r, 500));
+  } },
+];
+
 const { srv, port } = await listen(0);
 const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
 
@@ -171,18 +196,27 @@ try {
         prefs.applyFontScale(s);
       }, scale);
       for (const route of ROUTES) {
-        await page.evaluate((r) => { location.hash = `#${r}`; }, route);
-        await page.waitForFunction(() => document.querySelector('#view')?.textContent?.trim().length > 0);
-        await new Promise((r) => setTimeout(r, 350));
-        const res = await scan();
-        all.push({ width, scale, route, ...res });
+        const states = route === '/news' ? NEWS_STATES : [{ name: '預設', apply: null }];
+        for (const st of states) {
+          await page.evaluate((r) => { location.hash = '#/'; void r; }, route);
+          await new Promise((r) => setTimeout(r, 200));
+          await page.evaluate((r) => { location.hash = `#${r}`; }, route);
+          await page.waitForFunction(() => document.querySelector('#view')?.textContent?.trim().length > 0);
+          await new Promise((r) => setTimeout(r, 350));
+          if (st.apply) await st.apply(page);
+          const res = await scan();
+          all.push({ width, scale, route, state: st.name, ...res });
+        }
       }
     }
   }
 
-  const where = (p) => `${p.route} @${p.width}px/${p.scale}`;
-  section(`掃了 ${all.length} 個組合（${ROUTES.length} 頁 × ${SCALES.length} 字級 × ${WIDTHS.length} 寬度）`);
-  eq(all.length, ROUTES.length * SCALES.length * WIDTHS.length, '組合數對得上');
+  const where = (p) => `${p.route}[${p.state}] @${p.width}px/${p.scale}`;
+  const perPass = ROUTES.length + (NEWS_STATES.length - 1); // 新聞頁多掃兩種狀態
+  section(`掃了 ${all.length} 個組合（${ROUTES.length} 頁＋新聞頁 ${NEWS_STATES.length} 種狀態，×${SCALES.length} 字級 ×${WIDTHS.length} 寬度）`);
+  eq(all.length, perPass * SCALES.length * WIDTHS.length, '組合數對得上');
+  ok(all.filter((p) => p.route === '/news').length === NEWS_STATES.length * SCALES.length * WIDTHS.length,
+    `新聞頁的三種狀態都掃到了（${all.filter((p) => p.route === '/news').length} 組）`);
   ok(all.every((p) => p.leafCount >= 3),
     `每一組都真的量到東西（最少的一組有 ${Math.min(...all.map((p) => p.leafCount))} 個文字節點）`);
 

@@ -19,6 +19,9 @@ let lastResults = null;
 let insightState = null;   // { busy } | { error } | null
 // 這一輪畫面上的新聞，給「引用：[n1]」那幾個連結查連結用。
 let currentItems = [];
+// 「跟你的持股有關」的個股篩選。null ＝ 全部。
+// 刻意**不寫進設定**：這是當下想看什麼，不是長期偏好；下次進來從「全部」開始才合理。
+let relatedFilter = null;
 
 export default async function newsView() {
   setTop({ title: '新聞' });
@@ -59,9 +62,10 @@ export default async function newsView() {
   render([
     await insightCard({ today, items: marked, holdings: withIndustry, keyStatus, todayInsight }),
     failureCard(lastResults),
-    related.length ? listCard(`跟你的持股有關（${related.length}）`, related, { showCodes: true }) : null,
-    listCard(`台股（${tw.length}）`, tw),
-    listCard(`國際（${intl.length}）`, intl),
+    related.length ? relatedCard(related, held) : null,
+    collapsibleCard(`台股（${tw.length}）`, tw, 'newsTwOpen'),
+    collapsibleCard(`國際（${intl.length}）`, intl, 'newsIntlOpen'),
+    refreshCard(),
     footerCard(),
   ].filter(Boolean));
 }
@@ -84,7 +88,89 @@ function failureCard(results) {
     h('p', { class: 'muted sm' }, '下面的清單不包含這些來源的新聞。'));
 }
 
-function listCard(title, items, { showCodes = false } = {}) {
+/**
+ * 「跟你的持股有關」＋個股篩選。
+ *
+ * 同一則新聞可能同時對應好幾檔（例如一則供應鏈新聞同時提到 2330 與 2317），
+ * 所以**一則會出現在它每一檔的篩選結果裡**，計數也各算一次 ——
+ * 各檔的數字加起來會大於總數，那是對的，不是重複。
+ */
+function relatedCard(items, held) {
+  // 只列真的有新聞的那幾檔；沒有新聞的代號放上去只是佔位置
+  const counts = new Map();
+  for (const it of items) {
+    for (const code of it.relatedCodes ?? []) counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  const codes = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
+
+  // 篩選的那一檔如果這次沒有新聞了（重新整理之後可能發生），自動退回「全部」，
+  // 不要留使用者對著一片空白
+  if (relatedFilter && !counts.has(relatedFilter)) relatedFilter = null;
+
+  const shown = relatedFilter
+    ? items.filter((it) => (it.relatedCodes ?? []).includes(relatedFilter))
+    : items;
+
+  const chip = (code, label, n) => {
+    const on = relatedFilter === code;
+    const b = h('button', {
+      class: 'chip' + (on ? ' on' : ''),
+      'aria-pressed': on ? 'true' : 'false',
+      dataset: { filter: code ?? 'all' },
+    }, `${label}（${n}）`);
+    b.addEventListener('click', async () => { relatedFilter = code; await newsView(); });
+    return b;
+  };
+
+  const nameOf = (code) => held.find((hd) => hd.code === code)?.name ?? '';
+
+  return h('section', { class: 'card', dataset: { card: 'relatedNews' } },
+    h('h2', { class: 'card-title' }, `跟你的持股有關（${items.length}）`),
+    h('div', { class: 'chip-row', dataset: { row: 'relatedFilter' } },
+      chip(null, '全部', items.length),
+      ...codes.map((c) => chip(c, `${c} ${nameOf(c)}`.trim(), counts.get(c)))),
+    codes.length > 1
+      ? h('p', { class: 'muted sm' },
+        '一則新聞可能同時關係到好幾檔，所以各檔的數字加起來會比總數多。')
+      : null,
+    shown.length
+      ? h('div', { class: 'rows' }, ...shown.map((it) => row(it, true)))
+      : h('p', { class: 'muted' }, '這一檔今天沒有相關新聞。'));
+}
+
+/**
+ * 可以收起來的清單。展開／收合記在設定裡。
+ *
+ * 用 button + aria-expanded 而不是 <details>：<details> 的三角形在不同瀏覽器
+ * 大小不一，而且點擊區只有標題那一行；這裡整條標題列都是按鈕，特大字級時
+ * 也還是好按（.chip 與這裡都有 min-height 44px）。
+ */
+function collapsibleCard(title, items, prefKey) {
+  const open = prefs.get(prefKey) !== false;
+  const body = h('div', { dataset: { body: prefKey } },
+    items.length
+      ? h('div', { class: 'rows' }, ...items.map((it) => row(it, false)))
+      : h('p', { class: 'muted' }, '這次沒有抓到新聞。'));
+  body.hidden = !open;
+
+  const head = h('button', {
+    class: 'collapse-head',
+    'aria-expanded': open ? 'true' : 'false',
+    dataset: { toggle: prefKey },
+  },
+  h('span', { class: 'card-title' }, title),
+  h('span', { class: 'collapse-mark' }, open ? '收合' : '展開'));
+
+  head.addEventListener('click', async () => {
+    await prefs.set(prefKey, !open);
+    await newsView();
+  });
+
+  return h('section', { class: 'card', dataset: { card: 'newsList' } }, head, body);
+}
+
+/** 重新整理獨立成一張卡：原本每組清單各一顆，收合之後就按不到了。 */
+function refreshCard() {
   const refresh = h('button', { class: 'btn' }, '重新整理');
   refresh.addEventListener('click', async () => {
     if (refresh.disabled) return;
@@ -100,13 +186,7 @@ function listCard(title, items, { showCodes = false } = {}) {
     }
     await newsView();
   });
-
-  return h('section', { class: 'card', dataset: { card: 'newsList' } },
-    h('h2', { class: 'card-title' }, title),
-    items.length
-      ? h('div', { class: 'rows' }, ...items.map((it) => row(it, showCodes)))
-      : h('p', { class: 'muted' }, '這次沒有抓到新聞。'),
-    refresh);
+  return h('section', { class: 'card', dataset: { card: 'newsRefresh' } }, refresh);
 }
 
 function row(item, showCodes) {

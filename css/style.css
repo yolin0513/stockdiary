@@ -499,3 +499,23 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
 .bar-pct { flex: none; font-variant-numeric: tabular-nums; }
 .bar-track { height: .55em; min-height: 6px; border-radius: 999px; background: var(--bg-card-2); overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 999px; background: var(--gold); }
+
+/* 可收合清單的標題列。整條都是按鈕，特大字級時也好按。 */
+.collapse-head {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.collapse-head .card-title { margin: 0; }
+.collapse-mark { flex: none; color: var(--muted); font-size: .85em; }

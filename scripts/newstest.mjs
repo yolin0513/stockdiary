@@ -277,6 +277,126 @@ try {
   everyOf(partial.results.filter((r) => !r.ok), (r) => typeof r.error === 'string' && r.error.length > 4,
     '每一家掛掉都講得出原因（畫面要說得出「哪一家沒抓到」，不能靜默）');
 
+  section('「跟你的持股有關」可以依個股篩選');
+  const filterUi = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const holdings = await import('./js/holdings.js');
+    const prefs = await import('./js/prefs.js');
+    for (const s of db.EXPORTABLE_STORES) await db.clear(s);
+    await db.clear('news');
+    await prefs.load();
+
+    await holdings.addOpening({ code: '2330', shares: 1000, date: '2026-09-01' });
+    await holdings.addOpening({ code: '2317', shares: 1000, date: '2026-09-01' });
+    await holdings.addOpening({ code: '2882', shares: 1000, date: '2026-09-01' });
+
+    const mk = (id, title) => ({ id, title, link: `https://a/${id}`, source: 'cna', publishedAt: '2026-09-11T01:00:00.000Z' });
+    await db.put('news', {
+      date: new Date().toLocaleDateString('sv'),
+      items: [
+        mk('a', '台積電法說會登場'),                 // 只有 2330
+        mk('b', '台積電與鴻海同列供應鏈受惠'),        // 2330 ＋ 2317
+        mk('c', '鴻海電動車新廠動土'),               // 只有 2317
+        mk('d', '今日天氣晴時多雲'),                 // 都沒有
+      ],
+      fetchedAt: Object.fromEntries(['cna', 'cnyes', 'ltn', 'yahoo', 'cnbc', 'marketwatch']
+        .map((x) => [x, new Date().toISOString()])),
+    });
+
+    location.hash = '#/';
+    await new Promise((r) => setTimeout(r, 300));
+    location.hash = '#/news';
+    for (let i = 0; i < 100; i += 1) {
+      if (document.querySelector('#view [data-card="relatedNews"]')) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const read = () => {
+      const card = document.querySelector('#view [data-card="relatedNews"]');
+      return {
+        chips: [...card.querySelectorAll('[data-row="relatedFilter"] .chip')]
+          .map((b) => ({ code: b.dataset.filter, text: b.textContent, on: b.getAttribute('aria-pressed') === 'true' })),
+        titles: [...card.querySelectorAll('.news-title')].map((e) => e.textContent),
+        minChipHeight: Math.min(...[...card.querySelectorAll('.chip')].map((b) => b.getBoundingClientRect().height)),
+      };
+    };
+    const all = read();
+    const click = async (code) => {
+      document.querySelector(`#view [data-filter="${code}"]`).click();
+      await new Promise((r) => setTimeout(r, 500));
+      return read();
+    };
+    return { all, only2330: await click('2330'), only2317: await click('2317'), backToAll: await click('all') };
+  });
+
+  eq(filterUi.all.titles.length, 3, '「全部」時列出三則有關的（不相關的那則不進來）');
+  eq(filterUi.all.chips.map((c) => c.code), ['all', '2330', '2317'],
+    '篩選按鈕只列真的有新聞的那幾檔（2882 沒新聞就不出現）');
+  ok(filterUi.all.chips[0].on, '預設選「全部」');
+  ok(/全部（3）/.test(filterUi.all.chips[0].text), `全部的計數正確：「${filterUi.all.chips[0].text}」`);
+  ok(/2330 .*（2）/.test(filterUi.all.chips[1].text), `2330 有兩則：「${filterUi.all.chips[1].text}」`);
+  ok(/2317 .*（2）/.test(filterUi.all.chips[2].text), `2317 有兩則：「${filterUi.all.chips[2].text}」`);
+
+  eq(filterUi.only2330.titles, ['台積電法說會登場', '台積電與鴻海同列供應鏈受惠'], '只看 2330 時剩兩則');
+  eq(filterUi.only2317.titles, ['台積電與鴻海同列供應鏈受惠', '鴻海電動車新廠動土'], '只看 2317 時剩兩則');
+  ok(filterUi.only2330.titles.includes('台積電與鴻海同列供應鏈受惠')
+    && filterUi.only2317.titles.includes('台積電與鴻海同列供應鏈受惠'),
+    '**同時關係到兩檔的那一則，在兩邊都看得到**');
+  eq(filterUi.backToAll.titles.length, 3, '按回「全部」就全部回來');
+  ok(filterUi.only2330.chips.find((c) => c.code === '2330').on, '選中的那顆有標記（aria-pressed）');
+  ok(filterUi.all.minChipHeight >= 44,
+    `篩選按鈕夠大按得到（最小 ${Math.round(filterUi.all.minChipHeight)}px ≥ 44px）`);
+
+  section('台股與國際分組可以摺疊，而且記得住');
+  const collapse = await page.evaluate(async () => {
+    const prefs = await import('./js/prefs.js');
+    const read = () => {
+      const heads = [...document.querySelectorAll('#view [data-toggle]')];
+      return heads.map((h) => ({
+        key: h.dataset.toggle,
+        expanded: h.getAttribute('aria-expanded') === 'true',
+        mark: h.querySelector('.collapse-mark').textContent,
+        bodyHidden: document.querySelector(`#view [data-body="${h.dataset.toggle}"]`).hidden,
+        height: h.getBoundingClientRect().height,
+      }));
+    };
+    const before = read();
+    document.querySelector('#view [data-toggle="newsTwOpen"]').click();
+    await new Promise((r) => setTimeout(r, 500));
+    const afterClick = read();
+    const stored = prefs.get('newsTwOpen');
+
+    // 離開再回來 —— 收合狀態要還在
+    location.hash = '#/';
+    await new Promise((r) => setTimeout(r, 400));
+    location.hash = '#/news';
+    for (let i = 0; i < 100; i += 1) {
+      if (document.querySelector('#view [data-toggle="newsTwOpen"]')) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const afterReturn = read();
+
+    // 收起來的時候，裡面的連結不可以還被讀到（hidden 不是只改外觀）
+    const hiddenLinks = [...document.querySelectorAll('#view [data-body="newsTwOpen"] a')]
+      .filter((a) => a.getBoundingClientRect().height > 0).length;
+
+    document.querySelector('#view [data-toggle="newsTwOpen"]').click();
+    await new Promise((r) => setTimeout(r, 500));
+    return { before, afterClick, stored, afterReturn, hiddenLinks, reopened: read() };
+  });
+
+  eq(collapse.before.map((x) => x.key), ['newsTwOpen', 'newsIntlOpen'], '兩組各有一個摺疊控制項');
+  ok(collapse.before.every((x) => x.expanded), '預設都是展開的');
+  ok(collapse.before.every((x) => x.height >= 44),
+    `標題列夠高按得到（最小 ${Math.round(Math.min(...collapse.before.map((x) => x.height)))}px）`);
+  eq(collapse.afterClick[0].expanded, false, '按一下台股就收起來');
+  eq(collapse.afterClick[0].bodyHidden, true, '內容真的被隱藏（hidden，不是只改外觀）');
+  eq(collapse.afterClick[1].expanded, true, '國際那組不受影響');
+  eq(collapse.stored, false, '收合狀態寫進設定');
+  eq(collapse.afterReturn[0].expanded, false, '**離開再回來還是收著的**');
+  eq(collapse.afterReturn[1].expanded, true, '國際那組還是展開的');
+  eq(collapse.hiddenLinks, 0, '收起來時裡面的連結量不到高度（真的不在版面上）');
+  eq(collapse.reopened[0].expanded, true, '（對照）再按一下就展開 —— 不是「收起來就打不開」');
+
   eq(pageErrors, [], '整段沒有未攔截的例外');
 } finally {
   await browser.close();

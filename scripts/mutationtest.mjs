@@ -1017,6 +1017,40 @@ const MUTATIONS = [
     replace: `    case 401: return '請求沒有成功';`,
     test: 'insighttest',
   },
+  // ---- v0.7.3：個股篩選與分組摺疊 ----
+  {
+    name: '個股篩選只比對第一個代號',
+    why: '一則新聞可能同時關係到好幾檔（供應鏈新聞常常如此）。只看第一個的話，'
+      + '那一則在其他檔的篩選裡就不見了 —— 使用者會以為那檔今天沒新聞。',
+    file: 'js/views/news.js',
+    find: `    ? items.filter((it) => (it.relatedCodes ?? []).includes(relatedFilter))`,
+    replace: `    ? items.filter((it) => (it.relatedCodes ?? [])[0] === relatedFilter)`,
+    test: 'newstest',
+  },
+  {
+    name: '篩選按鈕列出所有持股，包括今天沒新聞的',
+    why: '按下去是一片空白。按鈕存在就代表「這裡有東西可看」。',
+    file: 'js/views/news.js',
+    find: '    for (const code of it.relatedCodes ?? []) counts.set(code, (counts.get(code) ?? 0) + 1);',
+    replace: '    for (const code of it.relatedCodes ?? []) counts.set(code, counts.get(code) ?? 0);',
+    test: 'newstest',
+  },
+  {
+    name: '摺疊狀態不寫進設定',
+    why: '使用者收起來就是不想看，每次進來又全部展開等於沒收。',
+    file: 'js/views/news.js',
+    find: '    await prefs.set(prefKey, !open);',
+    replace: '    void prefKey;',
+    test: 'newstest',
+  },
+  {
+    name: '收起來只是視覺上藏起來，內容還在版面上',
+    why: 'hidden 換成只改樣式的話，收合等於沒收 —— 而且螢幕閱讀器還是讀得到。',
+    file: 'js/views/news.js',
+    find: '  body.hidden = !open;',
+    replace: '  body.style.opacity = open ? `1` : `0.001`;',
+    test: 'newstest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

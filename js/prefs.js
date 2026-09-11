@@ -14,6 +14,10 @@ export const DEFAULTS = {
   todayDataThreshold: DEFAULT_TODAY_THRESHOLD,
   // 「今日觀察」的一次性同意。預設 false —— 沒有勾過就不會產生任何 AI 內容。
   insightConsent: false,
+  // 新聞頁兩組清單的展開／收合。記在設定裡 —— 使用者收起來就是不想看，
+  // 每次進來又全部展開等於沒收。
+  newsTwOpen: true,
+  newsIntlOpen: true,
 };
 
 const cache = new Map();
