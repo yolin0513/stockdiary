@@ -172,7 +172,7 @@ async function insightCard({ today, items, holdings: held, keyStatus, todayInsig
   } else {
     body.push(h('p', { class: 'muted sm' }, '今天還沒有整理過。'));
   }
-  if (insightState?.error) body.push(h('p', { class: 'warn' }, secrets.scrub(insightState.error)));
+  if (insightState?.error) body.push(errorBlock(insightState));
 
   const btn = h('button', { class: 'btn' }, todayInsight ? '重新產生' : '產生今日觀察');
   btn.addEventListener('click', async () => {
@@ -186,7 +186,7 @@ async function insightCard({ today, items, holdings: held, keyStatus, todayInsig
       holdings: held,
       force: !!todayInsight,
     });
-    insightState = r.ok ? null : { error: r.error };
+    insightState = r.ok ? null : { error: r.error, detail: r.detail, kind: r.kind, stopReason: r.stopReason };
     await newsView();
   });
 
@@ -231,6 +231,29 @@ function insightBody(rec) {
       `有 ${filtered.hiddenCount} 段因為越界被隱藏。可以按「重新產生」再試一次。`));
   }
   return out;
+}
+
+/**
+ * 產生失敗時的畫面。
+ *
+ * 兩層：上面是**使用者看得懂、而且知道下一步**的一句話；下面收起來的是原始細節，
+ * 給回報問題用。以前只有一句「模型回的不是 JSON」—— 使用者不知道是金鑰錯、
+ * 額度滿、網路問題還是程式壞了，只能乾瞪眼。
+ *
+ * 細節一律過 scrub()：上游的錯誤回應有時會把送出的標頭原樣回 echo。
+ */
+function errorBlock(state) {
+  const parts = [h('p', { class: 'warn' }, secrets.scrub(state.error))];
+  const detail = [state.kind ? `類型：${state.kind}` : null,
+    state.stopReason ? `stop_reason：${state.stopReason}` : null,
+    state.detail ? `回應開頭：${secrets.scrub(String(state.detail)).slice(0, 300)}` : null,
+  ].filter(Boolean);
+  if (detail.length) {
+    parts.push(h('details', { class: 'muted sm', dataset: { block: 'insightErrorDetail' } },
+      h('summary', {}, '技術細節（回報問題時用得到）'),
+      ...detail.map((d) => h('p', { class: 'muted sm' }, d))));
+  }
+  return h('div', { dataset: { block: 'insightError' } }, ...parts);
 }
 
 /** 越界的段落：講清楚發生什麼事，不要靜默消失。 */

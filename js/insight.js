@@ -66,6 +66,60 @@ export function scanViolations(text) {
 
 // ---------- 送出去的內容 ----------
 
+/**
+ * 結構化輸出的 schema（`output_config.format`，官方文件 Structured outputs）。
+ *
+ * **這是 v0.7.2 才補上的。** 在那之前只靠系統提示裡一句「以 JSON 回覆」，
+ * 結果就是使用者實機看到的「模型回的不是 JSON」。官方文件開宗明義：
+ * 「Even with careful prompting, you may encounter parsing errors from invalid JSON syntax」。
+ *
+ * 限制：schema 不支援 regex（pattern）。這裡也用不到。
+ * 每個欄位都列進 required —— 文件說必填欄位會照 schema 順序排在前面，
+ * 全部必填就沒有順序意外。
+ */
+export const OUTPUT_SCHEMA = {
+  type: 'json_schema',
+  schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: '一段話總結今天的重點' },
+      sections: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            theme: { type: 'string', description: '主題' },
+            newsIds: { type: 'array', items: { type: 'string' }, description: '引用的新聞編號，只能用提供的' },
+            relatedCodes: { type: 'array', items: { type: 'string' }, description: '相關的持股代號' },
+            observation: { type: 'string', description: '這件事跟持股的關聯與原因' },
+          },
+          required: ['theme', 'newsIds', 'relatedCodes', 'observation'],
+          additionalProperties: false,
+        },
+      },
+      watchDates: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            date: { type: 'string', description: 'YYYY-MM-DD' },
+            what: { type: 'string', description: '要留意什麼' },
+          },
+          required: ['date', 'what'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['summary', 'sections', 'watchDates'],
+    additionalProperties: false,
+  },
+};
+
+/** 送幾則新聞給模型。太多會把輸出撐爆、也會讓成本上去。 */
+export const MAX_NEWS_ITEMS = 60;
+/** 輸出的 token 上限。2048 對「幾段觀察＋值得留意的日期」來說會截斷。 */
+export const MAX_OUTPUT_TOKENS = 4096;
+
 /** 系統提示。界線照 PLAN §7.2，一字不改地寫進去。 */
 export function buildSystemPrompt() {
   return [
@@ -127,8 +181,10 @@ export function buildUserContent({ date, news, holdings, marketChangePct }) {
  * 組出完整請求內容。news 一定要先過 forAI() ——
  * 未明示允許 AI 輸入的來源連標題都不能進來（使用者定的規則）。
  */
-export function buildPrompt({ date, news, holdings, marketChangePct }) {
-  const allowed = forAI(news);
+export function buildPrompt({ date, news, holdings, marketChangePct, maxItems = MAX_NEWS_ITEMS }) {
+  // 先過 forAI（來源白名單），再限制則數。順序不能反 ——
+  // 反過來的話，被擋的來源會先佔掉名額。
+  const allowed = forAI(news).slice(0, maxItems);
   return {
     system: buildSystemPrompt(),
     messages: [{ role: 'user', content: buildUserContent({ date, news: allowed, holdings, marketChangePct }) }],
@@ -138,15 +194,67 @@ export function buildPrompt({ date, news, holdings, marketChangePct }) {
 
 // ---------- 產生與過濾 ----------
 
-/** 把模型回的文字拆成 JSON。拆不出來就講清楚，不要硬湊。 */
+/**
+ * 從一段文字裡挖出第一個**完整且平衡**的 JSON 物件。
+ *
+ * 用括號配對而不是正則：正則抓不出巢狀結構，遇到 `{"a":{"b":1}}` 會在第一個 `}` 就停。
+ * 字串裡的大括號與跳脫字元也要正確跳過，不然 `{"t":"}"}` 會算錯。
+ *
+ * 這是**容錯**，不是放寬安全：挖出來的東西照樣要過禁用詞過濾（filterInsight）。
+ */
+export function extractJsonObject(text) {
+  const s = String(text ?? '');
+  const start = s.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i += 1) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') depth += 1;
+    else if (c === '}') {
+      depth -= 1;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null; // 開了沒關 —— 通常就是被 max_tokens 截斷
+}
+
+/**
+ * 把模型回的文字拆成 JSON。
+ *
+ * 依序嘗試：整段當 JSON → 去掉 ``` 圍欄 → 挖出第一個平衡的物件。
+ * 三種都失敗才放棄，而且要說得出**是哪一種失敗**（截斷 vs 根本不是 JSON），
+ * 因為那兩種的下一步完全不同。
+ */
 export function parseOutput(text) {
   const raw = String(text ?? '').trim();
-  // 模型偶爾會包在 ```json 裡
+  if (!raw) return { ok: false, error: '模型沒有回任何文字', kind: 'empty' };
+
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
-  const body = fenced ? fenced[1] : raw;
-  let json;
-  try { json = JSON.parse(body); } catch { return { ok: false, error: '模型回的不是 JSON' }; }
-  if (!json || typeof json !== 'object') return { ok: false, error: '模型回的不是物件' };
+  const candidates = [raw, fenced?.[1], extractJsonObject(fenced?.[1] ?? raw)].filter(Boolean);
+
+  let json = null;
+  for (const c of candidates) {
+    try { json = JSON.parse(c); break; } catch { /* 換下一個 */ }
+  }
+  if (json == null) {
+    // 有 `{` 卻挖不出平衡的物件 ＝ 開了沒關 ＝ 幾乎一定是被截斷
+    const looksTruncated = raw.includes('{') && extractJsonObject(raw) == null;
+    return looksTruncated
+      ? { ok: false, error: '模型的回覆被截斷了（JSON 沒有結束）', kind: 'truncated', raw: raw.slice(0, 400) }
+      : { ok: false, error: '模型回的不是 JSON', kind: 'notJson', raw: raw.slice(0, 400) };
+  }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) {
+    return { ok: false, error: '模型回的不是物件', kind: 'notObject', raw: raw.slice(0, 400) };
+  }
   return {
     ok: true,
     json: {
@@ -179,6 +287,23 @@ export function filterInsight(json) {
   };
 }
 
+/**
+ * 解析失敗時要跟使用者說什麼。
+ *
+ * 「模型回的不是 JSON」對使用者毫無意義 —— 他不知道是金鑰錯、額度滿、網路問題
+ * 還是程式有 bug。這裡把「怎麼失敗的」翻成「你可以做什麼」。
+ */
+export function explainParseFailure(parsed, stopReason) {
+  if (stopReason === 'max_tokens' || parsed.kind === 'truncated') {
+    return '整理到一半被長度上限截斷了。按「重新產生」通常就會好；一直發生的話代表今天的新聞太多。';
+  }
+  if (parsed.kind === 'empty') {
+    return '模型沒有回任何內容。按「重新產生」再試一次。';
+  }
+  return '模型回的格式不對，這次沒有辦法顯示。按「重新產生」再試一次；'
+    + '如果一直這樣，可能是這個 App 要更新了。';
+}
+
 // ---------- 儲存 ----------
 
 export async function forDate(date) {
@@ -207,16 +332,38 @@ export async function generate({ date, news, holdings, marketChangePct, force = 
       model: st.model,
       system: prompt.system,
       messages: prompt.messages,
-      maxTokens: 2048,
+      maxTokens: MAX_OUTPUT_TOKENS,
+      outputConfig: { format: OUTPUT_SCHEMA },
       fetchImpl,
     });
   } catch (e) {
-    return { ok: false, error: secrets.scrub(e?.message || String(e)) };
+    // callAnthropic 已經把狀態碼翻成人話了；detail 留著給除錯用（已 scrub）。
+    return { ok: false, error: secrets.scrub(e?.message || String(e)), detail: e?.detail ?? null };
+  }
+
+  // stop_reason 是**唯一**分得出「模型拒絕」與「被截斷」的訊號，
+  // 而且兩種都是 HTTP 200（官方文件 Structured outputs → Invalid outputs）。
+  // 不看它的話，兩種都只會變成一句莫名其妙的「模型回的不是 JSON」。
+  const stop = res?.stop_reason ?? null;
+  if (stop === 'refusal') {
+    return {
+      ok: false,
+      error: '模型基於安全理由拒絕回答這次的請求。可以按「重新產生」再試一次。',
+      stopReason: stop,
+    };
   }
 
   const text = (res?.content ?? []).filter((c) => c.type === 'text').map((c) => c.text).join('');
   const parsed = parseOutput(text);
-  if (!parsed.ok) return { ok: false, error: parsed.error };
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      error: explainParseFailure(parsed, stop),
+      kind: parsed.kind,
+      stopReason: stop,
+      detail: secrets.scrub(parsed.raw ?? ''),
+    };
+  }
 
   const usage = res?.usage ?? {};
   await secrets.addUsage({

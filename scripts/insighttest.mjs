@@ -12,10 +12,16 @@ import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 import { ok, eq, section, done, noneOf, everyOf, detects } from './tap.mjs';
 import { listen } from './serve.mjs';
+import fs from 'node:fs';
 import {
   BANNED, scanViolations, sentences, buildSystemPrompt, buildUserContent,
-  buildPrompt, parseOutput, filterInsight,
+  buildPrompt, parseOutput, filterInsight, extractJsonObject, explainParseFailure,
+  OUTPUT_SCHEMA, MAX_NEWS_ITEMS, MAX_OUTPUT_TOKENS,
 } from '../js/insight.js';
+import { buildRequest, httpHint } from '../js/secrets.js';
+
+const REPLIES = JSON.parse(fs.readFileSync(
+  fileURLToPath(new URL('./fixtures/anthropic-responses.json', import.meta.url)), 'utf8'));
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -135,12 +141,107 @@ ok(sys.includes('過去不代表未來'), '提到歷史類比時要標註的那�
 ok(sys.includes('JSON'), '要求 JSON 輸出');
 
 // ---------------------------------------------------------------------------
+section('結構化輸出：真的有送出 output_config.format');
+// v0.7.1 以前**完全沒送這個參數**，只靠系統提示裡一句「以 JSON 回覆」。
+// 官方文件（Structured outputs）開宗明義說那正是這個功能要解決的問題：
+// 「Even with careful prompting, you may encounter parsing errors from invalid JSON syntax」。
+// 使用者實機看到的「模型回的不是 JSON」就是這麼來的。
+const req = buildRequest({
+  key: 'sk-ant-api03-' + 'A'.repeat(50), model: 'claude-sonnet-5',
+  system: 'sys', messages: [{ role: 'user', content: 'x' }],
+  maxTokens: MAX_OUTPUT_TOKENS, outputConfig: { format: OUTPUT_SCHEMA },
+});
+const sent = JSON.parse(req.init.body);
+ok(sent.output_config != null, 'request body 裡有 output_config');
+eq(sent.output_config.format.type, 'json_schema', 'type 是 json_schema');
+eq(sent.max_tokens, MAX_OUTPUT_TOKENS, `max_tokens 是 ${MAX_OUTPUT_TOKENS}（2048 會截斷）`);
+ok(MAX_OUTPUT_TOKENS > 2048, 'output 上限比原本的 2048 大');
+// schema 本身要合法：文件說不支援 regex（pattern），其餘標準功能都可以
+const schemaText = JSON.stringify(OUTPUT_SCHEMA);
+ok(!schemaText.includes('"pattern"'), 'schema 裡沒有用到不支援的 pattern（regex）');
+everyOf(['summary', 'sections', 'watchDates'], (k) => OUTPUT_SCHEMA.schema.required.includes(k),
+  '三個頂層欄位都是 required（全部必填就沒有順序意外）');
+eq(OUTPUT_SCHEMA.schema.additionalProperties, false, '不允許多餘的欄位');
+// 對照組：沒給 outputConfig 時就不該憑空出現
+const plain = JSON.parse(buildRequest({
+  key: 'k', model: 'm', system: 's', messages: [], maxTokens: 10,
+}).init.body);
+ok(plain.output_config === undefined, '（對照）沒指定時 body 裡不會有 output_config');
+
+section('送給模型的新聞則數有上限');
+// 實機那天全部有 244 則、可餵模型的有 70 則。則數越多輸出越長，越容易被截斷，成本也越高。
+const manyNews = Array.from({ length: 200 }, (_, i) => ({ id: `n${i}`, title: `標題 ${i}`, source: 'cna' }));
+const capped = buildPrompt({ date: '2026-09-11', news: manyNews, holdings: [] });
+eq(capped.usedNewsIds.length, MAX_NEWS_ITEMS, `最多送 ${MAX_NEWS_ITEMS} 則`);
+ok(manyNews.length > MAX_NEWS_ITEMS, '（對照）餵進去的確實超過上限 —— 上面那條不是因為本來就不夠');
+// 先過來源白名單再限則數，順序反了的話被擋的來源會先佔掉名額
+const mixedSources = [
+  ...Array.from({ length: 80 }, (_, i) => ({ id: `bad${i}`, title: 'x', source: 'ltn' })),
+  ...Array.from({ length: 10 }, (_, i) => ({ id: `good${i}`, title: 'y', source: 'cna' })),
+];
+const order = buildPrompt({ date: '2026-09-11', news: mixedSources, holdings: [] });
+eq(order.usedNewsIds.length, 10, '被擋的來源不會佔掉名額');
+noneOf(order.usedNewsIds, (id) => id.startsWith('bad'), '而且一則被擋的都沒進去');
+
+// ---------------------------------------------------------------------------
+section('挖 JSON：巢狀、字串裡的大括號、截斷');
+eq(extractJsonObject('{"a":1}'), '{"a":1}', '單純的物件');
+eq(extractJsonObject('廢話 {"a":{"b":2}} 廢話'), '{"a":{"b":2}}', '前後有廢話，而且是巢狀的');
+eq(extractJsonObject('{"t":"}"}'), '{"t":"}"}', '字串裡的 } 不算結束');
+eq(extractJsonObject('{"t":"\\""}'), '{"t":"\\""}', '跳脫的引號不算字串結束');
+eq(extractJsonObject('{"a":1'), null, '開了沒關 → null（這就是被截斷的樣子）');
+eq(extractJsonObject('完全沒有'), null, '沒有 JSON → null');
+
+// ---------------------------------------------------------------------------
 section('解析模型輸出');
 eq(parseOutput('{"summary":"x","sections":[],"watchDates":[]}').json.summary, 'x', '純 JSON 解得開');
 eq(parseOutput('```json\n{"summary":"y","sections":[]}\n```').json.summary, 'y', '包在 ``` 裡也解得開');
 eq(parseOutput('這不是 JSON').ok, false, '不是 JSON 就講清楚，不硬湊');
 eq(parseOutput('{"summary":123}').json.summary, '', '型別不對的欄位退回空值，不是塞進去');
 eq(parseOutput('{"summary":"a"}').json.sections, [], '缺的陣列補成空陣列');
+eq(parseOutput('').ok, false, '空字串');
+eq(parseOutput('').kind, 'empty', '而且分得出是「什麼都沒回」');
+eq(parseOutput('[]').kind, 'notObject', '回了陣列也擋掉');
+
+section('分得出「被截斷」與「根本不是 JSON」');
+// 這兩種的下一步完全不同：截斷按「重新產生」通常就好，不是 JSON 則是程式或模型的問題。
+const truncated = parseOutput(REPLIES.truncated.content[0].text);
+eq(truncated.ok, false, '截斷的解不出來');
+eq(truncated.kind, 'truncated', '而且認得出是截斷');
+const prose = parseOutput(REPLIES.prose.content[0].text);
+eq(prose.ok, false, '純自然語言解不出來');
+eq(prose.kind, 'notJson', '認得出是「根本不是 JSON」');
+ok(truncated.kind !== prose.kind, '兩種失敗分得開 —— 這是給使用者不同下一步的前提');
+// 前面有廢話但後面有合法 JSON 的，要**救得回來**
+const pre = parseOutput(REPLIES.preamble.content[0].text);
+ok(pre.ok, '前面有一段自然語言、後面是合法 JSON 的，救得回來');
+eq(pre.json.summary, '前面有一段廢話。', '而且內容正確');
+const fenced2 = parseOutput(REPLIES.fenced.content[0].text);
+ok(fenced2.ok, '包在圍欄裡的也救得回來');
+
+section('錯誤訊息要說得出下一步');
+const msgs = {
+  truncated: explainParseFailure({ kind: 'truncated' }, 'max_tokens'),
+  stopOnly: explainParseFailure({ kind: 'notJson' }, 'max_tokens'),
+  empty: explainParseFailure({ kind: 'empty' }, 'end_turn'),
+  notJson: explainParseFailure({ kind: 'notJson' }, 'end_turn'),
+};
+everyOf(Object.values(msgs), (m) => m.length >= 12, '每一種失敗都有一句完整的說明');
+everyOf(Object.values(msgs), (m) => /重新產生|更新/.test(m), '每一種都講得出下一步該做什麼');
+ok(msgs.truncated.includes('截斷'), `截斷講的是截斷：「${msgs.truncated}」`);
+ok(msgs.stopOnly === msgs.truncated, 'stop_reason=max_tokens 時，就算解析器沒認出來也當成截斷');
+ok(msgs.notJson !== msgs.truncated, '不同失敗給不同訊息，不是同一句罐頭');
+noneOf(Object.values(msgs), (m) => m.includes('JSON'),
+  '訊息裡沒有「JSON」這種使用者看不懂的字');
+
+section('HTTP 狀態碼要翻成人話');
+const hints = [401, 402, 403, 429, 500, 529].map((c) => ({ code: c, text: httpHint(c) }));
+everyOf(hints, (x) => x.text.length >= 8, '每個狀態碼都有一句說明');
+ok(httpHint(401).includes('金鑰'), `401 講金鑰：「${httpHint(401)}」`);
+ok(httpHint(429).includes('用量') || httpHint(429).includes('頻繁'), `429 講額度：「${httpHint(429)}」`);
+ok(httpHint(529).includes('過載') || httpHint(529).includes('再試'), `529 叫人等一下：「${httpHint(529)}」`);
+eq(new Set(hints.map((x) => x.text)).size, hints.length, '不同狀態碼給不同訊息，不是同一句罐頭');
+noneOf(hints, (x) => /^Anthropic 回 \d+$/.test(x.text), '沒有一個是只丟狀態碼了事');
 
 // ---------------------------------------------------------------------------
 // 送出去的 prompt：執行期斷言，不是讀程式碼
@@ -306,6 +407,96 @@ try {
   eq(gen.used, 66_000, '用量照 token 數與費率精準累加（兩次共 $0.066）');
   eq(gen.storedKeys, ['createdAt', 'date', 'json', 'model', 'usage'], 'insights 存的欄位就是規劃的那幾個');
   eq(gen.summary, '今天以半導體為主。', '存下來的內容對得上');
+
+  section('每一種真實的回應形狀，端對端走一遍');
+  // **這一節是這次 bug 真正缺的東西。**
+  // 原本 generate() 的測試只餵一種回應（格式完美的 JSON），於是整組斷言都建立在
+  // 「模型會回合法 JSON」這個假設上 —— 實機一撞到別的形狀就爆，而測試全綠。
+  const shapes = await page.evaluate(async (replies) => {
+    const insight = await import('./js/insight.js');
+    const secrets = await import('./js/secrets.js');
+    const db = await import('./js/db.js');
+    const out = {};
+    for (const [name, reply] of Object.entries(replies)) {
+      if (name.startsWith('_')) continue;
+      await db.clear('insights');
+      const rec = await secrets.load();
+      await db.put('secrets', { ...rec, capMicroUsd: 2_000_000, usage: { month: secrets.monthOf(new Date()), usedMicroUsd: 0 } });
+      const fake = async () => new Response(JSON.stringify(reply), { status: 200 });
+      const r = await insight.generate({ date: '2026-09-11', news: [], holdings: [], fetchImpl: fake });
+      const stored = await db.get('insights', '2026-09-11');
+      out[name] = {
+        ok: r.ok, error: r.error ?? null, kind: r.kind ?? null, stopReason: r.stopReason ?? null,
+        detail: r.detail ?? null, stored: !!stored,
+        summary: stored?.json?.summary ?? null,
+      };
+    }
+    return out;
+  }, REPLIES);
+
+  ok(shapes.clean.ok, '正常回應：成功');
+  ok(shapes.fenced.ok, '包在圍欄裡：成功（容錯）');
+  ok(shapes.preamble.ok, '前面有一段廢話：成功（容錯）');
+  eq(shapes.preamble.summary, '前面有一段廢話。', '而且救回來的內容正確');
+
+  eq(shapes.truncated.ok, false, '被截斷：失敗');
+  eq(shapes.truncated.stopReason, 'max_tokens', '而且記下了 stop_reason');
+  ok(shapes.truncated.error.includes('截斷'), `訊息講的是截斷：「${shapes.truncated.error}」`);
+  eq(shapes.truncated.stored, false, '失敗就不要存進 insights（不然明天會拿到半截的）');
+
+  eq(shapes.refusal.ok, false, '模型拒絕：失敗');
+  eq(shapes.refusal.stopReason, 'refusal', '認得出是拒絕');
+  ok(shapes.refusal.error.includes('拒絕'), `訊息講的是拒絕：「${shapes.refusal.error}」`);
+
+  eq(shapes.prose.ok, false, '純自然語言：失敗');
+  eq(shapes.prose.kind, 'notJson', '認得出是「不是 JSON」');
+  eq(shapes.empty.ok, false, '空 content：失敗');
+  eq(shapes.empty.kind, 'empty', '認得出是「什麼都沒回」');
+
+  // 每一種失敗都要給不同的訊息，而且都要有下一步
+  const failures = ['truncated', 'refusal', 'prose', 'empty'].map((k) => shapes[k].error);
+  eq(new Set(failures).size, failures.length, '四種失敗給四種不同的訊息，不是同一句罐頭');
+  everyOf(failures, (m) => /重新產生|更新|再試/.test(m), '每一種都講得出下一步');
+  noneOf(failures, (m) => m === '模型回的不是 JSON', '沒有一個是原本那句沒有意義的話');
+
+  section('容錯不等於放寬安全：越界照樣擋');
+  // 救得回格式，不代表內容就放行。
+  const violating = await page.evaluate(async (reply) => {
+    const insight = await import('./js/insight.js');
+    const secrets = await import('./js/secrets.js');
+    const db = await import('./js/db.js');
+    await db.clear('insights');
+    const rec = await secrets.load();
+    await db.put('secrets', { ...rec, capMicroUsd: 2_000_000, usage: { month: secrets.monthOf(new Date()), usedMicroUsd: 0 } });
+    const fake = async () => new Response(JSON.stringify(reply), { status: 200 });
+    const r = await insight.generate({ date: '2026-09-11', news: [], holdings: [], fetchImpl: fake });
+    const filtered = insight.filterInsight(r.json);
+    return { ok: r.ok, hiddenCount: filtered.hiddenCount, sections: filtered.sections.map((x) => !!x.hidden) };
+  }, REPLIES.violating);
+  ok(violating.ok, '這一份是合法 JSON，所以產生成功');
+  eq(violating.hiddenCount, 1, '但越界那一段照樣被擋下來');
+  eq(violating.sections, [false, true], '正常的沒事、越界的被標起來');
+
+  section('HTTP 失敗：訊息要有用，而且不存半成品');
+  const httpFails = await page.evaluate(async () => {
+    const insight = await import('./js/insight.js');
+    const secrets = await import('./js/secrets.js');
+    const db = await import('./js/db.js');
+    const out = {};
+    for (const status of [401, 429, 500, 529]) {
+      await db.clear('insights');
+      const rec = await secrets.load();
+      await db.put('secrets', { ...rec, capMicroUsd: 2_000_000, usage: { month: secrets.monthOf(new Date()), usedMicroUsd: 0 } });
+      const fake = async () => new Response(JSON.stringify({ error: { message: 'boom' } }), { status });
+      const r = await insight.generate({ date: '2026-09-11', news: [], holdings: [], fetchImpl: fake });
+      out[status] = { ok: r.ok, error: r.error, stored: !!(await db.get('insights', '2026-09-11')) };
+    }
+    return out;
+  });
+  everyOf(Object.values(httpFails), (x) => x.ok === false, '四種 HTTP 錯誤都失敗');
+  everyOf(Object.values(httpFails), (x) => x.stored === false, '而且都沒有存進 insights');
+  ok(httpFails['401'].error.includes('金鑰'), `401 講金鑰：「${httpFails['401'].error}」`);
+  eq(new Set(Object.values(httpFails).map((x) => x.error)).size, 4, '四種狀態碼給四種不同訊息');
 
   section('畫面：免責標籤不可關閉、同意頁擋得住');
   const ui = await page.evaluate(async () => {

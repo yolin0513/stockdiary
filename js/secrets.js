@@ -162,7 +162,12 @@ export function fmtUsd(microUsd) {
  * 「送出去的東西裡沒有股數、沒有金額、只有允許來源的標題」。
  * 送出的動作在 callAnthropic()，組裝在這裡。
  */
-export function buildRequest({ key, model, system, messages, maxTokens = 2048 }) {
+export function buildRequest({ key, model, system, messages, maxTokens = 2048, outputConfig = null }) {
+  const body = { model, max_tokens: maxTokens, system, messages };
+  // 結構化輸出（output_config.format）。官方文件：Structured outputs，
+  // 已從 beta 的 output_format 遷移成正式參數，不需要 beta 標頭。
+  // Sonnet 5／Opus 5／Haiku 4.5 都支援 —— 正好是這個 App 提供的三個模型。
+  if (outputConfig) body.output_config = outputConfig;
   return {
     url: 'https://api.anthropic.com/v1/messages',
     init: {
@@ -174,7 +179,7 @@ export function buildRequest({ key, model, system, messages, maxTokens = 2048 })
         // 瀏覽器直連需要這個標頭，否則 CORS 不放行。
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages }),
+      body: JSON.stringify(body),
     },
   };
 }
@@ -183,8 +188,8 @@ export function buildRequest({ key, model, system, messages, maxTokens = 2048 })
  * 打一次 API。錯誤訊息一律 scrub 過再往外丟 ——
  * Anthropic 的錯誤回應有時會把送出的標頭原樣回echo。
  */
-export async function callAnthropic({ key, model, system, messages, maxTokens, fetchImpl = fetch, timeoutMs = 60000 }) {
-  const { url, init } = buildRequest({ key, model, system, messages, maxTokens });
+export async function callAnthropic({ key, model, system, messages, maxTokens, outputConfig = null, fetchImpl = fetch, timeoutMs = 60000 }) {
+  const { url, init } = buildRequest({ key, model, system, messages, maxTokens, outputConfig });
   let res;
   try {
     res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
@@ -195,11 +200,36 @@ export async function callAnthropic({ key, model, system, messages, maxTokens, f
   if (!res.ok) {
     let detail = text;
     try { detail = JSON.parse(text)?.error?.message ?? text; } catch { /* 原樣 */ }
-    throw new Error(scrub(`Anthropic 回 ${res.status}：${String(detail).slice(0, 300)}`));
+    const e = new Error(scrub(`${httpHint(res.status)}（Anthropic 回 ${res.status}）`));
+    e.status = res.status;
+    e.detail = scrub(String(detail).slice(0, 300));
+    throw e;
   }
   let json;
   try { json = JSON.parse(text); } catch { throw new Error('Anthropic 回了不是 JSON 的東西'); }
   return json;
+}
+
+/**
+ * HTTP 狀態碼 → 使用者看得懂、而且知道下一步要做什麼的一句話。
+ *
+ * 「Anthropic 回 401」對使用者毫無意義。他需要知道的是「金鑰不對，去設定重貼一次」。
+ * 分類依官方文件 Claude API errors。
+ */
+export function httpHint(status) {
+  switch (status) {
+    case 400: return '請求被拒絕。可能是這個版本送出的參數不被接受，或是你的帳號設了花費上限';
+    case 401: return '金鑰不正確、已撤銷或已過期。請到設定重新貼一次';
+    case 402: return '帳單或付款資訊有問題。請到 Anthropic Console 檢查付款方式';
+    case 403: return '這把金鑰沒有權限用這個模型。請到 Anthropic Console 檢查權限設定';
+    case 404: return '找不到這個模型或端點。可能是模型名稱已經變了';
+    case 413: return '送出去的內容太大了';
+    case 429: return '太頻繁，或已達到用量上限。等一下再試，或到 Anthropic Console 檢查額度';
+    case 500: return 'Anthropic 伺服器出錯。過幾分鐘再試';
+    case 504: return 'Anthropic 處理逾時。過幾分鐘再試';
+    case 529: return 'Anthropic 目前流量過載。過幾分鐘再試';
+    default: return status >= 500 ? 'Anthropic 伺服器出錯。過幾分鐘再試' : '請求沒有成功';
+  }
 }
 
 /**

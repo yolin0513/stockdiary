@@ -198,7 +198,7 @@ try {
     try {
       await secrets.callAnthropic({ key: KEY, model: 'claude-sonnet-5', messages: [], fetchImpl: echoing });
       out.thrown = null;
-    } catch (e) { out.thrown = e.message; }
+    } catch (e) { out.thrown = e.message; out.detail = e.detail ?? null; }
 
     const r = await secrets.testKey({ key: KEY, fetchImpl: echoing });
     out.testError = r.error;
@@ -206,7 +206,13 @@ try {
   }, FAKE_KEY);
   ok(errs.thrown && !errs.thrown.includes(FAKE_KEY),
     'callAnthropic 丟出的錯誤裡沒有金鑰', errs.thrown);
-  ok(errs.thrown.includes('sk-ant-***'), '而且看得出「這裡本來有一把金鑰」，不是整段消失', errs.thrown);
+  // 上游的錯誤細節從 v0.7.2 起放在 e.detail（給除錯用），不再塞進使用者看的那句話。
+  // 兩邊都要驗：message 不可以有金鑰，detail 要看得出「這裡本來有一把」而不是整段消失。
+  ok(errs.detail && !errs.detail.includes(FAKE_KEY), '細節裡也沒有完整金鑰', errs.detail);
+  ok(errs.detail && errs.detail.includes('sk-ant-***'),
+    '而且細節看得出「這裡本來有一把金鑰」，不是整段消失', errs.detail);
+  ok(!errs.thrown.includes('sk-ant'),
+    '使用者看到的那句話裡連遮罩過的金鑰都不該出現（那是除錯細節，不是給他看的）', errs.thrown);
   ok(errs.testError && !errs.testError.includes(FAKE_KEY), 'testKey 回的錯誤裡也沒有', errs.testError);
 
   section('清除');

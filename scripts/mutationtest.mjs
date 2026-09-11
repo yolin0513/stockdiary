@@ -783,8 +783,8 @@ const MUTATIONS = [
     name: '把金鑰放進 request body',
     why: 'body 會被記進各種除錯工具與錯誤回報，標頭比較不會。金鑰只該待在 x-api-key。',
     file: 'js/secrets.js',
-    find: '      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages }),',
-    replace: '      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, key }),',
+    find: '  const body = { model, max_tokens: maxTokens, system, messages };',
+    replace: '  const body = { model, max_tokens: maxTokens, system, messages, key };',
     test: 'secret-leak-test',
   },
   {
@@ -842,8 +842,8 @@ const MUTATIONS = [
     name: '未允許 AI 的來源也送進 prompt',
     why: '使用者定的規則：未明示允許的來源連標題都不進 prompt。',
     file: 'js/insight.js',
-    find: '  const allowed = forAI(news);',
-    replace: '  const allowed = news;',
+    find: '  const allowed = forAI(news).slice(0, maxItems);',
+    replace: '  const allowed = news.slice(0, maxItems);',
     test: 'insighttest',
   },
   {
@@ -957,6 +957,65 @@ const MUTATIONS = [
     find: String.raw`      h('div', { class: 'bar-fill', style: ` + '`width: ${Math.max(0, Math.min(100, pct))}%`' + String.raw` })),`,
     replace: String.raw`      h('div', { class: 'bar-fill', style: ` + '`width: ${pct * 3}%`' + String.raw` })),`,
     test: 'layouttest',
+  },
+  // ---- v0.7.2：今日觀察的失敗路徑 ----
+  {
+    name: '不送 output_config（回到只靠 prompt 要 JSON）',
+    why: '這就是使用者實機看到「模型回的不是 JSON」的原因。官方文件明說，就算 prompt 寫得再清楚，'
+      + '沒有結構化輸出還是會拿到解析不了的東西。',
+    file: 'js/secrets.js',
+    find: '  if (outputConfig) body.output_config = outputConfig;',
+    replace: '  if (false) body.output_config = outputConfig;',
+    test: 'insighttest',
+  },
+  {
+    name: '不看 stop_reason',
+    why: 'refusal 與 max_tokens 都是 HTTP 200。不看它的話，兩種完全不同的失敗都會變成'
+      + '同一句莫名其妙的「模型回的不是 JSON」，使用者不知道該重試還是該改設定。',
+    file: 'js/insight.js',
+    find: `  const stop = res?.stop_reason ?? null;`,
+    replace: '  const stop = null;',
+    test: 'insighttest',
+  },
+  {
+    name: '解析失敗時還是把半成品存起來',
+    why: '半截的 JSON 進了 insights，明天開 App 會直接拿那份壞掉的來畫。',
+    file: 'js/insight.js',
+    find: `      detail: secrets.scrub(parsed.raw ?? ''),`,
+    replace: `      detail: secrets.scrub(parsed.raw ?? ''), stored: await db.put('insights', { date, model: st.model, json: { summary: '', sections: [], watchDates: [] }, usage: {}, createdAt: now.toISOString() }),`,
+    test: 'insighttest',
+  },
+  {
+    name: '挖 JSON 用正則而不是括號配對',
+    why: '正則抓不出巢狀結構，遇到 {"a":{"b":1}} 會在第一個 } 就停，救回來的是半個物件。',
+    file: 'js/insight.js',
+    find: String.raw`    if (c === '"') { inStr = true; continue; }`,
+    replace: '    if (false) { inStr = true; continue; }',
+    test: 'insighttest',
+  },
+  {
+    name: '送給模型的新聞則數不設上限',
+    why: '實機那天可餵的有 70 則，而且會越來越多。輸出被撐爆就是截斷，成本也跟著上去。',
+    file: 'js/insight.js',
+    find: '  const allowed = forAI(news).slice(0, maxItems);',
+    replace: '  const allowed = forAI(news);',
+    test: 'insighttest',
+  },
+  {
+    name: '所有失敗都給同一句罐頭訊息',
+    why: '「模型回的不是 JSON」對使用者毫無意義 —— 他不知道是金鑰錯、額度滿、網路問題還是程式壞了。',
+    file: 'js/insight.js',
+    find: `  if (stopReason === 'max_tokens' || parsed.kind === 'truncated') {`,
+    replace: '  if (false) {',
+    test: 'insighttest',
+  },
+  {
+    name: 'HTTP 狀態碼只丟數字不翻成人話',
+    why: '「Anthropic 回 401」使用者看不懂，也不知道要去設定重貼金鑰。',
+    file: 'js/secrets.js',
+    find: `    case 401: return '金鑰不正確、已撤銷或已過期。請到設定重新貼一次';`,
+    replace: `    case 401: return '請求沒有成功';`,
+    test: 'insighttest',
   },
 ];
 

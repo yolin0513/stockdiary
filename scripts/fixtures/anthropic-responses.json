@@ -1,0 +1,131 @@
+{
+  "_readme": [
+    "Anthropic Messages API 回應的樣本，給 insighttest 用。",
+    "",
+    "為什麼要有這個檔案：v0.7.1 以前 insighttest 的 generate() 測試只餵了一種回應 ——",
+    "一份格式完美的 JSON。於是整組測試都建立在『模型會回合法 JSON』這個假設上，",
+    "使用者實機一跑就撞到『模型回的不是 JSON』，而測試全綠。",
+    "",
+    "這裡的每一筆都是**真實會發生**的回應形狀，依官方文件",
+    "（Messages API 回應結構、Structured outputs → Invalid outputs）構造：",
+    "  · clean       正常：結構化輸出保證的合法 JSON",
+    "  · fenced      包在 ```json 圍欄裡",
+    "  · preamble    前面多了一段自然語言（沒有結構化輸出時最常見的樣子）",
+    "  · truncated   stop_reason=max_tokens，JSON 開了沒關",
+    "  · refusal     stop_reason=refusal，200 但內容不是 JSON",
+    "  · prose       整段自然語言，完全沒有 JSON",
+    "  · empty       content 是空陣列",
+    "  · violating   合法 JSON，但內容越界（要驗禁用詞過濾照樣會跑）",
+    "",
+    "usage 的 token 數刻意用好記的整數，方便手算費用對照。"
+  ],
+
+  "clean": {
+    "id": "msg_clean",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"summary\":\"今天以半導體為主。\",\"sections\":[{\"theme\":\"半導體\",\"newsIds\":[\"n1\"],\"relatedCodes\":[\"2330\"],\"observation\":\"法說會提到資本支出上調，與 n1 相關。\"}],\"watchDates\":[{\"date\":\"2026-09-20\",\"what\":\"除息日\"}]}"
+      }
+    ],
+    "usage": { "input_tokens": 6500, "output_tokens": 2000 }
+  },
+
+  "fenced": {
+    "id": "msg_fenced",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "content": [
+      {
+        "type": "text",
+        "text": "```json\n{\"summary\":\"包在圍欄裡。\",\"sections\":[],\"watchDates\":[]}\n```"
+      }
+    ],
+    "usage": { "input_tokens": 100, "output_tokens": 50 }
+  },
+
+  "preamble": {
+    "id": "msg_preamble",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "content": [
+      {
+        "type": "text",
+        "text": "好的，我整理了今天的新聞重點如下：\n\n{\"summary\":\"前面有一段廢話。\",\"sections\":[{\"theme\":\"匯率\",\"newsIds\":[\"n2\"],\"relatedCodes\":[],\"observation\":\"新台幣貶值有利出口商營收換算。\"}],\"watchDates\":[]}\n\n希望對你有幫助。"
+      }
+    ],
+    "usage": { "input_tokens": 100, "output_tokens": 80 }
+  },
+
+  "truncated": {
+    "id": "msg_truncated",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "max_tokens",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"summary\":\"今天以半導體與金融兩條線為主。\",\"sections\":[{\"theme\":\"半導體供應鏈\",\"newsIds\":[\"n1\",\"n3\"],\"relatedCodes\":[\"2330\"],\"observation\":\"法說會提到的資本支出上調，與全球供應鏈報導方向一致；這是新聞中已陳述"
+      }
+    ],
+    "usage": { "input_tokens": 8000, "output_tokens": 2048 }
+  },
+
+  "refusal": {
+    "id": "msg_refusal",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "refusal",
+    "content": [
+      { "type": "text", "text": "很抱歉，我沒有辦法協助這個請求。" }
+    ],
+    "usage": { "input_tokens": 500, "output_tokens": 20 }
+  },
+
+  "prose": {
+    "id": "msg_prose",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "content": [
+      { "type": "text", "text": "今天台股下跌 755 點，主要受到美國 CPI 數據公布前市場觀望的影響。半導體類股表現相對抗跌。" }
+    ],
+    "usage": { "input_tokens": 500, "output_tokens": 60 }
+  },
+
+  "empty": {
+    "id": "msg_empty",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "content": [],
+    "usage": { "input_tokens": 500, "output_tokens": 0 }
+  },
+
+  "violating": {
+    "id": "msg_violating",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"summary\":\"今天以半導體為主。\",\"sections\":[{\"theme\":\"正常的\",\"newsIds\":[\"n1\"],\"relatedCodes\":[\"2330\"],\"observation\":\"法說會提到資本支出上調。\"},{\"theme\":\"越界的\",\"newsIds\":[\"n2\"],\"relatedCodes\":[],\"observation\":\"建議買進台積電，目標價 1500 元。\"}],\"watchDates\":[]}"
+      }
+    ],
+    "usage": { "input_tokens": 500, "output_tokens": 200 }
+  }
+}
