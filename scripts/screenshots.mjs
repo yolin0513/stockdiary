@@ -106,7 +106,8 @@ try {
     await page.reload({ waitUntil: 'networkidle0' });
     await page.waitForSelector(shot.wait, { timeout: 60000 });
     await new Promise((r) => setTimeout(r, 600));
-    const file = path.join(OUT, `${shot.name}.png`);
+    // 線上截圖用不同檔名，才不會蓋掉示範資料的那組
+    const file = path.join(OUT, `${live ? 'live-' : ''}${shot.name}.png`);
     await page.screenshot({ path: file, captureBeyondViewport: false });
     console.log(`${shot.name} → ${path.relative(ROOT, file)}`);
   }
