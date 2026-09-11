@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 import { ok, eq, section, done, noneOf, everyOf, detects } from './tap.mjs';
 import { listen } from './serve.mjs';
+import { stripComments } from './srcscan.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -24,11 +25,6 @@ export function shellAssetsOf(swSource) {
   const m = /const SHELL_ASSETS = \[([\s\S]*?)\];/.exec(swSource);
   if (!m) throw new Error('sw.js 裡找不到 SHELL_ASSETS');
   return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
-}
-
-/** 把註解拿掉 —— 註解裡寫的 import 不是 import。 */
-function stripComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
 /** 從一個 JS 檔取出它 import 的同專案模組（靜態與動態都算）。 */

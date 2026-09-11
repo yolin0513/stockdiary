@@ -1,0 +1,12 @@
+name = "stockdiary-news"
+main = "worker.mjs"
+compatibility_date = "2024-11-01"
+
+# 這個 Worker 只做一件事：把四家國內新聞 RSS 轉發給瀏覽器（它們沒有 ACAO 標頭）。
+# 白名單是**來源代號**不是網址 —— 開放任意網址等於做了一台開放代理。
+#
+# 刻意不綁任何東西：沒有 D1、沒有 KV、沒有 R2、沒有 Cron。
+# 它不存任何資料、不碰使用者金鑰（AI 是瀏覽器直連 api.anthropic.com）。
+# 快取用 Cache API（Cloudflare 邊緣自帶），10 分鐘，不需要綁定。
+#
+# 跟 TripQuest 的 Worker 完全獨立 —— 不同 name、不同帳號資源、互不影響。

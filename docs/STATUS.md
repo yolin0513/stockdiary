@@ -13,7 +13,7 @@
 | M2 除權息與股利 | ✅ 完成 | `stockdiary-v0.3.0` |
 | M3 定期定額 | ✅ 完成 | `stockdiary-v0.4.0` |
 | M4 定期定額試算器 | ✅ 完成 | `stockdiary-v0.5.0` |
-| M5 新聞、Worker、今日觀察 | ⬜ 未開始 | |
+| M5 新聞、Worker、今日觀察 | 🔄 進行中（Worker ✅ 已部署；RSS 前端、金鑰頁、今日觀察未做） | |
 | M6 匯出／匯入、集中度、上線 | ⬜ 未開始 | |
 
 開發期的實測發現集中在 `FEASIBILITY.md` §10，其中三項推翻或補充了規劃階段的假設：
@@ -100,7 +100,7 @@
 
 | 工作 | 驗收 |
 |---|---|
-| `workers/worker.mjs`：`GET /rss?src=` 白名單四來源、Cache API 10 分鐘、CORS、逾時 8 秒、非白名單 400 | `workertest`：用 wrangler 真跑，非白名單來源回 400 |
+| ~~`workers/worker.mjs`~~ **✅ 已完成並部署**：`GET /rss?src=` 白名單四來源、Cache API 10 分鐘、CORS、逾時 8 秒、非白名單 400 | `npm run workertest` 用 wrangler 真跑，22 項通過（含「白名單來源不會被擋」的對照組、快取命中、繞不過快取、無任何儲存綁定）。正式環境四個來源實測：cna／cnyes 97 則／ltn 40 則／yahoo 50 則 |
 | 前端 RSS 解析（國內經 Worker、CNBC／MarketWatch 直打）、只存標題連結來源時間、14 天清理 | 固定 RSS 樣本；斷言 `news` store 不含 `description`／全文欄位 |
 | 金鑰頁（貼上、驗證、遮罩、清除、用量）、`secrets` 獨立 store | `secret-leak-test`：匯出 JSON、備份、任何序列化結果不含 `sk-ant-` |
 | 今日觀察：系統提示、JSON 輸出、禁用詞過濾、免責 UI、首次同意頁、輸入不含股數金額 | 過濾器對照組（餵「建議加碼」「目標價 1200」等 → 全部攔到；餵正常句 → 不攔）；斷言送出的 prompt 不含任何持股股數與金額 |
