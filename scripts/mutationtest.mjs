@@ -744,6 +744,65 @@ const MUTATIONS = [
     replace: '    if (cand) return cand;',
     test: 'newstest',
   },
+  // ---- M5：金鑰 ----
+  {
+    name: '把 secrets 放進匯出範圍',
+    why: '匯出的備份檔會直接夾帶 API 金鑰。這是整個 App 最嚴重的一種錯，而且看不出來 —— '
+      + '備份檔傳給別人或放進雲端硬碟的那一刻才爆。',
+    file: 'js/db.js',
+    find: `export const EXPORTABLE_STORES = ['holdings', 'changes', 'plans', 'events', 'settings'];`,
+    replace: `export const EXPORTABLE_STORES = ['holdings', 'changes', 'plans', 'events', 'settings', 'secrets'];`,
+    test: 'secret-leak-test',
+  },
+  {
+    name: 'scrub 不抹金鑰',
+    why: '金鑰最常見的外洩方式不是被偷，是被自己印在錯誤訊息裡 —— 上游回應常把送出的標頭原樣回 echo。',
+    file: 'js/secrets.js',
+    find: `  return String(text).replace(/sk-ant-[A-Za-z0-9_-]+/g, 'sk-ant-***');`,
+    replace: '  return String(text);',
+    test: 'secret-leak-test',
+  },
+  {
+    name: '遮罩露出完整金鑰',
+    why: '設定頁會把整把金鑰印在畫面上，截圖、錄影、旁邊的人都看得到。',
+    file: 'js/secrets.js',
+    find: '  return `${KEY_PREFIX}…${tail}`;',
+    replace: '  return key;',
+    test: 'secret-leak-test',
+  },
+  {
+    name: 'status() 順手把金鑰一起回傳',
+    why: 'status() 是畫面唯一拿得到的東西，一旦帶著金鑰，它就會流進 DOM 與任何序列化的地方。',
+    file: 'js/secrets.js',
+    find: '    configured: !!r?.key,',
+    replace: `    configured: !!r?.key,
+    key: r?.key ?? null,`,
+    test: 'secret-leak-test',
+  },
+  {
+    name: '把金鑰放進 request body',
+    why: 'body 會被記進各種除錯工具與錯誤回報，標頭比較不會。金鑰只該待在 x-api-key。',
+    file: 'js/secrets.js',
+    find: '      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages }),',
+    replace: '      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, key }),',
+    test: 'secret-leak-test',
+  },
+  {
+    name: '金鑰格式照單全收',
+    why: '貼錯東西（例如整段 curl 指令）會被存起來，然後每次呼叫都失敗，使用者查不出為什麼。',
+    file: 'js/secrets.js',
+    find: '  if (!k.startsWith(KEY_PREFIX)) return { ok: false, error: `金鑰應該以 ${KEY_PREFIX} 開頭` };',
+    replace: '  if (false) return { ok: false, error: `` };',
+    test: 'secret-leak-test',
+  },
+  {
+    name: '用量費率抄錯',
+    why: '「本月約 $X」會低估，使用者以為還很便宜，實際帳單不是這樣。',
+    file: 'js/secrets.js',
+    find: `  { id: 'claude-opus-5', name: 'Opus 5', inRate: 5, outRate: 25, note: '最貴' },`,
+    replace: `  { id: 'claude-opus-5', name: 'Opus 5', inRate: 5, outRate: 5, note: '最貴' },`,
+    test: 'secret-leak-test',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
@@ -772,6 +831,17 @@ function restoreAll() {
 process.on('exit', restoreAll);
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => { restoreAll(); process.exit(130); });
+}
+
+// 先確認每條突變指到的測試檔真的存在。
+// 少了這一步，檔名打錯會以「基準不是綠的、而且沒有任何 ✗ 明細」的形式出現 ——
+// 看起來像測試壞了，其實是 scripts/<代號>.mjs 根本不存在。（踩過一次。）
+section('突變指到的測試檔都存在');
+const missingTests = TESTS.filter((t) => !fs.existsSync(path.join(ROOT, 'scripts', `${t}.mjs`)));
+eq(missingTests, [], `每條突變的 test 代號都對得到 scripts/<代號>.mjs（${TESTS.length} 個代號）`);
+if (missingTests.length) {
+  console.log('\n檔名對不起來，後面不用跑了。');
+  done('mutationtest');
 }
 
 section('基準：沒有任何突變時，測試必須全綠');
@@ -822,7 +892,6 @@ for (const mut of MUTATIONS) {
 section('突變清單本身');
 eq([...new Set(MUTATIONS.map((m) => m.name))].length, MUTATIONS.length, '沒有重複的突變');
 ok(MUTATIONS.every((m) => m.why && m.why.length > 10), '每條突變都寫了「改壞了會怎樣」');
-ok(TESTS.every((t) => fs.existsSync(path.join(ROOT, 'scripts', `${t}.mjs`))), `對應到的測試都存在：${TESTS.join('、')}`);
 eq(backups.size, 0, '所有被改過的檔案都已還原');
 
 done('mutationtest');

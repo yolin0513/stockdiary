@@ -5,18 +5,129 @@ import * as prefs from '../prefs.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
 import { setTop, render } from '../shell.js';
+import * as secrets from '../secrets.js';
 
 export default async function settings() {
   setTop({ title: '設定' });
+  const key = await secrets.status();
 
   // 走 render()（不要自己 mount #view）：那裡有「這個畫面是不是已經過期」的守門。
   render([
     fontSection(),
     dividendSection(),
     thresholdSection(),
+    aiSection(key),
     dataSection(),
     aboutSection(),
   ]);
+}
+
+/**
+ * AI 金鑰。
+ *
+ * 畫面上的三條硬規則：
+ *   · 存進去之後只顯示遮罩，沒有「再看一次完整金鑰」這個功能
+ *   · 清除本機金鑰**不等於**停用它 —— 必須寫出「要到 Anthropic 後台 Delete」
+ *   · 用量是**估算**，真正的硬上限是後台的 Billing 上限，要講明白
+ */
+function aiSection(st) {
+  return st.configured ? configuredCard(st) : setupCard(st);
+}
+
+function setupCard(st) {
+  const input = h('input', {
+    class: 'field', type: 'password', autocomplete: 'off', spellcheck: 'false',
+    placeholder: secrets.KEY_PREFIX + '…', dataset: { field: 'apiKey' },
+  });
+  const msg = h('p', { class: 'muted sm' }, '');
+  const saveBtn = h('button', { class: 'btn btn-primary' }, '驗證並儲存');
+
+  const paste = h('button', { class: 'btn' }, '貼上');
+  paste.addEventListener('click', async () => {
+    try {
+      input.value = (await navigator.clipboard.readText()).trim();
+      msg.textContent = '已貼上，按「驗證並儲存」。';
+    } catch {
+      // 剪貼簿權限被拒不是錯誤，講清楚替代做法就好
+      msg.textContent = '這個瀏覽器不讓程式讀剪貼簿，請直接長按欄位貼上。';
+    }
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    if (saveBtn.disabled) return;
+    const fmt = secrets.checkFormat(input.value);
+    if (!fmt.ok) { msg.textContent = fmt.error; return; }
+    saveBtn.disabled = true;
+    saveBtn.textContent = '驗證中…';
+    msg.textContent = '正在對 Anthropic 送一次最小呼叫，確認這把金鑰是活的…';
+    const r = await secrets.testKey({ key: fmt.key });
+    if (!r.ok) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '驗證並儲存';
+      // r.error 已經 scrub 過（secrets.testKey 保證），這裡再過一次不會錯
+      msg.textContent = secrets.scrub(`驗不過，沒有存下來：${r.error}`);
+      return;
+    }
+    await secrets.save({ key: fmt.key });
+    input.value = '';
+    toast('金鑰已儲存在這台裝置上');
+    await settings();
+  });
+
+  return h('section', { class: 'card', dataset: { card: 'aiKeySetup' } },
+    h('h2', { class: 'card-title' }, 'AI 金鑰（選用）'),
+    h('p', { class: 'muted sm' },
+      '「今日觀察」需要你自己的 Anthropic 金鑰。費用由你直接付給 Anthropic，這個 App 不經手。'),
+    h('p', { class: 'muted sm' },
+      '金鑰只存在這台裝置的瀏覽器裡，不會上傳到任何伺服器，也不會出現在匯出的備份檔裡。'),
+    h('div', { class: 'row-actions' }, input, paste),
+    msg,
+    saveBtn,
+    h('p', { class: 'muted sm' }, '不填也可以用 —— 除了「今日觀察」之外的功能都不需要金鑰。'));
+}
+
+function configuredCard(st) {
+  const model = h('div', { class: 'chip-row' }, ...secrets.MODELS.map((m) => {
+    const chip = h('button', {
+      class: 'chip' + (m.id === st.model ? ' on' : ''),
+      dataset: { model: m.id },
+    }, m.name);
+    chip.addEventListener('click', async () => { await secrets.setModel(m.id); await settings(); });
+    return chip;
+  }));
+
+  const clearBtn = h('button', { class: 'btn' }, '清除這台裝置上的金鑰');
+  clearBtn.addEventListener('click', async () => {
+    await secrets.clear();
+    toast('已清除。記得到 Anthropic 後台 Delete 才是真的停用。');
+    await settings();
+  });
+
+  const m = secrets.modelById(st.model);
+  return h('section', { class: 'card', dataset: { card: 'aiKeyConfigured' } },
+    h('h2', { class: 'card-title' }, 'AI 金鑰'),
+    h('p', {}, `已設定：${st.masked}`),
+    h('p', { class: 'muted sm' }, '基於安全，存進去之後就只顯示遮罩，沒有辦法再看一次完整金鑰。'),
+
+    h('h3', { class: 'sub-title' }, '模型'),
+    model,
+    m ? h('p', { class: 'muted sm' }, `${m.name}：輸入 $${m.inRate}／輸出 $${m.outRate}（每百萬 token）。${m.note}`) : null,
+
+    h('h3', { class: 'sub-title' }, '用量'),
+    h('p', {}, `${st.month} 約 ${secrets.fmtUsd(st.usedMicroUsd)}`),
+    h('p', { class: 'muted sm' }, `本機上限 ${secrets.fmtUsd(st.capMicroUsd)}，超過就停用「今日觀察」。`),
+    st.overCap
+      ? h('p', { class: 'warn' }, '已達本機上限，「今日觀察」暫停。下個月自動歸零，或調高上限。')
+      : null,
+    h('p', { class: 'muted sm' },
+      '這是**估算**：用回應裡的 token 數乘上公開費率累加，可能與帳單有出入。'
+      + '真正會擋下花費的是 Anthropic 後台的 Billing 上限，建議去那裡也設一個。'),
+
+    h('h3', { class: 'sub-title' }, '清除'),
+    clearBtn,
+    h('p', { class: 'muted sm' },
+      '清除只會刪掉這台裝置上的這一份。**這不等於停用這把金鑰** —— '
+      + '要真的讓它失效，必須到 Anthropic 後台把這把 key 刪掉（Delete）。'));
 }
 
 /** 除權息相關的兩個開關（PLAN §1：含應收股利預設開、自動扣費預設關）。 */
