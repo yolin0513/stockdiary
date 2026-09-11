@@ -29,6 +29,12 @@ export function setNotFound(fn) { notFound = fn; }
 export function routePatterns() { return routes.map((r) => r.pattern); }
 
 export function navigate(path, { replace = false } = {}) {
+  // 已經過期的 view 不准把使用者拉走。
+  // 例如 holding.js 查不到代號時會 navigate('/holdings')，但那個判斷在 await 之後 ——
+  // 使用者早就點去別頁了，這時候 location.replace 會硬把人從他選的那一頁扯回去。
+  // 症狀跟「按了按鈕跳回別頁」一模一樣。不做事才是對的：runLatest 會把使用者
+  // 真正要的那一頁畫出來（racetest.mjs 有一節在守這件事）。
+  if (renderIsStale()) return;
   const target = '#' + path;
   const cur = location.hash || '#/';
   if (target === cur) { resolve(); return; }
@@ -62,9 +68,49 @@ function parse(hash) {
   return { raw, path, query };
 }
 
+// ---------- 誰有資格畫面上那塊畫布 ----------
+//
+// 每個 view 都是 async 的：`await import(...)` → `await 讀資料` → `render(...)`。
+// 這中間使用者隨時可能換頁。沒有守門的話，**最後畫完的那個贏** —— 網址是新的、
+// 畫面是舊的，看起來就是「按了按鈕跳到別頁」。使用者回報過這個症狀。
+//
+// 守門分兩層：
+//   gen      每導覽一次 +1
+//   paintGen 目前正在跑的那個 view 是哪一代
+// 兩者不相等，就代表正在跑的那個 view 已經過期了，它畫的東西一律不算數
+// （render() 會問 renderIsStale()）。
+//
+// 而且同一時間只跑一個 view（runLatest 的迴圈）。這樣 paintGen 在一個 view
+// 從頭跑到尾的期間不會被別人改掉，「有沒有人在我背後換過頁」才問得準。
+// 跑完發現又有人換頁了就再跑一次最新的，所以最後一定會停在對的那一頁。
 let gen = 0;
-async function resolve() {
+let paintGen = 0;
+let running = false;
+
+/** 正在跑的這個 view 是不是已經被更新的導覽取代了？（給 render() 當守門用） */
+export function renderIsStale() { return paintGen !== gen; }
+
+function resolve() {
   const my = ++gen;
+  // view 是 async 的。慢到 250ms 還沒換畫面才補轉圈圈 —— 無條件先畫會變成閃一下。
+  // 計時從「使用者按下去」開始算，不是從輪到它跑才算。
+  setTimeout(() => { if (slowIndicator && my === gen && paintGen !== my) slowIndicator(); }, 250);
+  if (running) return; // 現在這一輪跑完會自己接著跑最新的
+  runLatest();
+}
+
+async function runLatest() {
+  running = true;
+  try {
+    while (paintGen !== gen) await renderOnce();
+  } finally {
+    running = false;
+  }
+}
+
+async function renderOnce() {
+  paintGen = gen;
+  const my = paintGen;
   const { raw, path, query } = parse();
   const restore = scrollMemory.has(raw) ? scrollMemory.get(raw) : null;
   restoredScroll = restore != null;
@@ -77,11 +123,9 @@ async function resolve() {
     r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
     current = { path, params, query, pattern: r.pattern };
     if (restore == null) window.scrollTo(0, 0);
-    // view 是 async 的。慢到 250ms 還沒畫東西才補轉圈圈 —— 無條件先畫會變成閃一下。
-    let slow = setTimeout(() => { if (slowIndicator && my === gen) slowIndicator(); }, 250);
     try { await r.handler({ params, query, path, fresh: true }); }
     catch (e) { console.error(e); }
-    finally { clearTimeout(slow); slow = null; }
+    if (my !== gen) return; // 畫到一半使用者就走了，捲動位置也不要動
     if (restore != null) {
       window.scrollTo(0, restore);
       requestAnimationFrame(() => { if (my === gen) window.scrollTo(0, restore); });
@@ -90,6 +134,13 @@ async function resolve() {
   }
   if (notFound) await notFound({ path });
 }
+
+/**
+ * 重畫目前這一頁（資料更新回來時用）。
+ * 走的是跟一般導覽同一條路，所以同樣受上面那套守門保護 ——
+ * 資料慢慢回來的期間使用者換了頁，就不會被舊資料的畫面蓋掉。
+ */
+export function refresh() { resolve(); }
 
 export function currentRoute() { return current; }
 

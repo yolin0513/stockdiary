@@ -22,8 +22,12 @@
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：16 支測試、約 940 條斷言，`npm run mutationtest` 用 **68 條突變**逐一證明關鍵斷言改壞會紅。
-突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過。
+測試現況：17 支測試＋突變套件，`npm run mutationtest` 用 **78 條突變**逐一證明關鍵斷言改壞會紅。
+突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
+（所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
+
+⚠ 跑 `npm run mutationtest` 期間**不要同時編輯檔案、也不要並行跑別的測試**：
+它會暫時改寫工作目錄裡的原始碼（改完立刻還原）。docs/ 不在改寫範圍內。
 
 ## 部署
 
@@ -53,7 +57,7 @@
 
 | 工作 | 驗收 |
 |---|---|
-| **觀察 TWSE 當日收盤資料實際公布時間**：在某個交易日 13:30–16:00 之間，每 10 分鐘各打一次 `rwd/zh/afterTrading/STOCK_DAY_ALL?response=json` 與 `exchangeReport/STOCK_DAY?date=<今天>&stockNo=2330`（≥ 2 秒間隔、一天一次觀察即可），記錄第一次出現今天日期的時刻 | 結果寫進 `FEASIBILITY.md` §9.3，並把 `settings` 的「今日資料公布門檻」預設值定下來（暫定 15:00；實測後改） |
+| ~~觀察 TWSE 當日收盤資料實際公布時間~~ **✅ 已完成（2026-09-11）**：`STOCK_DAY` 13:55:18、`STOCK_DAY_ALL` 14:00:21 首次出現當日資料，兩者差約 5 分鐘 | 結果已寫進 `FEASIBILITY.md` §9.3。**門檻預設維持 15:00**（只有一天樣本，訂太早會拿到昨天的資料當今天；使用者已確認此取捨）。原始紀錄 `docs/measurements/twse-publish-2026-09-11.{log,jsonl}` |
 | 建 repo `stockdiary`（公開）、GitHub Pages、`package.json`（`type: module`、puppeteer、wrangler devDeps） | `https://yolin0513.github.io/stockdiary/` 開得起來 |
 | PWA 殼：`index.html`、`manifest.webmanifest`、`sw.js`、`js/{app,router,db,ui,store}.js`、`css/`；照 TripQuest 的 `ui.js`（h() textNode、URL 白名單）與 SW 換版策略 | `npm test` 至少有：路由完整性稽核（view import ⊆ SW SHELL）、`h()` 不接受 `html:` prop 的斷言 |
 | `scripts/build-stocks.mjs`：從 `openapi.twse.com.tw/v1/opendata/t187ap03_L`（上市）、`www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O`（上櫃）、TWSE `STOCK_DAY_ALL`（含 ETF）產 `data/stocks.json`；`scripts/build-calendar.mjs` 從 `holidaySchedule` 產 `data/calendar.json` | 固定樣本解析測試；`stocks.json` 含 `2330 上市`、`6488 上櫃`、至少一檔 ETF |
@@ -120,6 +124,33 @@
 6. **AI 輸入夾帶股數、金額、成本。** 只給代號、名稱、產業、當日漲跌％；一旦給了金額，模型就會開始「幫你算該不該加碼」。
 7. **TWSE 連打被封 IP。** 回補多檔多月時一定 ≥ 2 秒一次；測試不打真網路；`livecheck` 也要節流。
 8. **金鑰進了匯出檔。** `secrets` 必須是獨立 store 且所有匯出路徑結構性讀不到它，並有 `secret-leak-test`。
+9. **非同步畫面沒有守門 → 按了按鈕跳到別頁。** 見下面那一節，這是實際發生過的 bug。
+10. **測試「等到有東西出現」就當作畫面換好了。** `#view` 裡上一頁的內容本來就還在，這種等待**等於什麼都沒等到**，量到的是上一頁。要等**這一頁自己的**標記（標題、`data-card`）。這條假斷言讓 9. 藏了很久。
+11. **以為 `page.setOfflineMode(true)` 就是離線。** 它**管不到 Service Worker 自己發的 `fetch`** —— SW 照樣連得到測試伺服器。要真的離線就把伺服器關掉，而且加一條「網路真的斷了」的對照斷言。
+
+## 非同步畫面的守門（v0.5.2，實際發生過的 bug）
+
+使用者回報「點『管理定期定額計畫』會直接跳回主頁」。根因不是路由壞掉，是
+**每個 view 都是 async 的，卻沒有人檢查「畫到一半使用者已經走掉了」** ——
+最後畫完的那個贏，於是網址是新的、畫面是舊的。三條路徑都會產生同一個症狀：
+
+1. 開機的 `store.update()` 回來後重畫首頁，`here === '/'` 只在那一瞬間檢查一次；
+   之後 `import` ＋ 讀 IndexedDB 還要幾百毫秒，使用者在這段空窗點任何按鈕都會被首頁蓋掉。
+2. 慢的舊 view 醒來之後照樣把自己畫上去。
+3. 過期的 view 還能 `navigate()` 把使用者從他選的那一頁拉走（`holding.js` 查不到代號時）。
+
+守門在 `js/router.js`：`gen`（每導覽一次 +1）與 `paintGen`（正在跑的 view 是哪一代），
+兩者不相等就代表過期。**同一時間只跑一個 view**（`runLatest` 迴圈），`paintGen` 才不會
+被下一次導覽改掉；跑完發現又有人換頁就再跑一次最新的，所以最後一定停在對的那一頁。
+
+規則：
+- **任何一頁都不准自己 `mount(#view)`**，一律走 `app.js` 的 `render()`（守門在那裡）。
+  `shelltest` 有靜態稽核擋這件事，連還沒寫的新頁也擋得到。
+- 開機／資料更新後要重畫，走 `router.refresh()`，**不要自己 import 那一頁來畫**。
+- 新增路由時要同步補 `shelltest` 的 `EXPECT_TITLE`（少一條會失敗，不會靜默略過）。
+
+`scripts/racetest.mjs` 用「指定某個檔案慢幾毫秒回應」的伺服器把空窗撐開到穩定可測，
+除了「塵埃落定後停在哪一頁」，也**在空窗中間取樣**，確保不是「先畫錯的再畫對的」。
 
 ## 除權息參考價：兩個來源，畫面上分得開（已上線）
 

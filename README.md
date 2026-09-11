@@ -44,7 +44,9 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run dividendtest` | 除權息解析、參考價公式、股利金額與扣費、配股餘數 |
 | `npm run throttletest` | TWSE 請求節流（**量實際經過的毫秒數**）與單次開頁上限 |
 | `npm run datatest` | `data/*.json` 內容與代號支援判斷 |
-| `npm run shelltest` | PWA 殼稽核：import 圖 ⊆ SW SHELL、`h()` 不接受 `html:` prop、每條路由畫得出東西 |
+| `npm run shelltest` | PWA 殼稽核：import 圖 ⊆ SW SHELL、`h()` 不接受 `html:` prop、每條路由真的畫得出**自己那一頁**、沒有一頁繞過 `render()` |
+| `npm run versionmixtest` | 版本混搭：舊 `app.js` ＋ 新 view 會怎樣、不認得的路由要講清楚原因、離線（**真的把伺服器關掉**）開得起來 |
+| `npm run racetest` | 非同步畫面競態：慢的舊畫面不准蓋掉使用者現在這頁、不准把人從他選的那頁拉走、空窗中間也不准閃出別頁 |
 | `npm run holdingtest` | 持股畫面：上櫃列沒有報價數字、未公布時顯示「—」、未實現區塊的出現條件 |
 | `npm run plantest` | 定期定額：扣款日展開與順延、估算股數與餘額、平均成本更新 |
 | `npm run eventtest` | 除權息端對端：除息日改用參考價、確認流程、配股加股數 |
@@ -56,7 +58,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
 
 ```
-— 68 條突變：每一條都必須讓對應的測試變紅 —
+— 78 條突變：每一條都必須讓對應的測試變紅 —
   ✓ 把「沒成交」的漲跌價差照抄成 0 → parsetest 變紅
   ✓ 不認得除權息的 "X0.00" 標記 → parsetest 變紅
   ✓ 除權息日拿不到參考價時，退回用前一日收盤當基準 → settletest 變紅

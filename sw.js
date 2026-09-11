@@ -6,7 +6,7 @@
  *
  * 每次改動任何 SHELL 檔案都要 bump VERSION，否則使用者拿到的還是舊程式。
  */
-const VERSION = 'stockdiary-v0.5.0';
+const VERSION = 'stockdiary-v0.5.2';
 const SHELL = `${VERSION}-shell`;
 
 const SHELL_ASSETS = [
@@ -24,6 +24,7 @@ const SHELL_ASSETS = [
   './js/twse.js',
   './js/market.js',
   './js/catalog.js',
+  './js/version.js',
   './js/money.js',
   './js/settle.js',
   './js/holdings.js',
@@ -90,7 +91,10 @@ self.addEventListener('fetch', (e) => {
   // 背景覆寫會造成「舊 app.js 還在跑、動態載入卻拿到新的 view」：
   // 畫面有新按鈕、路由表沒那條路，一點就被踢回首頁。
   if (SHELL_SET.has(url.pathname)) {
-    e.respondWith(caches.match(request).then((hit) => hit || fetch(request)));
+    // ignoreSearch：網址上的 ?v=<版本> 只是給瀏覽器 HTTP 快取用的鍵，
+    // 對 SW 的快取來說同一個檔案就是同一個檔案。不忽略的話，帶版本參數的請求
+    // 會在快取裡找不到、只能走網路 —— 離線就打不開了。
+    e.respondWith(caches.match(request, { ignoreSearch: true }).then((hit) => hit || fetch(request)));
     return;
   }
 

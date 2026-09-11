@@ -33,6 +33,9 @@ export function importsOf(source) {
     /\bimport\s+[^'"]*?from\s+'([^']+)'/g,   // import x from './y.js'
     /\bimport\s+'([^']+)'/g,                  // import './y.js'
     /\bimport\(\s*'([^']+)'\s*\)/g,           // await import('./y.js')
+    // 動態 import 會帶版本參數：import(`./views/x.js${V}`)
+    // 只取到 ${ 為止 —— 路徑本身仍是字面值，SHELL 稽核才走得下去。
+    /\bimport\(\s*`([^`$]+)/g,
   ];
   for (const rx of patterns) {
     for (const m of source.matchAll(rx)) {
@@ -102,9 +105,51 @@ detects(
   '稽核器只管 JS 模組，抽掉非模組資產不會誤報'
 );
 
-section('路由表與 view 檔');
+section('版本號三個地方必須一致');
+// 這是「按按鈕跳回首頁」那個 bug 的結構性防線：
+// js/version.js（程式看得到的版本）、sw.js（快取名稱）、index.html（HTTP 快取鍵）
+// 只要有一個沒跟上，瀏覽器就可能把新舊檔案湊在一起。
+const appVersion = /export const APP_VERSION = '([^']+)';/.exec(read('js/version.js'))?.[1];
+const APP_VERSION_IN_SRC = appVersion;
+const swVersion = /const VERSION = '([^']+)';/.exec(read('sw.js'))?.[1];
+const htmlStamps = [...read('index.html').matchAll(/\?v=([^"'&]+)/g)].map((m) => m[1]);
+ok(/^stockdiary-v\d+\.\d+\.\d+$/.test(String(appVersion)), `js/version.js 的版本：${appVersion}`);
+eq(swVersion, appVersion, 'sw.js 的 VERSION 與 js/version.js 一致');
+ok(htmlStamps.length >= 2, `index.html 有 ${htmlStamps.length} 個帶版本的資源網址`);
+everyOf(htmlStamps, (v) => v === appVersion, 'index.html 每一個 ?v= 都是同一個版本');
+// 對照組：版本比對真的分得出不一樣的字串
+detects((v) => v !== appVersion, {
+  shouldHit: ['stockdiary-v0.0.1', 'stockdiary-v9.9.9', ''],
+  shouldMiss: [appVersion],
+}, '版本比對有對照組');
+
+// 上面那條只檢查「有帶版本的那些都一致」—— 少帶的那個它看不到。
+// 把 <script src="./js/app.js?v=..."> 的版本單獨拿掉，7 個 modulepreload 還帶著版本，
+// 一致性檢查照樣全綠（實測過，這條突變曾經無聲無息地過關）。
+// 而 app.js 正是最不能漏的那一個：它是進入點，舊的 app.js 配新的 view 就是那個 bug。
+// 所以要反過來問：**每一個** .js 引用都帶版本了嗎。
+const stamped = (u) => u.endsWith(`?v=${appVersion}`);
+const htmlJsRefs = [...read('index.html').matchAll(/(?:src|href)="(\.\/[^"]+\.js[^"]*)"/g)].map((m) => m[1]);
+ok(htmlJsRefs.length >= 5, `index.html 引用了 ${htmlJsRefs.length} 個本地 .js`);
+ok(htmlJsRefs.some((u) => u.split('?')[0] === './js/app.js'), 'index.html 確實有載入進入點 app.js');
+everyOf(htmlJsRefs, stamped,
+  `index.html 每一個 .js 引用都帶 ?v=${appVersion}（含 <script> 與每個 modulepreload）`);
+detects((u) => !stamped(u), {
+  shouldHit: ['./js/app.js', './js/app.js?v=stockdiary-v0.0.1', './js/router.js?v=', './js/app.js?x=1'],
+  shouldMiss: [`./js/app.js?v=${appVersion}`, `./js/views/home.js?v=${appVersion}`],
+}, '「有沒有帶對版本」的檢查器有對照組');
+
+section('app.js 的動態 import 都帶版本參數');
+// 帶了版本，「新版 app.js 配上瀏覽器快取裡的舊 view」就不可能發生 ——
+// 不同的版本參數就是不同的 HTTP 快取鍵。
 const appSrc = read('js/app.js');
-const routeDefs = [...appSrc.matchAll(/route\('([^']+)',[\s\S]{0,160}?import\('([^']+)'\)/g)]
+const dynamicImports = [...appSrc.matchAll(/await import\(([^)]+)\)/g)].map((m) => m[1].trim());
+ok(dynamicImports.length >= 5, `找到 ${dynamicImports.length} 個動態 import`);
+everyOf(dynamicImports, (s) => s.includes('${V}'), '每一個動態 import 都帶 ${V} 版本參數');
+noneOf(dynamicImports, (s) => /^'\.\/views\/[a-z]+\.js'$/.test(s), '沒有任何一個是沒帶版本的字面字串');
+
+section('路由表與 view 檔');
+const routeDefs = [...appSrc.matchAll(/route\('([^']+)',[\s\S]{0,200}?import\(`([^`$]+)/g)]
   .map((m) => ({ pattern: m[1], view: path.posix.normalize(path.posix.join('js', m[2].replace(/^\.\//, ''))) }));
 ok(routeDefs.length >= 2, `註冊了 ${routeDefs.length} 條路由：${routeDefs.map((r) => r.pattern).join('、')}`);
 everyOf(routeDefs, (r) => fs.existsSync(path.join(ROOT, r.view)), '每條路由的 view 檔都存在');
@@ -113,11 +158,42 @@ everyOf(routeDefs, (r) => shellSet.has(r.view), '每條路由的 view 檔都在 
 
 section('index.html 引用的資源');
 const html = read('index.html');
-const refs = [...html.matchAll(/(?:href|src)="(\.\/[^"]+)"/g)].map((m) => m[1]);
+// 網址上的 ?v=<版本> 只是 HTTP 快取鍵，比對檔案存不存在時要去掉
+const refs = [...html.matchAll(/(?:href|src)="(\.\/[^"]+)"/g)].map((m) => m[1].split('?')[0]);
 ok(refs.length >= 5, `index.html 引用了 ${refs.length} 個本地資源`);
 everyOf(refs, (r) => fs.existsSync(path.join(ROOT, r)), 'index.html 引用的檔案都存在');
 everyOf(refs, (r) => shellSet.has(path.posix.normalize(r.replace(/^\.\//, ''))),
   'index.html 引用的檔案都在 SHELL 清單裡');
+
+/**
+ * 稽核：有沒有哪一頁繞過 render() 自己去寫 #view。
+ *
+ * render()（js/app.js）裡面有一道守門：畫面是 async 的，畫到一半使用者換頁的話，
+ * 這一份就不准畫上去。繞過它直接 mount #view 就沒有這道守門 ——
+ * 網址是新的、畫面是舊的，看起來就是「按了按鈕跳到別頁」。使用者回報過這個症狀。
+ *
+ * 這裡用靜態稽核而不是一頁一頁跑，因為跑測試抓不到「以後才寫的那一頁」。
+ */
+export function viewsWritingViewDirectly(source) {
+  return /getElementById\(\s*['"]view['"]\s*\)/.test(source) || /mount\(\s*view/.test(source);
+}
+
+section('沒有任何一頁繞過 render() 直接寫 #view');
+const viewFiles = fs.readdirSync(path.join(ROOT, 'js/views')).filter((f) => f.endsWith('.js'));
+noneOf(viewFiles, (f) => viewsWritingViewDirectly(read(`js/views/${f}`)),
+  '每一頁都透過 app.js 的 render() 上畫面（那裡才有「畫面過期就不畫」的守門）');
+detects(viewsWritingViewDirectly, {
+  shouldHit: [
+    "mount(document.getElementById('view'), x);",
+    'mount(document.getElementById("view"), x);',
+    'const el = document.getElementById( "view" );',
+  ],
+  shouldMiss: [
+    'render([a, b]);',
+    "document.getElementById('modalRoot')",
+    'mount(bar, ...tabs);',
+  ],
+}, '這個稽核器抓得到繞過去的寫法，也不會亂抓');
 
 section('sw.js 不會快取外部請求');
 ok(/url\.origin !== self\.location\.origin/.test(swSource) &&
@@ -205,19 +281,75 @@ try {
     '（對照）正常的網址留得下來 —— 證明白名單不是「全部都丟」');
 
   section('每條路由都畫得出東西');
+  // 只等「#view 有東西」是不夠的：上一頁的內容本來就還在，那樣等於什麼都沒等到，
+  // 量到的是上一頁。要等到頂列標題換成這一頁自己的，才算真的畫出來了。
+  // （/holdings/:code 帶的是假代號，那一頁會自己退回 /holdings，所以標題是「持股」。）
+  const EXPECT_TITLE = {
+    '/': 'StockDiary 股息日記',
+    '/holdings': '持股',
+    '/holdings/:code': '持股',
+    '/plans': '定期定額',
+    '/dividends': '股利',
+    '/calc': '定期定額試算',
+    '/settings': '設定',
+  };
+  everyOf(routeDefs, (r) => EXPECT_TITLE[r.pattern] != null,
+    '每條路由都列了它應該出現的標題（新增路由時不准漏掉）');
+  const titleIs = (want) => page.waitForFunction(
+    (t) => document.getElementById('topTitle').textContent === t, { timeout: 60000 }, want);
+  const goto = async (hash) => { await page.evaluate((x) => { location.hash = x; }, hash); };
+
   for (const r of routeDefs) {
-    await page.evaluate((p) => { location.hash = '#' + p; }, r.pattern);
-    await page.waitForFunction(() => document.querySelector('#view')?.textContent?.trim().length > 0,
-      { timeout: 60000 });
-    const text = await page.$eval('#view', (el) => el.textContent.trim());
-    ok(text.length > 10, `${r.pattern} 有內容（${text.length} 字）`);
+    const want = EXPECT_TITLE[r.pattern];
+    // 每一條都先繞去一個標題**不一樣**的畫面再過去。不繞的話，上一頁剛好同標題時
+    // （例如 /holdings 之後接 /holdings/:code）等待會立刻成立，等於什麼都沒等到。
+    const via = want === EXPECT_TITLE['/settings'] ? '#/' : '#/settings';
+    await goto(via);
+    await titleIs(EXPECT_TITLE[via === '#/' ? '/' : '/settings']);
+
+    await goto('#' + r.pattern);
+    let landed = true;
+    try { await titleIs(want); } catch { landed = false; }
+    const got = await page.evaluate(() => ({
+      title: document.getElementById('topTitle').textContent,
+      text: document.querySelector('#view').textContent.trim(),
+    }));
+    ok(landed && got.text.length > 10,
+      `${r.pattern} 真的畫出來了（標題「${want}」，${got.text.length} 字）`,
+      landed ? '' : `標題停在「${got.title}」`);
+    if (r.pattern === '/holdings/:code') {
+      // 帶的是不存在的代號（字面的「:code」），它必須把使用者退回持股頁。
+      // 有這一條，上面那個「標題是持股」才不會是「根本沒轉過去」也成立。
+      eq(await page.evaluate(() => location.hash), '#/holdings',
+        '查不到的代號會退回 #/holdings');
+    }
   }
   eq(pageErrors, [], '走完所有路由之後仍然沒有例外');
 
-  section('不認得的網址退回首頁，不是白畫面');
+  section('不認得的網址：講清楚原因，不靜默跳回首頁');
+  // 使用者回報過的症狀：按「管理定期定額計畫」直接跳回主頁，什麼都沒說。
+  // 根因是版本混搭（新版畫面配舊版路由表），但不管根因是什麼，
+  // **fallback 都不該靜默** —— 使用者要看得到發生什麼事、可以做什麼。
+  // 先回到一個穩定的畫面再測。上一段走過 /holdings/:code，那條路由自己會
+  // location.replace 轉走，跟接下來設定的 hash 會互相追撞（實測三次有一次逾時）。
+  await page.evaluate(() => { location.hash = '#/'; });
+  await page.waitForSelector('#view .big-number', { timeout: 60000 });
+  await new Promise((r) => setTimeout(r, 400));
+
   await page.evaluate(() => { location.hash = '#/沒有這一頁'; });
-  await page.waitForFunction(() => location.hash === '#/' || location.hash === '', { timeout: 60000 });
-  ok(await page.$('#view .card') != null, '退回首頁而且畫得出來');
+  await page.waitForSelector('#view [data-card="versionMismatch"]', { timeout: 60000 });
+  const mismatch = await page.evaluate(() => ({
+    hash: location.hash,
+    text: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
+    hasUpdateButton: [...document.querySelectorAll('#view button')].some((b) => b.textContent.includes('更新到最新版')),
+    hasHomeLink: [...document.querySelectorAll('#view a')].some((a) => a.getAttribute('href') === '#/'),
+  }));
+  ok(mismatch.hasUpdateButton, '有「更新到最新版」的按鈕');
+  ok(mismatch.hasHomeLink, '也留了一條回總覽的路');
+  ok(mismatch.text.includes('沒有這一頁'), '把打不開的那條路徑寫出來');
+  ok(mismatch.text.includes(APP_VERSION_IN_SRC), `寫出目前執行的版本 ${APP_VERSION_IN_SRC}`);
+  ok(mismatch.hash !== '#/', `網址留在原地（${mismatch.hash}），更新之後才接得上`);
+  ok(await page.$('#tabbar .tab') != null, '底部分頁還在，沒有把使用者困住');
 
   section('尚未結算時顯示「—」，不顯示 0');
   await page.evaluate(() => { location.hash = '#/'; });

@@ -1,21 +1,22 @@
 // 設定頁。M0：字級、今日資料公布門檻、資料來源與限制說明。
 
-import { h, mount, toast } from '../ui.js';
+import { h, toast } from '../ui.js';
 import * as prefs from '../prefs.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
-import { setTop } from '../app.js';
+import { setTop, render } from '../app.js';
 
 export default async function settings() {
   setTop({ title: '設定' });
 
-  mount(document.getElementById('view'),
+  // 走 render()（不要自己 mount #view）：那裡有「這個畫面是不是已經過期」的守門。
+  render([
     fontSection(),
     dividendSection(),
     thresholdSection(),
     dataSection(),
     aboutSection(),
-  );
+  ]);
 }
 
 /** 除權息相關的兩個開關（PLAN §1：含應收股利預設開、自動扣費預設關）。 */

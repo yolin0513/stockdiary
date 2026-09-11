@@ -26,7 +26,7 @@ export default async function plansView() {
 
   render([
     pending.length ? pendingCard(pending) : null,
-    h('section', { class: 'card' },
+    h('section', { class: 'card', dataset: { card: 'plansList' } },
       h('h2', { class: 'card-title' }, `計畫（${list.length}）`),
       h('p', { class: 'muted sm' },
         '扣款日過了之後第一次開 App，會產生一筆待確認的扣款，對照券商通知確認就好。' +

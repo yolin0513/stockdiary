@@ -24,6 +24,11 @@ import { ok, eq, section, done } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
+// 版本號每 bump 一次就會變。突變字串寫死版本的話，每 bump 一次就會有幾條突變
+// 「找不到要改的程式碼」而過期 —— 那等於對應的斷言悄悄地不再被驗證。所以從檔案讀。
+const APP_VERSION = /APP_VERSION = '([^']+)'/.exec(
+  fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8'))[1];
+
 const MUTATIONS = [
   {
     name: '把「沒成交」的漲跌價差照抄成 0',
@@ -497,6 +502,50 @@ const MUTATIONS = [
     replace: '  for (const need of []) {\n    const month = prices.monthOf(need.date);',
     test: 'dcatest',
   },
+  // ---- 版本混搭（使用者回報：點按鈕直接跳回主頁）----
+  {
+    name: '不認得的路由靜默導回首頁',
+    why: '使用者回報的原症狀：按「管理定期定額計畫」直接跳回主頁，沒有任何訊息，'
+      + '完全不知道發生什麼事，也不知道可以做什麼。',
+    file: 'js/app.js',
+    find: 'setNotFound(({ path }) => {\n  showVersionMismatch(path);\n});',
+    replace: "setNotFound(() => navigate('/', { replace: true }));",
+    test: 'versionmixtest',
+  },
+  {
+    name: 'index.html 載 app.js 時不帶版本參數',
+    why: 'GitHub Pages 每個檔案 max-age=600 且不 revalidate，瀏覽器快取逐檔計時。'
+      + '不帶版本參數的話，十分鐘前的舊 app.js 會配上剛抓的新 view —— 那就是這個 bug 的成因。',
+    file: 'index.html',
+    find: `<script type="module" src="./js/app.js?v=${APP_VERSION}"></script>`,
+    replace: '<script type="module" src="./js/app.js"></script>',
+    test: 'shelltest',
+  },
+  {
+    name: '版本號三個地方不一致（sw.js 忘了跟上）',
+    why: '漏改一個，快取鍵與快取名稱就對不起來，新舊檔案又會混在一起。',
+    file: 'sw.js',
+    find: `const VERSION = '${APP_VERSION}';`,
+    replace: "const VERSION = 'stockdiary-v0.0.0-mutant';",
+    test: 'shelltest',
+  },
+  {
+    name: '動態 import 不帶版本參數',
+    why: '新版的 app.js 會配上瀏覽器快取裡的舊 view —— 同一個 bug 的反方向。',
+    file: 'js/app.js',
+    find: "route('/plans', async () => (await import(`./views/plans.js${V}`)).default());",
+    replace: "route('/plans', async () => (await import('./views/plans.js')).default());",
+    test: 'shelltest',
+  },
+  {
+    name: 'SW 快取比對不忽略查詢字串',
+    why: '帶版本參數的請求永遠命中不了預快取的檔案。線上看不出來（會走網路），**離線整個打不開**。',
+    file: 'sw.js',
+    find: "    e.respondWith(caches.match(request, { ignoreSearch: true }).then((hit) => hit || fetch(request)));",
+    replace: '    e.respondWith(caches.match(request).then((hit) => hit || fetch(request)));',
+    test: 'versionmixtest',
+  },
+
   // ---- M4：定期定額試算器 ----
   {
     name: '試算器把空白欄位當成 0',
@@ -569,6 +618,65 @@ const MUTATIONS = [
     find: "  if (!m) return NO_VALUE;\n  return `${Number(m[2])}/${Number(m[3])}`;",
     replace: "  if (!m) { const t = new Date(); return `${t.getMonth() + 1}/${t.getDate()}`; }\n  return `${Number(m[2])}/${Number(m[3])}`;",
     test: 'fmttest',
+  },
+  {
+    name: '開機自動更新回來時，自己 import 首頁畫上去',
+    why: '「還在首頁嗎」只在 update 回來那一瞬間檢查一次；import 加上首頁自己讀資料還要好幾百毫秒，'
+      + '使用者在那段時間點任何按鈕都會被首頁蓋掉 —— 就是使用者回報的「點了就跳回主頁」。',
+    file: 'js/app.js',
+    find: `    if (currentPath() === '/') refresh();`,
+    replace: `    if (currentPath() === '/') import('./views/home.js').then((m) => m.default());`,
+    test: 'racetest',
+  },
+  {
+    name: '過期的畫面照畫不誤',
+    why: 'view 是 async 的，畫到一半使用者換頁是常態。少了這道守門，最後畫完的那個贏 —— '
+      + '網址是新的、畫面是舊的。',
+    file: 'js/app.js',
+    find: `  if (renderIsStale()) return;
+  mount(view, node);`,
+    replace: '  mount(view, node);',
+    test: 'racetest',
+  },
+  {
+    name: '兩個畫面同時跑',
+    why: 'paintGen 在一個 view 跑到一半被下一次導覽改掉的話，「有沒有人在我背後換過頁」就問不準了，'
+      + '守門形同虛設。',
+    file: 'js/router.js',
+    find: `  if (running) return; // 現在這一輪跑完會自己接著跑最新的
+  runLatest();`,
+    replace: '  runLatest();',
+    test: 'racetest',
+  },
+  {
+    name: '有一頁繞過 render() 直接寫 #view',
+    why: '繞過 render() 就繞過「這個畫面是不是已經過期」的守門，那一頁就會有跳錯頁的 bug。'
+      + '這條靠 shelltest 的靜態稽核擋 —— 一頁一頁跑測試抓不完，也抓不到還沒寫的新頁。',
+    file: 'js/views/settings.js',
+    find: `  render([
+    fontSection(),`,
+    replace: `  mount(document.getElementById('view'), [
+    fontSection(),`,
+    test: 'shelltest',
+  },
+  {
+    name: '過期的畫面還是可以把使用者轉去別頁',
+    why: 'holding.js 查不到代號時會 navigate 回持股頁，但那個判斷在 await 之後。'
+      + '少了守門，使用者早就點去別頁了還是會被 location.replace 硬扯回來 —— 就是「按了跳到別頁」。',
+    file: 'js/router.js',
+    find: `  if (renderIsStale()) return;
+  const target`,
+    replace: '  const target',
+    test: 'racetest',
+  },
+  {
+    name: '過期的畫面還是可以改頂列標題',
+    why: '會變成「內容是這一頁、標題是上一頁」，使用者以為自己在別的地方。',
+    file: 'js/app.js',
+    find: `  if (renderIsStale()) return;
+  document.getElementById('topTitle')`,
+    replace: "  document.getElementById('topTitle')",
+    test: 'racetest',
   },
 ];
 
