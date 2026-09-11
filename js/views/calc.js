@@ -10,7 +10,7 @@
 //
 // 測試（scripts/calcviewtest.mjs）會掃整頁的文字**與屬性**，禁用詞一個都不能出現。
 
-import { h, num, fmtMoneyMicro, fmtShares, toast } from '../ui.js';
+import { h, num, fmtMoneyMicro, fmtShares, toast, switchRow } from '../ui.js';
 import {
   validateInputs, compareScenarios, methodGap, displayTotals,
   CONTRIB_FREQ, DIVIDEND_FREQ, DIVIDEND_FREQ_LABEL,
@@ -83,18 +83,13 @@ function chips({ key, options, label, hint }) {
 
 function toggle({ key, label, hint }) {
   const on = state[key] === true;
-  return h('div', { class: 'pref-row' },
-    h('div', { class: 'pref-main' },
-      h('p', { class: 'pref-label' }, label),
-      hint ? h('p', { class: 'muted sm' }, hint) : null),
-    h('button', {
-      class: 'chip' + (on ? ' on' : ''),
-      role: 'switch',
-      'aria-checked': on ? 'true' : 'false',
-      dataset: { calcChip: `${key}:${!on}` },
-      onclick: () => { state[key] = !on; paint(); },
-    }, on ? '開啟' : '關閉'),
-  );
+  // 共用的切換開關（js/ui.js）—— 跟設定頁、定期定額同一套。
+  return switchRow({
+    label,
+    hint,
+    checked: on,
+    onChange: () => { state[key] = !on; paint(); },
+  });
 }
 
 function inputCard() {

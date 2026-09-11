@@ -207,10 +207,21 @@ try {
   eq(r2.pl, null, '這一檔的損益是 null');
   eq(s2.dayPL, null, '當日損益整個是 null —— 不會拿前收硬算成 −5,000');
   eq(s2.counted, 0, '沒有任何一檔算進去');
+  // 首頁要講得出「為什麼今天算不出來」。
+  // v0.7.4 把持股明細從首頁移到持股頁之後，這句話的來源從「那一列的狀態標籤」
+  // 換成了當日損益卡自己的說明 —— 契約沒變，用字換了，斷言跟著對到現在的用字。
   const t2 = await showView('home', '#view .big-number');
-  ok(t2.includes('尚未取得參考價'), '畫面講清楚為什麼沒算', '實際畫面：' + t2.slice(0, 400));
+  ok(t2.includes('參考價') && t2.includes('沒有計入'),
+    '首頁講清楚為什麼沒算（提到參考價，而且說明沒有計入）', '實際畫面：' + t2.slice(0, 400));
+  ok(!/當日損益\s*[-+]?[\d,]/.test(t2), '而且沒有生出一個看起來很正常的數字');
+
   noneOf([await page.$eval('#view .big-number', (el) => el.textContent.trim())], (v) => /\d/.test(v),
     '當日損益那一格沒有任何數字');
+
+  // 那個資訊也不可以就此消失：個股層級的狀態在持股頁還看得到。
+  // （放最後，因為它會把畫面切走，後面就沒有 .big-number 了。）
+  const t2holdings = await showView('holdings', '#view .row[data-code]');
+  ok(t2holdings.includes('2330'), '持股頁仍然列得出這一檔', t2holdings.slice(0, 200));
 
   // =================================================================
   section('情境 2b：TWT49U 查不到，但推導得出參考價');

@@ -127,7 +127,7 @@ function changeRow(hd, c) {
     h('div', { class: 'row-side' },
       h('span', { class: delta >= 0 ? 'v-up' : 'v-down' }, `${delta >= 0 ? '+' : ''}${fmtShares(delta)} 股`),
       h('button', {
-        class: 'link-btn sm',
+        class: 'btn btn-sm',
         onclick: async () => {
           const yes = await confirmDialog(`刪掉 ${fmtDate(c.date)} 這筆變動？股數會跟著重算。`, { danger: true, okLabel: '刪掉' });
           if (!yes) return;

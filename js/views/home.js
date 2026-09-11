@@ -43,7 +43,7 @@ export default async function home() {
     dividendCard(divSummary),
     newsCard(),
     statusCard(upd, settleDate),
-    holdingsCard(held, settled),
+    // 持股明細不放這裡 —— 使用者回報總覽不用再放一次，持股頁本來就有（而且更完整）。
   ].filter(Boolean));
 }
 
@@ -208,49 +208,4 @@ function statusCard(upd, settleDate) {
   );
 }
 
-function holdingsCard(held, settled) {
-  if (held.length === 0) {
-    return h('section', { class: 'card' },
-      h('h2', { class: 'card-title' }, '持股'),
-      h('p', { class: 'muted' }, '還沒有持股。'),
-      h('a', { class: 'btn btn-primary', href: '#/holdings' }, '新增持股'),
-    );
-  }
-  const byCode = new Map((settled?.byCode ?? []).map((r) => [r.code, r]));
-  return h('section', { class: 'card' },
-    h('h2', { class: 'card-title' }, `持股（${held.length} 檔）`),
-    h('div', { class: 'rows' }, ...held.map((hd) => holdingRow(hd, byCode.get(hd.code)))),
-    h('a', { class: 'btn', href: '#/holdings' }, '管理持股'),
-  );
-}
 
-function holdingRow(hd, row) {
-  const head = h('div', { class: 'row-head' },
-    h('span', { class: 'row-code' }, hd.code),
-    h('span', { class: 'row-name' }, hd.name || ''),
-  );
-
-  // 不支援報價：這一列**不建立任何 .num 節點**。
-  // 股數用純文字寫，因為 num() 是「這是一個報價相關的數字」的標記，
-  // 測試會斷言不支援的列裡一個 .num 都沒有。
-  if (!hd.supported) {
-    return h('a', { class: 'row row-unsupported', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
-      head,
-      h('div', { class: 'row-side' },
-        h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`),
-        h('span', { class: 'tag' }, STATUS_TEXT.unsupported),
-      ),
-    );
-  }
-
-  const status = row?.status ?? 'noClose';
-  const side = status === 'ok' && row?.pl != null
-    ? h('div', { class: 'row-side' }, moneyNode(BigInt(row.pl)), num(fmtPrice(row.close), 'sm'))
-    : h('div', { class: 'row-side' }, h('span', { class: 'muted sm' }, STATUS_TEXT[status] ?? '尚未結算'));
-
-  return h('a', { class: 'row', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
-    head,
-    h('div', { class: 'row-mid' }, h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`)),
-    side,
-  );
-}

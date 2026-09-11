@@ -27,6 +27,22 @@ const ROUTES = ['/', '/holdings', '/plans', '/dividends', '/news', '/calc', '/se
  *   · 「跟你的持股有關」篩選到某一檔（按鈕列會有一顆是選中的、清單變短）
  * 一個頁面在不同狀態下會不會爆版是兩件事。
  */
+/**
+ * 設定頁的開關被打開／關上時，右側的「開／關」字與滑塊位置都會變 ——
+ * 兩種狀態都要掃。切換元件是 v0.7.4 才收斂的，特大字級下它跟左邊的標籤
+ * 會不會擠在一起，是這支測試要回答的問題。
+ */
+const SETTINGS_STATES = [
+  { name: '預設', apply: null },
+  { name: '開關都切過一輪', apply: async (page) => {
+    await page.evaluate(async () => {
+      for (const sw of [...document.querySelectorAll('#view .switch')]) sw.click();
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await new Promise((r) => setTimeout(r, 600));
+  } },
+];
+
 const NEWS_STATES = [
   { name: '預設', apply: null },
   { name: '台股收起來', apply: async (page) => {
@@ -196,7 +212,9 @@ try {
         prefs.applyFontScale(s);
       }, scale);
       for (const route of ROUTES) {
-        const states = route === '/news' ? NEWS_STATES : [{ name: '預設', apply: null }];
+        const states = route === '/news' ? NEWS_STATES
+          : route === '/settings' ? SETTINGS_STATES
+            : [{ name: '預設', apply: null }];
         for (const st of states) {
           await page.evaluate((r) => { location.hash = '#/'; void r; }, route);
           await new Promise((r) => setTimeout(r, 200));
@@ -212,11 +230,14 @@ try {
   }
 
   const where = (p) => `${p.route}[${p.state}] @${p.width}px/${p.scale}`;
-  const perPass = ROUTES.length + (NEWS_STATES.length - 1); // 新聞頁多掃兩種狀態
-  section(`掃了 ${all.length} 個組合（${ROUTES.length} 頁＋新聞頁 ${NEWS_STATES.length} 種狀態，×${SCALES.length} 字級 ×${WIDTHS.length} 寬度）`);
+  // 新聞頁多掃兩種狀態、設定頁多掃一種
+  const perPass = ROUTES.length + (NEWS_STATES.length - 1) + (SETTINGS_STATES.length - 1);
+  section(`掃了 ${all.length} 個組合（${ROUTES.length} 頁＋新聞頁 ${NEWS_STATES.length} 種＋設定頁 ${SETTINGS_STATES.length} 種狀態，×${SCALES.length} 字級 ×${WIDTHS.length} 寬度）`);
   eq(all.length, perPass * SCALES.length * WIDTHS.length, '組合數對得上');
   ok(all.filter((p) => p.route === '/news').length === NEWS_STATES.length * SCALES.length * WIDTHS.length,
-    `新聞頁的三種狀態都掃到了（${all.filter((p) => p.route === '/news').length} 組）`);
+    `新聞頁的 ${NEWS_STATES.length} 種狀態都掃到了（${all.filter((p) => p.route === '/news').length} 組）`);
+  ok(all.filter((p) => p.route === '/settings').length === SETTINGS_STATES.length * SCALES.length * WIDTHS.length,
+    `設定頁的 ${SETTINGS_STATES.length} 種狀態都掃到了（${all.filter((p) => p.route === '/settings').length} 組）`);
   ok(all.every((p) => p.leafCount >= 3),
     `每一組都真的量到東西（最少的一組有 ${Math.min(...all.map((p) => p.leafCount))} 個文字節點）`);
 

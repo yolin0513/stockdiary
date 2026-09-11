@@ -259,9 +259,10 @@ const MUTATIONS = [
     test: 'changestest',
   },
   {
-    name: '首頁把不支援報價的持股當成一般持股畫',
-    why: '那一列會出現收盤價與當日損益 —— 但那些數字沒有來源。',
-    file: 'js/views/home.js',
+    name: '持股頁把不支援報價的持股當成一般持股畫',
+    why: '那一列會出現收盤價與當日損益 —— 但那些數字沒有來源。'
+      + '（v0.7.4 起持股明細在持股頁，總覽不再重複列一次。）',
+    file: 'js/views/holdings.js',
     find: '  if (!hd.supported) {',
     replace: '  if (!hd.supported && false) {',
     test: 'holdingtest',
@@ -1050,6 +1051,53 @@ const MUTATIONS = [
     find: '  body.hidden = !open;',
     replace: '  body.style.opacity = open ? `1` : `0.001`;',
     test: 'newstest',
+  },
+  // ---- v0.7.4：元件收斂 ----
+  {
+    name: '切換開關退回「一顆會換字的按鈕」',
+    why: '使用者實機回報這個很不直覺：寫「開啟」到底是目前開著、還是按了會開？'
+      + '軌道＋滑塊沒有這個歧義，換字有。',
+    file: 'css/style.css',
+    find: '.switch.on .switch-knob { transform: translateX(20px); background: #0d1520; }',
+    replace: '.switch.on .switch-knob { background: #0d1520; }',
+    test: 'uikittest',
+  },
+  {
+    name: '切換開關不標 aria-checked',
+    why: '螢幕閱讀器讀不出現在是開還是關，而且測試也分不出它有沒有真的切換。',
+    file: 'js/ui.js',
+    find: `    'aria-checked': checked ? 'true' : 'false',`,
+    replace: `    'aria-checked': 'false',`,
+    test: 'uikittest',
+  },
+  {
+    name: '時間門檻改回原生 time 欄位',
+    why: 'iOS 會把它拉滿整個卡片、文字置中（使用者實機回報「跑版」），而且空值時顯示'
+      + '當下時間，看起來像已經設好了。TripQuest 踩過同一個坑。',
+    file: 'js/views/settings.js',
+    find: `  const t = timeSelect({ value: prefs.get('todayDataThreshold'), minuteStep: 5 });`,
+    replace: `  const t = { node: h('input', { class: 'field', type: 'time', value: prefs.get('todayDataThreshold') }), value: '15:00' };`,
+    test: 'uikittest',
+  },
+  {
+    name: '「管理定期定額計畫」用跟「新增一檔」不同的樣式',
+    why: '同一個層級的兩個入口長得不一樣，使用者會以為其中一個比較次要。',
+    file: 'js/views/holdings.js',
+    find: `      h('a', { class: 'btn btn-primary', href: '#/plans' }, '管理定期定額計畫'),`,
+    replace: `      h('a', { class: 'btn', href: '#/plans' }, '管理定期定額計畫'),`,
+    test: 'uikittest',
+  },
+  {
+    name: '持股頁把兩個入口放回「目前持股」上面',
+    why: '每次進持股頁都要先捲過兩張卡片才看得到自己的持股。',
+    file: 'js/views/holdings.js',
+    find: `    concentrationCard(withIndustry, quotes),
+    held.length === 0`,
+    // 把「新增持股」那張卡插到持股清單前面 —— 這就是使用者回報的原本順序。
+    replace: `    concentrationCard(withIndustry, quotes),
+    h('section', { class: 'card', dataset: { card: 'addHolding' } }),
+    held.length === 0`,
+    test: 'uikittest',
   },
 ];
 

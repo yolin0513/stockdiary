@@ -96,6 +96,66 @@ export function spinnerBox(text, sub = '') {
 // 拿不到的數字一律顯示「—」，永遠不顯示 0 冒充。
 // fmtMoney(null) === '—' 這條有測試盯著，因為「未公布時顯示 0」是這個 App 最容易犯的錯。
 
+/**
+ * 切換開關（軌道＋滑塊）。
+ *
+ * 為什麼要有這個元件：原本各處都是「一顆膠囊按鈕，上面寫『開啟』或『關閉』」。
+ * 使用者實機回報那個**很不直覺** —— 看起來像兩顆按鈕，而且看不出現在是哪一邊：
+ * 寫「開啟」到底是「目前開著」還是「按了會開」？軌道＋滑塊沒有這個歧義。
+ *
+ * 可及性：真的用 role="switch" ＋ aria-checked，並且整塊（含左邊的標籤）都可按。
+ * 觸控區用 .switch 的 min-height 44px 保證。
+ *
+ * @param onChange 收到新的布林值。回傳 Promise 也可以，切換時會先鎖住避免連點。
+ */
+export function switchRow({ label, hint, checked, onChange, key = null }) {
+  const knob = h('span', { class: 'switch-knob' });
+  const track = h('span', { class: 'switch-track' }, knob);
+  const sw = h('button', {
+    class: 'switch' + (checked ? ' on' : ''),
+    type: 'button',
+    role: 'switch',
+    'aria-checked': checked ? 'true' : 'false',
+    'aria-label': label,
+    dataset: key ? { pref: key } : {},
+  }, track, h('span', { class: 'switch-state' }, checked ? '開' : '關'));
+
+  let busy = false;
+  const toggle = async () => {
+    if (busy) return;
+    busy = true;
+    try { await onChange(!checked); } finally { busy = false; }
+  };
+  sw.addEventListener('click', toggle);
+
+  const row = h('div', { class: 'pref-row' },
+    h('div', { class: 'pref-main' },
+      h('p', { class: 'pref-label' }, label),
+      hint ? h('p', { class: 'muted sm' }, hint) : null),
+    sw);
+  return row;
+}
+
+/**
+ * 時／分下拉。**不要用 `<input type="time">`** ——
+ * iOS 的原生控制項會被拉滿整個卡片寬度、文字置中，跟其他元件的視覺語言對不上
+ * （使用者實機回報這個「跑版」）；而且它空值時會顯示當下時間，看起來像已經設好了。
+ * TripQuest 踩過同一個坑，那邊也是改成時／分下拉。
+ */
+export function timeSelect({ value = '15:00', minuteStep = 5 } = {}) {
+  const [hh, mm] = String(value).split(':');
+  const pad = (n) => String(n).padStart(2, '0');
+  const mk = (opts, cur) => h('select', { class: 'field field-inline' },
+    ...opts.map((o) => h('option', { value: o, selected: o === cur ? 'selected' : null }, o)));
+
+  const hours = Array.from({ length: 24 }, (_, i) => pad(i));
+  const minutes = Array.from({ length: Math.ceil(60 / minuteStep) }, (_, i) => pad(i * minuteStep));
+  const hSel = mk(hours, pad(Number(hh)));
+  const mSel = mk(minutes, pad(Number(mm)));
+  const wrap = h('div', { class: 'time-select' }, hSel, h('span', { class: 'time-colon' }, '：'), mSel);
+  return { node: wrap, get value() { return `${hSel.value}:${mSel.value}`; } };
+}
+
 export const NO_VALUE = '—';
 
 export function fmtMoney(n, { sign = false } = {}) {

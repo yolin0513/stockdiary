@@ -5,7 +5,7 @@
 //   · 拿不到扣款日收盤價時，那一筆仍然列出來，股數留空並說明 —— 扣款是真的發生了
 //   · 這一頁不出現任何「要不要繼續扣」「這檔適不適合定期定額」之類的判斷
 
-import { h, num, fmtMoneyMicro, fmtMoney, fmtPrice, fmtShares, fmtDate, toast, modal, confirmDialog } from '../ui.js';
+import { h, num, fmtMoneyMicro, fmtMoney, fmtPrice, fmtShares, fmtDate, toast, modal, confirmDialog, switchRow } from '../ui.js';
 import * as plans from '../plans.js';
 import * as holdings from '../holdings.js';
 import * as catalog from '../catalog.js';
@@ -141,10 +141,12 @@ function planRow(p) {
     h('p', { class: 'row-note muted sm' },
       `每次 ${p.amount.toLocaleString('zh-Hant-TW')} 元，每月 ${p.days.join('、')} 號` +
       (p.feeRate ? `，手續費率 ${(p.feeRate * 100).toFixed(4)}%` : '，無手續費率')),
-    h('div', { class: 'row-side' },
-      h('button', { class: 'link-btn sm', onclick: () => editFlow(p) }, '修改'),
+    // 修改／停用用一般按鈕，不用底線文字連結：文字連結的點擊區太小，
+    // 又跟旁邊的代號基線對不齊（使用者實機回報）。全 App 統一用 .btn。
+    h('div', { class: 'row-actions' },
+      h('button', { class: 'btn btn-sm', onclick: () => editFlow(p) }, '修改'),
       h('button', {
-        class: 'link-btn sm',
+        class: 'btn btn-sm',
         onclick: async () => { await plans.setActive(p.id, !p.active); toast(p.active ? '已停用' : '已啟用'); plansView(); },
       }, p.active ? '停用' : '啟用'),
     ),
@@ -185,17 +187,20 @@ async function editFlow(existing) {
     value: existing?.feeRate ? String(existing.feeRate) : '',
   });
   let reinvest = existing?.reinvestDividend ?? false;
-  const reinvestBtn = h('button', {
-    class: 'chip' + (reinvest ? ' on' : ''),
-    role: 'switch',
-    'aria-checked': reinvest ? 'true' : 'false',
-    onclick: () => {
-      reinvest = !reinvest;
-      reinvestBtn.className = 'chip' + (reinvest ? ' on' : '');
-      reinvestBtn.setAttribute('aria-checked', reinvest ? 'true' : 'false');
-      reinvestBtn.textContent = reinvest ? '開啟' : '關閉';
-    },
-  }, reinvest ? '開啟' : '關閉');
+  // 切換開關（js/ui.js），跟設定頁與試算器同一套。原本是一顆寫著「開啟／關閉」的
+  // 膠囊按鈕 —— 使用者實機回報看不出現在是哪一邊：寫「開啟」是目前開著、還是按了會開？
+  let reinvestRow = h('div');
+  const paintReinvest = () => {
+    const next = switchRow({
+      label: '配息再投入',
+      hint: '這一檔的股利確認之後，自動產生一筆待確認的再投入買進（用除息日後第一個交易日的收盤價估算）。',
+      checked: reinvest,
+      onChange: () => { reinvest = !reinvest; paintReinvest(); },
+    });
+    reinvestRow.replaceWith(next);
+    reinvestRow = next;
+  };
+  paintReinvest();
 
   const go = await modal({
     title: existing ? `修改 ${existing.code} 的計畫` : '新增定期定額計畫',
@@ -206,13 +211,7 @@ async function editFlow(existing) {
       h('p', { class: 'muted sm' }, '扣款日遇到週末或休市會順延到下一個交易日；當月沒有那一天（例如 31 號）會改用月底。'),
       h('label', { class: 'sm muted' }, '券商手續費率（選填）'), feeInput,
       h('p', { class: 'muted sm' }, '填了才會從扣款金額扣掉再估股數。0.001425 代表 0.1425%。'),
-      h('div', { class: 'pref-row' },
-        h('div', { class: 'pref-main' },
-          h('p', { class: 'pref-label' }, '配息再投入'),
-          h('p', { class: 'muted sm' }, '這一檔的股利確認之後，自動產生一筆待確認的再投入買進（用除息日後第一個交易日的收盤價估算）。'),
-        ),
-        reinvestBtn,
-      ),
+      reinvestRow,
     ),
     actions: [
       { label: '取消', value: 'cancel' },

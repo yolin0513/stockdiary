@@ -24,24 +24,30 @@ export default async function holdingsView() {
   for (const row of settled?.byCode ?? []) if (row.close != null) quotes[row.code] = { close: row.close };
   const withIndustry = held.map((hd) => ({ ...hd, industry: catalog.lookup(hd.code)?.industry ?? null }));
 
+  // 順序：目前持股在最上面（每天打開最想看的），兩個入口放它下面。
+  // 使用者實機回報原本「新增持股」「定期定額」擋在持股前面，每次都要往下捲。
   render([
     concentrationCard(withIndustry, quotes),
-    h('section', { class: 'card' },
+    held.length === 0
+      ? h('section', { class: 'card', dataset: { card: 'holdingsList' } },
+        h('h2', { class: 'card-title' }, '目前持股'),
+        h('p', { class: 'muted' }, '還沒有持股。用下面的「新增一檔」開始。'))
+      : h('section', { class: 'card', dataset: { card: 'holdingsList' } },
+        h('h2', { class: 'card-title' }, `目前持股（${held.length} 檔）`),
+        h('div', { class: 'rows' }, ...held.map(manageRow)),
+      ),
+    h('section', { class: 'card', dataset: { card: 'addHolding' } },
       h('h2', { class: 'card-title' }, '新增持股'),
       h('p', { class: 'muted sm' }, '這個版本只支援上市股票。上櫃與興櫃可以記股數，但不會顯示價格與損益。'),
       h('button', { class: 'btn btn-primary', onclick: () => addFlow() }, '新增一檔'),
     ),
-    h('section', { class: 'card' },
+    h('section', { class: 'card', dataset: { card: 'plansEntry' } },
       h('h2', { class: 'card-title' }, '定期定額'),
       h('p', { class: 'muted sm' }, '設好計畫之後，扣款日過了就會自動產生一筆待確認的扣款，對照券商通知確認就好。'),
-      h('a', { class: 'btn', href: '#/plans' }, '管理定期定額計畫'),
+      // 跟「新增一檔」同一顆按鈕樣式（使用者實機回報這兩顆長得不一樣）。
+      // 它是導覽用的連結，所以仍然是 <a>，但視覺上與 .btn-primary 一致。
+      h('a', { class: 'btn btn-primary', href: '#/plans' }, '管理定期定額計畫'),
     ),
-    held.length === 0
-      ? h('section', { class: 'card' }, h('p', { class: 'muted' }, '還沒有持股。'))
-      : h('section', { class: 'card' },
-        h('h2', { class: 'card-title' }, `目前持股（${held.length} 檔）`),
-        h('div', { class: 'rows' }, ...held.map(manageRow)),
-      ),
   ]);
 }
 

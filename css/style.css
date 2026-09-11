@@ -359,17 +359,8 @@ body {
   text-align: right;
 }
 
-.link-btn {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--accent-strong);
-  font: inherit;
-  padding: 6px 2px;
-  min-height: 32px;
-  cursor: pointer;
-  text-decoration: underline;
-}
+/* .link-btn 已移除（v0.7.4）：底線文字連結當按鈕點擊區太小、基線對不齊，
+   全 App 統一用 .btn / .btn-sm。留著只會被人再撿去用。 */
 
 .form { display: flex; flex-direction: column; gap: 6px; }
 .form label { margin-top: 6px; }
@@ -519,3 +510,52 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
 }
 .collapse-head .card-title { margin: 0; }
 .collapse-mark { flex: none; color: var(--muted); font-size: .85em; }
+
+/* ---------- 切換開關（v0.7.4，全 App 統一） ----------
+   原本各處是「膠囊按鈕上寫開啟／關閉」，使用者回報看不出現在是哪一邊：
+   寫「開啟」到底是目前開著、還是按了會開？軌道＋滑塊沒有這個歧義。 */
+.switch {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+.switch-track {
+  position: relative;
+  display: block;
+  width: 52px;
+  height: 32px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--bg-card-2);
+  border: 1px solid var(--line);
+  transition: background .15s ease, border-color .15s ease;
+}
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform .15s ease, background .15s ease;
+}
+.switch.on .switch-track { background: var(--accent); border-color: var(--accent); }
+.switch.on .switch-knob { transform: translateX(20px); background: #0d1520; }
+.switch.on { color: var(--fg); }
+.switch-state { font-size: .85em; min-width: 1.2em; }
+
+/* 時／分下拉。不用 <input type="time">：iOS 會把它拉滿整個卡片寬度、
+   文字置中，而且空值時顯示當下時間（看起來像已經設好了）。 */
+.time-select { display: flex; align-items: center; gap: 6px; }
+.field-inline { width: auto; min-width: 4.5em; }
+.time-colon { color: var(--muted); }

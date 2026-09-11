@@ -216,7 +216,7 @@ function historyCard(list) {
           ? num(fmtMoneyMicro(BigInt(e.amountActual)))
           : h('span', { class: 'muted sm' }, '沒有金額'),
         h('button', {
-          class: 'link-btn sm',
+          class: 'btn btn-sm',
           onclick: async () => {
             const yes = await confirmDialog(`取消確認 ${e.code} ${fmtDate(e.exDate)}？\n它會回到待確認，配股產生的股數變動也會一併刪掉。`);
             if (!yes) return;

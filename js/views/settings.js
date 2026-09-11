@@ -1,6 +1,6 @@
 // 設定頁。M0：字級、今日資料公布門檻、資料來源與限制說明。
 
-import { h, toast } from '../ui.js';
+import { h, toast, switchRow, timeSelect } from '../ui.js';
 import * as prefs from '../prefs.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
@@ -151,21 +151,15 @@ function dividendSection() {
 }
 
 function toggleRow({ key, label, hint }) {
-  const on = prefs.get(key) === true;
-  const btn = h('button', {
-    class: 'chip' + (on ? ' on' : ''),
-    role: 'switch',
-    'aria-checked': on ? 'true' : 'false',
-    dataset: { pref: key },
-    onclick: async () => { await prefs.set(key, !on); settings(); },
-  }, on ? '開啟' : '關閉');
-  return h('div', { class: 'pref-row' },
-    h('div', { class: 'pref-main' },
-      h('p', { class: 'pref-label' }, label),
-      h('p', { class: 'muted sm' }, hint),
-    ),
-    btn,
-  );
+  // 共用的切換開關（js/ui.js）。全 App 同一套 —— 以前這裡、定期定額、試算器
+  // 各自寫了一份「膠囊按鈕上寫開啟／關閉」，三處長得一樣但都不像開關。
+  return switchRow({
+    key,
+    label,
+    hint,
+    checked: prefs.get(key) === true,
+    onChange: async (next) => { await prefs.set(key, next); await settings(); },
+  });
 }
 
 function fontSection() {
@@ -184,16 +178,18 @@ function fontSection() {
 }
 
 function thresholdSection() {
-  const input = h('input', { class: 'field', type: 'time', value: prefs.get('todayDataThreshold') });
-  return h('section', { class: 'card' },
+  // 用時／分下拉，不用 <input type="time">：原生控制項在 iOS 會被拉滿整個卡片、
+  // 文字置中，跟其他元件對不上（使用者實機回報「跑版」）。理由詳見 ui.timeSelect。
+  const t = timeSelect({ value: prefs.get('todayDataThreshold'), minuteStep: 5 });
+  return h('section', { class: 'card', dataset: { card: 'threshold' } },
     h('h2', { class: 'card-title' }, '今日資料公布門檻'),
     h('p', { class: 'muted sm' },
       '證交所每個交易日收盤後才會公布當天的收盤價。這個時間之前開 App，會顯示「今日收盤尚未公布」，不會拿昨天的數字冒充今天。'),
-    input,
+    t.node,
     h('button', {
       class: 'btn btn-primary',
       onclick: async () => {
-        const v = input.value;
+        const v = t.value;
         if (!/^\d{2}:\d{2}$/.test(v)) { toast('時間格式不對'); return; }
         await prefs.set('todayDataThreshold', v);
         toast(`已改為 ${v}`);

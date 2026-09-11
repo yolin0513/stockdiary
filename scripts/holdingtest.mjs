@@ -153,6 +153,12 @@ try {
     `總和旁邊標了「不含 1 檔不支援報價的持股」`, text1.slice(0, 300));
 
   section('上櫃那一列不能有任何報價數字');
+  // 持股明細在 v0.7.4 從總覽移到持股頁（使用者回報總覽不用再放一次），
+  // 所以這幾條斷言跟著搬過去。契約沒變：不支援報價的那一列**不建立任何 .num 節點**。
+  await page.evaluate(() => { location.hash = '#/holdings'; });
+  await page.waitForFunction(() => document.getElementById('topTitle').textContent === '持股');
+  await page.waitForSelector('#view .row[data-code]');
+
   const otcRow = await page.evaluate(() => {
     const el = document.querySelector('#view .row[data-code="6488"]');
     if (!el) return null;
@@ -165,13 +171,37 @@ try {
   ok(otcRow != null, '6488 那一列在畫面上');
   eq(otcRow.numNodes, 0, '那一列連一個 .num（報價數字）節點都沒有');
   ok(otcRow.text.includes('不支援報價'), `而且明講「不支援報價」：「${otcRow.text}」`);
-  // 對照組：上市那一列本來就該有 .num，不然上面那條「等於 0」證明不了什麼
-  const listedNums = await page.$$eval('#view .row[data-code="2330"] .num', (els) => els.length);
-  ok(listedNums > 0, `（對照）上市的 2330 那一列有 ${listedNums} 個 .num 節點`);
 
   const allUnsupportedNums = await page.evaluate(() =>
     [...document.querySelectorAll('#view .row-unsupported')].map((el) => el.querySelectorAll('.num').length));
   noneOf(allUnsupportedNums, (n) => n > 0, '所有標示不支援的列都沒有報價數字');
+
+  // 對照組放在**個股明細頁**，因為報價數字是在那裡出現的
+  // （持股列表頁兩種列都不顯示收盤價，在那裡做對照等於沒對照）。
+  const detailNums = async (code) => {
+    await page.evaluate((c) => { location.hash = `#/holdings/${c}`; }, code);
+    await page.waitForFunction((c) => document.getElementById('topTitle').textContent.includes(c),
+      { timeout: 60000 }, code);
+    await new Promise((r) => setTimeout(r, 400));
+    return page.evaluate(() => ({
+      nums: document.querySelectorAll('#view .num').length,
+      text: document.querySelector('#view').textContent.replace(/\s+/g, ' ').slice(0, 160),
+    }));
+  };
+  const otcDetail = await detailNums('6488');
+  eq(otcDetail.nums, 0, '不支援報價那一檔的明細頁，一個 .num 都沒有');
+  // 明細頁的用字是「只支援上市，不會顯示價格與損益」，不是「不支援報價」那四個字。
+  // 斷言要對著畫面實際說的話，不要對著我以為它會說的話。
+  ok(otcDetail.text.includes('不會顯示價格'),
+    `而且講清楚為什麼：「${otcDetail.text.slice(0, 90)}」`);
+  const listedDetail = await detailNums('2330');
+  ok(listedDetail.nums > 0,
+    `（對照）上市 2330 的明細頁有 ${listedDetail.nums} 個 .num —— 證明這一頁本來就會顯示數字`);
+
+  // 回到首頁，後面幾節都是在首頁上驗的
+  await page.evaluate(() => { location.hash = '#/'; });
+  await page.waitForFunction(() => document.getElementById('topTitle').textContent.includes('StockDiary'));
+  await new Promise((r) => setTimeout(r, 400));
 
   section('沒填平均成本 → 畫面上不能有任何未實現數字');
   const costCards = await page.evaluate(() => ({
