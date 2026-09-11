@@ -1,0 +1,33 @@
+{
+  "name": "stockdiary",
+  "version": "0.1.0",
+  "description": "StockDiary 股息日記 — 免帳號、純前端、離線可用的台股上市持股記帳 PWA：每日結算當日損益、累積已領股利、除權息日曆、定期定額與試算器。不含任何投資建議。",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "keywords": [
+    "pwa",
+    "offline",
+    "traditional-chinese",
+    "taiwan-stock",
+    "dividend"
+  ],
+  "scripts": {
+    "dev": "node scripts/serve.mjs 5180",
+    "build-stocks": "node scripts/build-stocks.mjs",
+    "build-calendar": "node scripts/build-calendar.mjs",
+    "roctest": "node scripts/roctest.mjs",
+    "fmttest": "node scripts/fmttest.mjs",
+    "parsetest": "node scripts/parsetest.mjs",
+    "datatest": "node scripts/datatest.mjs",
+    "shelltest": "node scripts/shelltest.mjs",
+    "mutationtest": "node scripts/mutationtest.mjs",
+    "test": "node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/mutationtest.mjs",
+    "livecheck": "node scripts/livecheck.mjs",
+    "observe-publish-time": "node scripts/observe-twse-publish-time.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^23.0.0",
+    "wrangler": "^4.129.0"
+  }
+}

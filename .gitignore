@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+docs/measurements/*.log
+docs/measurements/observer.pid
+scripts/.mutation-backup/

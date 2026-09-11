@@ -1,0 +1,297 @@
+/* StockDiary 樣式。手機優先、深色、支援到特大字級。
+   數字一律用 tabular-nums，否則金額欄位在不同位數之間會跳動。 */
+
+:root {
+  --font-scale: 1;
+  --bg: #10161f;
+  --bg-card: #18212e;
+  --bg-card-2: #1e2836;
+  --line: #2a3646;
+  --fg: #e8eef6;
+  --fg-muted: #93a3b8;
+  --accent: #7ea9d6;
+  --accent-strong: #a9cdf2;
+  --gold: #f6c560;
+  --danger: #e2706f;
+  --radius: 14px;
+  --pad: 16px;
+  --tabbar-h: 58px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  font-size: calc(16px * var(--font-scale));
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+#app {
+  min-height: 100vh;
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---------- 頂列 ---------- */
+#topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--pad) 10px;
+  background: rgba(16, 22, 31, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+
+#topTitle {
+  margin: 0;
+  font-size: 1.05em;
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.icon-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-size: 1.5em;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.icon-btn:active { background: var(--bg-card-2); }
+
+/* ---------- 內容 ---------- */
+#view {
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--fg-muted);
+  letter-spacing: 0.02em;
+}
+
+.big-number {
+  margin: 0;
+  font-size: 2.1em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.muted { color: var(--fg-muted); margin: 0; }
+.sm { font-size: 0.85em; }
+
+.status-card { background: var(--bg-card-2); }
+
+/* ---------- 表單與按鈕 ---------- */
+.field {
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg-card-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn {
+  appearance: none;
+  font: inherit;
+  padding: 12px 18px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-card-2);
+  color: var(--fg);
+  cursor: pointer;
+}
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #0d1520; font-weight: 600; }
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+.btn:active { filter: brightness(0.92); }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  appearance: none;
+  font: inherit;
+  padding: 10px 16px;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-card-2);
+  color: var(--fg);
+  cursor: pointer;
+}
+.chip.on { background: var(--accent); border-color: var(--accent); color: #0d1520; font-weight: 600; }
+
+/* ---------- 底部分頁 ---------- */
+#tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  background: rgba(16, 22, 31, 0.96);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--tabbar-h);
+  text-decoration: none;
+  color: var(--fg-muted);
+  font-size: 0.75em;
+  padding: 6px 4px;
+}
+.tab.on { color: var(--accent-strong); }
+.tab-icon { font-size: 1.45em; line-height: 1; }
+.tab-label { line-height: 1.2; text-align: center; }
+
+/* ---------- 等待、提示、對話框 ---------- */
+.wait-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 36px 16px;
+}
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.wait-text { margin: 0; color: var(--fg-muted); text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 3s; }
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tabbar-h) + 20px + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 10px);
+  z-index: 60;
+  max-width: min(88vw, 420px);
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: #26364a;
+  border: 1px solid var(--line);
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(6, 10, 16, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+.modal-card {
+  position: relative;
+  width: min(94vw, 460px);
+  max-height: 86vh;
+  overflow: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-title { margin: 0; font-size: 1.1em; }
+.modal-body { overflow-wrap: anywhere; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.modal-x { position: absolute; top: 6px; right: 6px; }
+
+/* ---------- 換版提示 ---------- */
+.update-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom, 0px));
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #26364a;
+  border: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.update-text { flex: 1; min-width: 0; }
+.update-go {
+  appearance: none;
+  font: inherit;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-height: 40px;
+  background: var(--accent);
+  color: #0d1520;
+  font-weight: 600;
+  cursor: pointer;
+}
+.update-later {
+  appearance: none;
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  min-width: 40px;
+  min-height: 40px;
+  cursor: pointer;
+}
