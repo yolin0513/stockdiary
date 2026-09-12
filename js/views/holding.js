@@ -157,6 +157,15 @@ async function addChangeFlow(hd) {
       h('label', { class: 'sm muted' }, '日期'), dateInput,
       h('label', { class: 'sm muted' }, '股數增減'), sharesInput,
       h('label', { class: 'sm muted' }, '成交價（選填）'), priceInput,
+      // **這裡提供了「賣出」，就必須說清楚賣出之後會怎樣。**
+      // PLAN 第 23 行把「已實現損益」列為不做的指標（使用者自己決定的），
+      // 所以賣掉之後那筆賺賠不會出現在任何地方。不講的話，他賣了一檔、
+      // 回來找不到賺多少，只會以為 App 壞了。
+      h('p', { class: 'muted sm', dataset: { note: 'sellNote' } },
+        '賣出填負數。賣出只會減少股數，不會改變平均成本（平均成本法就是這樣）。'),
+      h('p', { class: 'muted sm' },
+        '這個 App 不記錄已實現損益 —— 賣掉的那一筆賺賠不會出現在任何地方。'
+        + '這一筆變動本身（日期、股數、成交價）會留著，但賺賠要自己另外記。'),
     ),
     actions: [{ label: '取消', value: false }, { label: '加入', value: true, primary: true }],
   });

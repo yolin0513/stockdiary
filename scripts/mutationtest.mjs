@@ -1531,6 +1531,32 @@ const MUTATIONS = [
     replace: "    h('p', { class: 'warn sm', dataset: { note: 'gone' } },",
     test: 'uikittest',
   },
+  {
+    name: '賣光的那一檔繼續留在清單裡（還帶著均價）',
+    why: '0 股旁邊擺一個均價是沒有意義的數字（實測過的殭屍列：'
+      + '「2330 台積電 0 股 均價 500.00」）。出清了就不該佔版面。',
+    file: 'js/views/holdings.js',
+    find: '  const held = all.filter((x) => Number(x.shares) > 0);',
+    replace: '  const held = all;',
+    test: 'pathtest',
+  },
+  {
+    name: '賣光的那一檔直接消失，不講「另有 N 檔已出清」',
+    why: '這個 App 沒有雲端，任何「東西不見了」都很嚇人。'
+      + '出清的檔可以收起來，但一定要讓他知道紀錄還在。',
+    file: 'js/views/holdings.js',
+    find: '  if (closed.length === 0) return [];',
+    replace: '  return [];',
+    test: 'pathtest',
+  },
+  {
+    name: '賣出的對話框不再說「不記錄已實現損益」',
+    why: 'UI 提供了賣出卻不說後果，他賣完找不到賺賠只會以為 App 壞了。',
+    file: 'js/views/holding.js',
+    find: "        '這個 App 不記錄已實現損益 —— 賣掉的那一筆賺賠不會出現在任何地方。'",
+    replace: "        '賣出之後股數會減少。'",
+    test: 'uikittest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

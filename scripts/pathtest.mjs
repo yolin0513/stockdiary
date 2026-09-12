@@ -174,7 +174,10 @@ try {
     // 而且第一次開 App 的人最可能在網路差的地方（剛裝好、還在外面）。
     eq(r.calls.filter((u) => u.includes('twse.com.tw')).length, 0,
       '**一個 TWSE 請求都沒有打** —— 沒有持股就沒有東西要算');
-    ok(r.text.includes('還沒有持股') || r.text.includes('尚未結算'),
+    // v0.7.12 起總覽不再有「資料狀態」那張卡（搬去設定頁），所以「還沒有持股」
+    // 這句話已經不在總覽上了。要驗的其實是**他知不知道現在該做什麼** ——
+    // 改成驗語意，不要比對某一句隨時會被搬走的字串。
+    ok(/開始使用|還沒有持股|尚未結算/.test(r.text),
       `畫面講得出現在是什麼狀態：「${r.text.slice(0, 60)}」`);
     // 不可以有任何看起來像金額的東西
     // 只看「數字節點」（.num／.big-number／.mid-number）—— 資料狀態卡裡的
@@ -608,6 +611,109 @@ try {
   }
 
   // 路徑 7 的 503 是刻意回的，瀏覽器不會記成 console error；這裡剩下的應該一個都沒有。
+  // =========================================================================
+  section('路徑 8：賣出（部分賣、全部賣光）');
+  //
+  // 這條路一直沒有任何端對端測試 —— 而它踩到的東西很具體：
+  //   · 平均成本法：賣出**不改均價**（賣掉一部分不影響每股成本）
+  //   · 已實現損益**不做**（PLAN 第 23 行，使用者自己決定的）——
+  //     所以賣掉的賺賠不會出現在任何地方，而畫面上必須講明這件事
+  //   · 賣光之後那一列不該再佔版面，但也不能憑空消失（實測過的殭屍列：
+  //     「2330 台積電 0 股 均價 500.00」）
+  {
+    const page = await freshApp({ dayAll: dayAllCsv(TODAY, [['2330', '台積電', 2410, '-40.0000']]) });
+    const r = await page.evaluate(async (args) => {
+      const db = await import('./js/db.js');
+      const holdings = await import('./js/holdings.js');
+      await holdings.addOpening({ code: '2330', shares: 1000, avgCost: 500, date: '2026-01-05' });
+      await holdings.addOpening({ code: '0050', shares: 3000, avgCost: 132.4, date: '2026-01-05' });
+
+      // 先賣一半
+      await holdings.addChange({ code: '2330', date: '2026-06-01', deltaShares: -500, price: 800, kind: 'manual' });
+      const half = (await holdings.list()).find((x) => x.code === '2330');
+
+      // 再賣光
+      await holdings.addChange({ code: '2330', date: '2026-06-02', deltaShares: -500, price: 900, kind: 'manual' });
+      const none = (await holdings.list()).find((x) => x.code === '2330');
+
+      // 賣超過庫存要被擋下來
+      let overErr = null;
+      try {
+        await holdings.addChange({ code: '0050', date: '2026-06-03', deltaShares: -5000, price: 100, kind: 'manual' });
+      } catch (e) { overErr = String(e.message || e); }
+
+      await db.put('settle', {
+        date: args.TODAY, dayPL: '0', marketValue: null, dividend: null, counted: 1,
+        excludedUnsupported: 0, excludedMissing: 0,
+        byCode: [{ code: '0050', shares: 3000, close: 107.7, basis: 107.7, basisSource: 'prevClose', status: 'ok', pl: '0' }],
+        settledAt: new Date().toISOString(),
+      });
+
+      const hv = await import('./js/views/holdings.js');
+      await hv.default();
+      await new Promise((x) => setTimeout(x, 500));
+      const card = document.querySelector('#view [data-card="holdingsList"]');
+      const visible = [...card.querySelectorAll('.row')].map((x) => x.dataset.code);
+      const closedNote = card.querySelector('[data-note="closedCount"]')?.textContent.trim() ?? '';
+      const cardText = card.textContent.replace(/\s+/g, ' ');
+      const concText = document.querySelector('#view [data-card="concentration"]')?.textContent.replace(/\s+/g, ' ') ?? '';
+
+      // 展開已出清
+      card.querySelector('[data-toggle="closedHoldings"]').click();
+      await new Promise((x) => setTimeout(x, 500));
+      const closedRows = [...document.querySelectorAll('#view [data-block="closedRows"] .row')]
+        .map((x) => x.textContent.replace(/\s+/g, ' ').trim());
+
+      // 單檔詳情：紀錄要完整留著
+      const detail = await (async () => {
+        const dv = await import('./js/views/holding.js');
+        await dv.default('2330');
+        await new Promise((x) => setTimeout(x, 500));
+        return document.querySelector('#view').textContent.replace(/\s+/g, ' ');
+      })();
+
+      return {
+        halfShares: half.shares, halfAvg: half.avgCost,
+        noneShares: none.shares, noneAvg: none.avgCost,
+        overErr, visible, closedNote, cardText, concText, closedRows, detail,
+        changes: (await holdings.changesOf('2330')).length,
+      };
+    }, { TODAY });
+
+    // ---- 平均成本法：賣出不改均價 ----
+    eq(r.halfShares, 500, '賣掉一半之後剩 500 股');
+    eq(r.halfAvg, 500, '**均價還是 500** —— 平均成本法，賣出不改每股成本');
+    eq(r.noneShares, 0, '再賣 500 股之後剩 0 股');
+    eq(r.noneAvg, 500, '均價仍然是 500（沒有被清成 null，也沒有被那兩筆賣價汙染）');
+    noneOf([r.halfAvg, r.noneAvg], (v) => v === 800 || v === 900 || v === 850,
+      '均價沒有變成任何一個賣出價');
+
+    // ---- 賣超過庫存要擋 ----
+    ok(r.overErr != null && /負的|庫存/.test(r.overErr),
+      `賣超過庫存被擋下來：「${r.overErr}」`);
+
+    // ---- 賣光的那一檔不佔版面，但看得到 ----
+    eq(r.visible, ['0050'], '主清單只剩還持有的 0050，賣光的 2330 不在裡面');
+    ok(r.closedNote.includes('1 檔已出清'), `但講得出「另有 1 檔已出清」：「${r.closedNote}」`);
+    ok(/紀錄還在/.test(r.closedNote), '而且講明紀錄還在，不是資料掉了');
+    ok(r.closedRows.length === 1 && r.closedRows[0].includes('2330'),
+      `展開之後看得到那一檔：「${r.closedRows[0]}」`);
+    ok(r.closedRows[0].includes('已出清'), '標成「已出清」');
+    // **0 股旁邊不可以再有均價** —— 那是個沒有意義的數字（實測過的殭屍列）
+    noneOf(r.closedRows, (t) => /均價/.test(t), '已出清那一列沒有均價');
+
+    // ---- 產業分布不受影響 ----
+    noneOf([r.concText], (t) => /2330/.test(t),
+      '產業分布裡沒有 2330（不計入，也不列成「沒有股數」的雜訊）');
+    ok(/0050/.test(r.concText), '（對照）還持有的 0050 在產業分布裡');
+
+    // ---- 紀錄完整留著 ----
+    eq(r.changes, 3, '三筆變動都在（開帳 ＋ 兩次賣出）');
+    ok(/-500 股/.test(r.detail), `單檔詳情看得到賣出那兩筆：「${/持股變動[^新]{0,40}/.exec(r.detail)?.[0]}」`);
+
+    await page.close();
+  }
+
   eq(pageErrors.filter((e) => !/favicon/.test(e)), [], '整段沒有未攔截的例外');
 } finally {
   await browser.close();

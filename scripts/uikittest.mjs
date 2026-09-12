@@ -185,6 +185,31 @@ try {
   eq(home.rows, 0, '總覽上沒有任何持股列（持股頁本來就有，而且更完整）');
   ok(home.text.includes('當日損益'), '（對照）總覽該有的東西還在');
 
+  section('賣出的對話框要講「不記錄已實現損益」');
+  // UI 提供了賣出（股數填負數），但 PLAN 第 23 行把已實現損益列為不做的指標。
+  // 提供了一個動作卻不說它的後果，使用者賣完找不到賺賠只會以為 App 壞了。
+  const sellNote = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const holdings = await import('./js/holdings.js');
+    for (const st of db.STORE_NAMES) await db.clear(st);
+    await holdings.addOpening({ code: '2330', shares: 1000, avgCost: 500, date: '2026-01-05' });
+    const dv = await import('./js/views/holding.js');
+    await dv.default('2330');
+    await new Promise((r) => setTimeout(r, 400));
+    [...document.querySelectorAll('#view button')].find((b) => b.textContent.includes('新增一筆變動')).click();
+    await new Promise((r) => setTimeout(r, 500));
+    const m = document.querySelector('#modalRoot')?.firstElementChild;
+    const text = m?.textContent.replace(/s+/g, ' ').trim() ?? '';
+    [...m.querySelectorAll('button')].find((b) => b.textContent.trim() === '取消').click();
+    return text;
+  });
+  ok(/賣出填負數/.test(sellNote), '講得出怎麼賣出');
+  ok(/不會改變平均成本/.test(sellNote), '講明賣出不改均價（平均成本法）');
+  ok(/不記錄已實現損益/.test(sellNote),
+    `而且明講不記錄已實現損益：「${/這個 App 不記錄[^。]*。/.exec(sellNote)?.[0]}」`);
+  ok(/自己另外記/.test(sellNote), '也講了他該怎麼辦');
+  // 不可以承諾一個不存在的欄位（寫過「在下面的備註欄寫下來」，但那個對話框根本沒有備註欄）
+  noneOf([sellNote], (t) => /備註欄/.test(t), '沒有提到一個不存在的備註欄');
   section('對帳會差在哪，畫面上要先講');
   //
   // 兩句話，都是「不講他就會以為 App 壞了」的那種：

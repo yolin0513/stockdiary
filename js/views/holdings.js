@@ -14,15 +14,25 @@ import { setTop, render } from '../shell.js';
 import { localISODate } from '../roc.js';
 import * as concentration from '../concentration.js';
 
+// 「已出清」的那幾檔要不要展開。**不寫進設定** —— 那是當下想看什麼，
+// 不是長期偏好；下次進來從「收起來」開始才合理（跟新聞頁的個股篩選同一個判斷）。
+let showClosed = false;
+
 export default async function holdingsView() {
   setTop({ title: '持股' });
-  const held = await holdings.list();
+  const all = await holdings.list();
+  // 賣光的那幾檔**預設不顯示**：出清了就不該佔版面，而且 0 股旁邊擺一個均價
+  // 是個沒有意義的數字（實測過「2330 台積電 0 股 均價 500.00」）。
+  // 但也不能讓它憑空消失 —— 下面會講「另有 N 檔已出清」，按一下就看得到。
+  const held = all.filter((x) => Number(x.shares) > 0);
+  const closed = all.filter((x) => !(Number(x.shares) > 0));
 
   // 集中度用最後一次結算的收盤價算，跟首頁的未實現損益同一個來源。
   const settled = await store.latestSettle();
   const quotes = {};
   for (const row of settled?.byCode ?? []) if (row.close != null) quotes[row.code] = { close: row.close };
   // type 也要帶進去 —— 產業分布要分得出「ETF（本來就沒有產業別）」與「查不到產業」。
+  // 產業分布只看還有股數的 —— 出清的檔丟進去只會變成「以下 N 檔不計入（沒有股數）」的雜訊
   const withIndustry = held.map((hd) => {
     const info = catalog.lookup(hd.code);
     return { ...hd, industry: info?.industry ?? null, type: info?.type ?? null };
@@ -39,7 +49,10 @@ export default async function holdingsView() {
     held.length === 0
       ? h('section', { class: 'card', dataset: { card: 'holdingsList' } },
         h('h2', { class: 'card-title' }, '目前持股'),
-        h('p', { class: 'muted' }, '還沒有持股。用下面的「新增一檔」開始。'))
+        h('p', { class: 'muted' }, closed.length
+          ? '目前沒有還持有的股票。'
+          : '還沒有持股。用下面的「新增一檔」開始。'),
+        ...closedBlock(closed))
       : h('section', { class: 'card', dataset: { card: 'holdingsList' } },
         h('h2', { class: 'card-title' }, `目前持股（${held.length} 檔）`),
         // **哪一天**要寫出來。沒寫的話，收盤還沒公布的日子看到的是昨天的數字，
@@ -48,6 +61,7 @@ export default async function holdingsView() {
           ? `下面的當日損益是 ${fmtDate(settled.date)} 收盤結算的`
           : '還沒有結算過，所以沒有當日損益'),
         h('div', { class: 'rows' }, ...held.map((hd) => manageRow(hd, plByCode.get(hd.code)))),
+        ...closedBlock(closed),
       ),
     concentrationCard(withIndustry, quotes),
     h('section', { class: 'card', dataset: { card: 'addHolding' } },
@@ -63,6 +77,39 @@ export default async function holdingsView() {
       h('a', { class: 'btn btn-primary', href: '#/plans' }, '管理定期定額計畫'),
     ),
   ]);
+}
+
+/**
+ * 「另有 N 檔已出清」。
+ *
+ * 出清的檔**預設收起來**，但一定要讓他知道歷史還在 —— 直接消失的話，
+ * 他會以為資料掉了（這個 App 沒有雲端，任何「東西不見了」都很嚇人）。
+ * 點開之後那幾列只顯示代號、名稱與「已出清」，**不顯示均價**：
+ * 0 股配一個均價是沒有意義的數字。點進去仍然看得到完整的變動紀錄。
+ */
+function closedBlock(closed) {
+  if (closed.length === 0) return [];
+  const toggle = h('button', {
+    class: 'btn btn-sm',
+    dataset: { toggle: 'closedHoldings' },
+    'aria-expanded': String(showClosed),
+    onclick: () => { showClosed = !showClosed; holdingsView(); },
+  }, showClosed ? '收起來' : `看這 ${closed.length} 檔`);
+
+  return [
+    h('p', { class: 'muted sm', dataset: { note: 'closedCount' } },
+      `另有 ${closed.length} 檔已出清（0 股）。紀錄還在，點進去看得到當初的買賣。`),
+    toggle,
+    showClosed
+      ? h('div', { class: 'rows', dataset: { block: 'closedRows' } }, ...closed.map((hd) =>
+        h('a', { class: 'row row-holding', href: `#/holdings/${hd.code}`, dataset: { code: hd.code, closed: '1' } },
+          h('div', { class: 'row-head' },
+            h('span', { class: 'row-code' }, hd.code),
+            h('span', { class: 'row-name' }, hd.name || '')),
+          h('div', { class: 'row-mid' }, h('span', { class: 'muted sm' }, '0 股')),
+          h('div', { class: 'row-side' }, h('span', { class: 'tag' }, '已出清')))))
+      : null,
+  ].filter(Boolean);
 }
 
 function manageRow(hd, plRow) {
