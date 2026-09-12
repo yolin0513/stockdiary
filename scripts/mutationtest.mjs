@@ -1513,6 +1513,24 @@ const MUTATIONS = [
     replace: '  legFor(plan.code);',
     test: 'calcviewtest',
   },
+  {
+    name: '拿掉「成本不含手續費」的說明',
+    why: '使用者拿國泰 App 對帳，成本差 252 元（約 2 折的買進手續費）。'
+      + '那是定義不同不是算錯，但不講的話他每次對帳都會重新懷疑一次。',
+    file: 'js/views/home.js',
+    find: "    h('p', { class: 'muted sm', dataset: { note: 'costExcludesFee' } },",
+    replace: "    h('p', { class: 'muted sm', dataset: { note: 'gone' } },",
+    test: 'uikittest',
+  },
+  {
+    name: '拿掉「主畫面 App 與 Safari 不共用」的警告',
+    why: '在 Safari 匯出、到主畫面 App 匯入，資料會不見 —— 而匯出／匯入是'
+      + '這個 App 換機與救援的唯一路徑。不講等於備份功能是壞的。',
+    file: 'js/views/settings.js',
+    find: "    h('p', { class: 'warn sm', dataset: { note: 'storageSplit' } },",
+    replace: "    h('p', { class: 'warn sm', dataset: { note: 'gone' } },",
+    test: 'uikittest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

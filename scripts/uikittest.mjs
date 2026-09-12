@@ -185,6 +185,61 @@ try {
   eq(home.rows, 0, '總覽上沒有任何持股列（持股頁本來就有，而且更完整）');
   ok(home.text.includes('當日損益'), '（對照）總覽該有的東西還在');
 
+  section('對帳會差在哪，畫面上要先講');
+  //
+  // 兩句話，都是「不講他就會以為 App 壞了」的那種：
+  //
+  //   成本不含手續費：使用者拿國泰 App 對帳，成本差 252 元。實算下來那大約是
+  //     2 折的買進手續費（858,685 × 0.1425% × 0.2 ≈ 245）。我們的成本只有
+  //     成交價 × 股數（js/avgcost.js 沒有任何 fee 項，PLAN 第 23 行也把手續費
+  //     列為「不做的指標」）—— 是定義不同，不是算錯。但不講他每次都會再懷疑一次。
+  //
+  //   主畫面 App 與 Safari 的儲存是分開的：在 Safari 匯出、到主畫面 App 匯入，
+  //     資料會不見。而匯出／匯入是這個 App 換機與救援的**唯一**路徑。
+  const disclose = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const holdings = await import('./js/holdings.js');
+    for (const st of db.STORE_NAMES) await db.clear(st);
+    const iso = new Date().toLocaleDateString('sv');
+    await holdings.addOpening({ code: '2330', shares: 1000, avgCost: 890.5, date: '2026-01-05' });
+    await db.put('settle', {
+      date: iso, dayPL: '0', marketValue: '2410000000000', dividend: null, counted: 1,
+      excludedUnsupported: 0, excludedMissing: 0,
+      byCode: [{ code: '2330', shares: 1000, close: 2410, basis: 2410, basisSource: 'prevClose', status: 'ok', pl: '0' }],
+      settledAt: new Date().toISOString(),
+    });
+    const home = await import('./js/views/home.js');
+    await home.default();
+    await new Promise((r) => setTimeout(r, 400));
+    const cost = document.querySelector('#view [data-note="costExcludesFee"]')?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+    const unrealCard = document.querySelector('#view [data-card="unrealized"]')?.textContent.replace(/\s+/g, ' ') ?? '';
+
+    const sv = await import('./js/views/settings.js');
+    await sv.default();
+    await new Promise((r) => setTimeout(r, 400));
+    const backup = document.querySelector('#view [data-card="backup"]')?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+    const split = document.querySelector('#view [data-note="storageSplit"]')?.textContent.trim() ?? '';
+    return { cost, unrealCard, backup, split };
+  });
+
+  // ---- A2：成本不含手續費 ----
+  ok(disclose.cost.length > 20, `未實現損益卡片上有說明（${disclose.cost.length} 字）`);
+  everyOf(['手續費', '券商'], (t) => disclose.cost.includes(t),
+    `講出「我們沒加手續費、券商有加」：「${disclose.cost.slice(0, 46)}」`);
+  ok(/高一點|低一點/.test(disclose.cost), '而且講出方向（券商的成本會比較高）');
+  // 用白話講，不要丟術語
+  noneOf(['加權平均成本法', '成本基礎', 'cost basis'], (t) => disclose.cost.includes(t),
+    '沒有丟術語');
+  ok(disclose.unrealCard.includes('未實現損益'), '（對照）那張卡真的是未實現損益');
+
+  // ---- A1：主畫面 App 與 Safari 不共用 ----
+  ok(disclose.split.length > 10, '備份區塊有「只存在這台手機」的說明');
+  everyOf(['主畫面', 'Safari', '不共用'], (t) => disclose.backup.includes(t),
+    `講出兩邊的儲存是分開的：「${/iPhone[^。]*。/.exec(disclose.backup)?.[0]?.slice(0, 50)}」`);
+  ok(/在哪一邊匯出，就要在哪一邊匯入/.test(disclose.backup), '而且講得出該怎麼辦');
+  ok(/換手機|清掉瀏覽器資料|移除/.test(disclose.backup), '也講了什麼情況會失去資料');
+  ok(disclose.backup.includes('不含 API 金鑰'), '（對照）原本就有的說明還在');
+
   section('每天盤後的兩條路徑：提示列、入口、確認之後的回饋');
   //
   // 走查發現的四件事，每一條都是他每天會踩到的：

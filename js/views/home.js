@@ -238,6 +238,13 @@ function unrealizedCard(u, held) {
       '報酬率 ', num(fmtPct(u.returnRate, { sign: true })),
       '　成本 ', num(fmtMoneyMicro(u.costMicro))),
     note ? h('p', { class: 'muted sm' }, note) : null,
+    // **拿去跟券商對帳一定會差一點，先講清楚差在哪。**
+    // 這裡的成本只有「成交價 × 股數」（js/avgcost.js 沒有任何手續費項，
+    // PLAN 第 23 行也把手續費列為「不做的指標」）。券商庫存頁的成本慣例含買進手續費。
+    // 不講的話，他每次對帳都會重新懷疑一次是不是算錯了。
+    h('p', { class: 'muted sm', dataset: { note: 'costExcludesFee' } },
+      '這裡的成本是你填的成交價乘上股數，沒有加手續費。'
+      + '券商 App 的成本通常把買進手續費算進去，所以會比這裡高一點點，報酬率也會低一點點。'),
   );
 }
 
