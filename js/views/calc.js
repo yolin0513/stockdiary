@@ -64,21 +64,42 @@ export default async function calcView() {
  * **只鋪出「哪幾檔」，不填任何數字。** 金額與市值要按「從你自己的資料帶入」
  * 才會進來；成長率與配息率永遠要他自己填（那是對未來的假設）。
  */
+/** 代號表認得的 ETF。data/stocks.json 的 type 欄位分得出來（實測 360 檔 ETF）。 */
+function isETF(code) {
+  return catalog.lookup(code)?.type === 'ETF';
+}
+
+function newLeg(code, name) {
+  return { code, name: name ?? '', amount: '', startValue: '', growthRate: '', yieldRate: '', price: '' };
+}
+
+/**
+ * 這一頁要列哪幾檔（使用者要求：**只列 ETF**）。
+ *
+ * 定期定額最常見的就是 ETF，而個股與 ETF 的假設差很多、放在一起只是雜訊。
+ * 代號表的 type 欄位分得出來（實測 360 檔 ETF），所以照 ETF 篩。
+ * 萬一代號表壞掉、一檔 ETF 都認不出來，就退回「只列有定期定額計畫的」——
+ * 那是使用者指定的備案，不要在這時候把全部持股倒出來。
+ */
 function defaultLegs() {
   const seen = new Set();
-  const out = [];
+  const etfs = [];
+  const planned = [];
+
   for (const pl of state.plans.filter((x) => x.active)) {
     if (seen.has(pl.code)) continue;
     seen.add(pl.code);
     const info = catalog.lookup(pl.code);
-    out.push({ code: pl.code, name: info.found ? info.name : '', amount: '', startValue: '', growthRate: '', yieldRate: '', price: '' });
+    const leg = newLeg(pl.code, info.found ? info.name : '');
+    planned.push(leg);
+    if (isETF(pl.code)) etfs.push(leg);
   }
   for (const hd of state.holdings) {
     if (seen.has(hd.code) || !hd.supported) continue;
     seen.add(hd.code);
-    out.push({ code: hd.code, name: hd.name ?? '', amount: '', startValue: '', growthRate: '', yieldRate: '', price: '' });
+    if (isETF(hd.code)) etfs.push(newLeg(hd.code, hd.name ?? ''));
   }
-  return out;
+  return etfs.length ? etfs : planned;
 }
 
 function paint() {
@@ -151,7 +172,12 @@ function legFor(code) {
 function fillFromPlan(plan) {
   const pos = positionOf(plan.code);
   const fields = [];
-  const leg = legFor(plan.code);
+  // 選了某一檔，下面就**只留那一檔**（使用者要求）。
+  // 全部列出來的話，他得自己一檔一檔按「不算這一檔」才能只試算一檔。
+  // 想看全部就按「全部持股與計畫」那一顆。
+  state.legs = [legFor(plan.code)];
+  state.multi = null;
+  const leg = state.legs[0];
   leg.amount = String(plan.amount);
   state.amount = String(plan.amount);
   fields.push(`每期扣款金額 ${plan.amount.toLocaleString('zh-Hant-TW')} 元`);
@@ -181,18 +207,19 @@ function fillFromPlan(plan) {
 function fillFromAll() {
   const t = totalPosition();
   const fields = [];
+  // 按「全部」就把清單還原 —— 上面「選一檔」會把 legs 縮成一檔
+  state.legs = defaultLegs();
+  state.multi = null;
   // 每一檔各自帶自己的 —— 不要把所有人的金額加成一筆，那就失去分開設定的意義
+  // **只填已經在清單裡的那幾檔**，不要用 legFor() 把不在清單裡的補進來 ——
+  // 那會把被 ETF 篩掉的個股又加回去（踩過：按「全部」之後 2330、2317 冒出來）。
+  const byCode = new Map(state.legs.map((l) => [l.code, l]));
   for (const pl of state.plans.filter((x) => x.active)) {
-    const leg = legFor(pl.code);
-    leg.amount = String(pl.amount);
-    const pos = positionOf(pl.code);
-    if (pos?.marketValue != null) leg.startValue = String(pos.marketValue);
-    if (pos?.close != null) leg.price = String(pos.close);
+    const leg = byCode.get(pl.code);
+    if (leg) leg.amount = String(pl.amount);
   }
-  for (const hd of state.holdings) {
-    if (!hd.supported) continue;
-    const leg = legFor(hd.code);
-    const pos = positionOf(hd.code);
+  for (const leg of state.legs) {
+    const pos = positionOf(leg.code);
     if (pos?.marketValue != null) leg.startValue = String(pos.marketValue);
     if (pos?.close != null) leg.price = String(pos.close);
   }
@@ -411,8 +438,10 @@ function legsCard() {
   return h('section', { class: 'card', dataset: { card: 'calcLegs' } },
     h('h2', { class: 'card-title' }, `每一檔各自的假設（${state.legs.length} 檔）`),
     h('p', { class: 'muted sm' },
-      '每一檔的成長率與配息率分開填 —— 市值型、高股息、個股的性質不一樣，'
+      '每一檔的成長率與配息率分開填 —— 市值型與高股息的性質不一樣，'
       + '用同一組數字算出來的東西沒有意義。'),
+    h('p', { class: 'muted sm', dataset: { note: 'legsScope' } },
+      '這裡只列 ETF。要只算其中一檔，按上面那一檔的按鈕就好。'),
     h('p', { class: 'muted sm' },
       // 畫面字串裡不可以有 markdown 記號（h() 全是 textNode，星號會原樣印出來）
       '沒填完的那一檔不會被算進去，也不會被當成 0 —— 空白代表還沒決定。'),

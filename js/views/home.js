@@ -6,7 +6,7 @@
 //   · 不支援報價的持股那一列**不產生任何 .num 節點**（測試靠這個斷言）
 //   · 沒有任何一檔填平均成本時，「未實現損益」整個區塊不出現（不是顯示「—」）
 
-import { h, num, moneyNode, fmtMoneyMicro, fmtPrice, fmtShares, fmtPct, fmtDate, toast, NO_VALUE } from '../ui.js';
+import { h, num, moneyNode, fmtMoneyMicro, fmtPct, fmtDate, NO_VALUE } from '../ui.js';
 import * as store from '../store.js';
 import * as holdings from '../holdings.js';
 import * as events from '../events.js';
@@ -40,7 +40,7 @@ export default async function home() {
   // 一筆持股、一個計畫都沒有的時候，就只講「怎麼開始」。
   const plansList = await plans.list();
   if (held.length === 0 && plansList.length === 0) {
-    render([startCard(), newsCard(), statusCard(upd, settleDate)]);
+    render([startCard(), newsCard()]);
     return;
   }
 
@@ -51,7 +51,8 @@ export default async function home() {
     unrealizedCard(unreal, held),
     dividendCard(divSummary),
     newsCard(),
-    statusCard(upd, settleDate),
+    // 資料狀態搬到設定頁，與「資料來源」合併成一區（使用者要求）。
+    // 那是「偶爾想確認」的東西，不是每天要看的 —— 佔著總覽的位置只是讓人多捲。
     // 持股明細不放這裡 —— 使用者回報總覽不用再放一次，持股頁本來就有（而且更完整）。
   ].filter(Boolean));
 }
@@ -73,10 +74,19 @@ function startCard() {
 }
 
 /** 進新聞頁的入口。新聞不進底部分頁（那五格是每天一定會看的），放在總覽上。 */
+/**
+ * 進新聞頁的入口。
+ *
+ * 新聞不在底部分頁（那五格是每天一定會看的），所以它只能靠總覽上這張卡片。
+ * 整張卡片本來就是連結，但使用者回報「找不到」—— 一張看起來像說明文字的卡片
+ * 不像可以按的東西。給它一顆明確的按鈕（使用者要求）。
+ */
 function newsCard() {
-  return h('a', { class: 'card card-link', href: '#/news', dataset: { card: 'newsEntry' } },
+  return h('section', { class: 'card', dataset: { card: 'newsEntry' } },
     h('h2', { class: 'card-title' }, '新聞'),
-    h('p', { class: 'muted sm' }, '台股與國際財經標題，只顯示標題與連結，點了到原站看。'));
+    h('p', { class: 'muted sm' }, '台股與國際財經標題、跟你持股有關的標記，以及今日觀察。'),
+    h('a', { class: 'btn btn-primary', href: '#/news', dataset: { link: 'news' } }, '看新聞'),
+  );
 }
 
 /** 有待確認的除權息事件時，首頁最上面提示一下（PLAN §2.2 第 6 點）。 */
@@ -167,11 +177,9 @@ function dayPLCard(settled, settleDate, upd) {
         ' ', num(fmtMoneyMicro(settled.dividendMicro)), ' 元')
       : null,
     note ? h('p', { class: 'muted sm' }, note) : null,
-    // 看到「當日損益 −18,450」之後，下一個問題一定是「哪一檔造成的」。
-    // 總覽上答不出來（整頁沒有任何代號），持股頁每一列都有 —— 給一條路過去。
-    settled?.dayPLMicro != null
-      ? h('a', { class: 'btn', href: '#/holdings', dataset: { link: 'perHolding' } }, '看每一檔的當日損益')
-      : null,
+    // 這裡**刻意沒有**「看每一檔的當日損益」那顆按鈕。
+    // 它是 v0.7.10 加的（總覽答不出「是哪一檔」），使用者在 v0.7.11 之後
+    // 明確說不要 —— 底部的「持股」分頁本來就到得了。**不要再自動加回來。**
   );
 }
 
@@ -233,36 +241,5 @@ function unrealizedCard(u, held) {
   );
 }
 
-function statusCard(upd, settleDate) {
-  const cal = store.calendar();
-  const lines = [];
-
-  if (store.calendarError()) lines.push('開休市日尚未取得，無法判斷交易日');
-  else if (cal) lines.push(`開休市日：${cal.year} 年，${cal.days.length} 個交易日`);
-  if (store.catalogError()) lines.push('代號表尚未取得');
-
-  lines.push(upd ? upd.message : '尚未更新');
-  for (const p of (upd?.problems ?? []).slice(0, 3)) lines.push(p);
-  lines.push(settleDate ? `最後結算：${fmtDate(settleDate)}` : '尚未結算過');
-  lines.push('資料來源：臺灣證券交易所，每次開啟 App 更新一次');
-
-  const btn = h('button', {
-    class: 'btn',
-    onclick: async () => {
-      if (btn.disabled) return;
-      btn.disabled = true;
-      btn.textContent = '更新中…';
-      const r = await store.update({ force: true });
-      toast(r?.message || '已更新');
-      home();
-    },
-  }, '重新整理');
-
-  return h('section', { class: 'card status-card' },
-    h('h2', { class: 'card-title' }, '資料狀態'),
-    ...lines.map((t) => h('p', { class: 'muted sm' }, t)),
-    btn,
-  );
-}
 
 

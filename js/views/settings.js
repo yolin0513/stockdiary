@@ -1,6 +1,6 @@
 // 設定頁。M0：字級、今日資料公布門檻、資料來源與限制說明。
 
-import { h, toast, switchRow, timeSelect, confirmDialog } from '../ui.js';
+import { h, toast, switchRow, timeSelect, confirmDialog, fmtDate } from '../ui.js';
 import * as prefs from '../prefs.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
@@ -9,7 +9,10 @@ import * as secrets from '../secrets.js';
 import * as backup from '../backup.js';
 import { APP_VERSION } from '../version.js';
 
+let lastSettled = null;
+
 export default async function settings() {
+  try { lastSettled = await store.lastSettledDate(); } catch { lastSettled = null; }
   setTop({ title: '設定' });
   const key = await secrets.status();
 
@@ -205,11 +208,44 @@ function thresholdSection() {
   );
 }
 
+/**
+ * 資料來源與目前狀態。
+ *
+ * 「資料狀態」本來是總覽最下面一張獨立的卡片，v0.7.12 起併進來（使用者要求）——
+ * 那是偶爾想確認的東西，不是每天要看的，佔著總覽的位置只是讓人多捲一屏。
+ * 併在一起也比較合理：資料從哪來、抓到哪一天、有沒有漏，本來就是同一件事。
+ */
 function dataSection() {
   const catDate = catalog.catalogDate();
   const cal = store.calendar();
-  return h('section', { class: 'card' },
-    h('h2', { class: 'card-title' }, '資料來源'),
+  const upd = store.lastUpdate();
+  const lines = [];
+
+  if (store.calendarError()) lines.push('開休市日尚未取得，無法判斷交易日');
+  if (store.catalogError()) lines.push('代號表尚未取得');
+  lines.push(upd ? upd.message : '尚未更新');
+  for (const problem of (upd?.problems ?? []).slice(0, 3)) lines.push(problem);
+
+  const btn = h('button', {
+    class: 'btn',
+    dataset: { action: 'refresh' },
+    onclick: async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = '更新中…';
+      const r = await store.update({ force: true });
+      toast(r?.message || '已更新');
+      await settings();
+    },
+  }, '重新整理');
+
+  return h('section', { class: 'card', dataset: { card: 'dataSource' } },
+    h('h2', { class: 'card-title' }, '資料來源與狀態'),
+    h('h3', { class: 'sub-title' }, '目前狀態'),
+    ...lines.map((t) => h('p', { class: 'muted sm' }, t)),
+    h('p', { class: 'muted sm' }, lastSettled ? `最後結算：${fmtDate(lastSettled)}` : '尚未結算過'),
+    btn,
+    h('h3', { class: 'sub-title' }, '來源'),
     h('p', { class: 'muted sm' }, `代號表：${catDate ? `${catDate} 產生` : '尚未取得'}`),
     h('p', { class: 'muted sm' }, `開休市日：${cal?.year ? `${cal.year} 年，${cal.days.length} 個交易日` : '尚未取得'}`),
     h('p', { class: 'muted sm' }, '收盤價來自臺灣證券交易所（www.twse.com.tw），只在開啟 App 時抓一次，沒有盤中即時報價。'),

@@ -1434,12 +1434,12 @@ const MUTATIONS = [
     test: 'uikittest',
   },
   {
-    name: '總覽拿掉通往持股頁的入口',
-    why: '看到「當日損益 −18,450」之後，下一個問題一定是「哪一檔造成的」。'
-      + '總覽整頁沒有任何代號（實測過），沒有這條連結就只能自己想到去按底部分頁。',
+    name: '把「看每一檔的當日損益」按鈕加回總覽',
+    why: '那顆是 v0.7.10 加的，使用者在 v0.7.11 之後**明確說不要**。'
+      + '這條突變守的是「不要自動加回來」—— 加回去測試就要紅。',
     file: 'js/views/home.js',
-    find: "      ? h('a', { class: 'btn', href: '#/holdings', dataset: { link: 'perHolding' } }, '看每一檔的當日損益')",
-    replace: '      ? null',
+    find: "    // 這裡**刻意沒有**「看每一檔的當日損益」那顆按鈕。",
+    replace: "    h('a', { class: 'btn', href: '#/holdings', dataset: { link: 'perHolding' } }, '看每一檔的當日損益'),\n    // 這裡**刻意沒有**「看每一檔的當日損益」那顆按鈕。",
     test: 'uikittest',
   },
   {
@@ -1493,6 +1493,24 @@ const MUTATIONS = [
     file: 'js/views/calc.js',
     find: "  return h('p', { class: 'muted sm', dataset: { note: 'noGrowthReference' } },",
     replace: "  return h('p', { class: 'muted sm', dataset: { note: 'gone' } },",
+    test: 'calcviewtest',
+  },
+  {
+    name: '試算頁把個股也列進來',
+    why: '使用者明確要求只顯示 ETF。個股與 ETF 的假設差很多，混在一起只是雜訊，'
+      + '而且他每次都要一檔一檔按「不算這一檔」。',
+    file: 'js/views/calc.js',
+    find: "    if (isETF(hd.code)) etfs.push(newLeg(hd.code, hd.name ?? ''));",
+    replace: "    etfs.push(newLeg(hd.code, hd.name ?? ''));",
+    test: 'calcviewtest',
+  },
+  {
+    name: '選了某一檔之後還是列出全部',
+    why: '使用者要求「選擇其中一檔的話，下方請只顯示選中的那檔」。'
+      + '全部列出來的話他得一檔一檔按「不算這一檔」才能只試算一檔。',
+    file: 'js/views/calc.js',
+    find: '  state.legs = [legFor(plan.code)];',
+    replace: '  legFor(plan.code);',
     test: 'calcviewtest',
   },
 ];

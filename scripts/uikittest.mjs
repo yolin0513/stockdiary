@@ -236,6 +236,12 @@ try {
       const a = document.querySelector('#view [data-link="perHolding"]');
       return a ? { href: a.getAttribute('href'), h: Math.round(a.getBoundingClientRect().height), text: a.textContent.trim() } : null;
     })();
+    const newsBtn = (() => {
+      const a = document.querySelector('#view [data-link="news"]');
+      return a ? { href: a.getAttribute('href'), h: Math.round(a.getBoundingClientRect().height), text: a.textContent.trim() } : null;
+    })();
+    const homeText = document.querySelector('#view').textContent.replace(/\s+/g, ' ');
+    const tabs = [...document.querySelectorAll('#tabbar .tab')].map((t) => t.textContent.trim());
 
     // 確認扣款
     const pv = await import('./js/views/plans.js');
@@ -264,7 +270,7 @@ try {
     await new Promise((r) => setTimeout(r, 500));
     const divToast = (() => { const e = document.getElementById('toast'); return e && !e.hidden ? e.textContent.trim() : ''; })();
 
-    return { banners, perHolding, dcaToast, divToast, shares: hd.shares, avgCost: hd.avgCost, divCardText, divRowDate, divModalText };
+    return { banners, perHolding, newsBtn, homeText, tabs, dcaToast, divToast, shares: hd.shares, avgCost: hd.avgCost, divCardText, divRowDate, divModalText };
   });
 
   // ---- A：一種一條，各自帶到自己那一頁 ----
@@ -279,10 +285,20 @@ try {
   noneOf(daily.banners, (b2) => /除權息/.test(b2.text) && /扣款/.test(b2.text),
     '**沒有任何一條同時答應兩件事**（那正是以前只給一件的原因）');
 
-  // ---- D：總覽有一條路通往「哪一檔」 ----
-  ok(daily.perHolding != null, `當日損益卡片上有通往持股頁的入口：「${daily.perHolding?.text}」`);
-  eq(daily.perHolding?.href, '#/holdings', '而且真的指向持股頁');
-  ok(daily.perHolding?.h >= 44, `觸控區夠大（${daily.perHolding?.h}px）`);
+  // ---- 總覽**不要**「看每一檔的當日損益」那顆按鈕 ----
+  //
+  // 那顆是 v0.7.10 加的（走查發現總覽答不出「是哪一檔」），
+  // 使用者在 v0.7.11 之後**明確說不要** —— 底部的「持股」分頁本來就到得了。
+  // 這條斷言是為了**不要再自動加回來**：下次有人（包括我）又覺得
+  // 「總覽應該有一條路過去」的時候，這裡會紅，並且看到這段註解。
+  eq(daily.perHolding, null, '總覽上沒有「看每一檔的當日損益」按鈕（使用者明確決定移除）');
+  // 對照：那條路其實一直都在 —— 底部分頁的「持股」
+  ok(daily.tabs.some((t) => t.includes('持股')), `（對照）底部分頁還是到得了持股（${daily.tabs.join('、')}）`);
+  // 資料狀態也搬走了
+  noneOf([daily.homeText], (t) => t.includes('資料狀態'),
+    '總覽上也沒有「資料狀態」那張卡（已併進設定頁的「資料來源與狀態」）');
+  ok(daily.newsBtn?.href === '#/news' && daily.newsBtn.h >= 44,
+    `新聞有一顆明顯的按鈕：「${daily.newsBtn?.text}」${daily.newsBtn?.h}px`);
 
   // ---- C：確認之後講得出確認了什麼 ----
   // 手算：3,000 ＋ 55 ＝ 3,055 股
