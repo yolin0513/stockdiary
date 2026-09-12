@@ -28,6 +28,18 @@ const STORES = {
 
 export const STORE_NAMES = Object.keys(STORES);
 
+/**
+ * 某個 store 的主鍵欄位名（複合鍵回陣列）。
+ *
+ * 匯入前要逐列檢查「這一列有沒有主鍵」—— 沒有的話 put() 會丟 DataError，
+ * 而 applyImport 是「先 clear 再逐列 put」，丟錯的時候那個 store 已經空了。
+ * 實測過：匯入一份 holdings 裡有一列缺 code 的檔案，原本的 0050／2330 不見了、
+ * 只剩壞檔裡的 1101，而 changes／plans 還是舊的 —— 資料庫進入自相矛盾的狀態。
+ */
+export function keyPathOf(store) {
+  return STORES[store]?.keyPath ?? null;
+}
+
 let _db = null;
 let _opening = null;
 

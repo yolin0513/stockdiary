@@ -86,6 +86,37 @@ export function validateImport(parsed) {
     return { ok: false, error: `這幾項的內容不是清單：${notArray.join('、')}` };
   }
 
+  // **每一列都要有主鍵，而且要在動手之前就檢查完。**
+  //
+  // applyImport 是「先 clear 再逐列 put」。缺主鍵的那一列會讓 put() 丟 DataError，
+  // 而那個時候 store 已經被清空了 —— 使用者的原始資料沒了，新資料也只進了一半，
+  // 而且別的 store 還是舊的（實測過：holdings 只剩壞檔裡的一列，changes 卻是舊的）。
+  //
+  // 所以寧可整份拒收：資料完好、訊息講得出是哪一個項目的第幾列。
+  const badRows = [];
+  for (const store of db.EXPORTABLE_STORES) {
+    const rows = parsed.data[store];
+    if (!Array.isArray(rows)) continue;
+    const kp = db.keyPathOf(store);
+    const keys = Array.isArray(kp) ? kp : [kp];
+    rows.forEach((row, i) => {
+      if (row == null || typeof row !== 'object' || Array.isArray(row)) {
+        badRows.push(`${store} 第 ${i + 1} 列不是一筆資料`);
+        return;
+      }
+      const missing = keys.filter((k) => k && (row[k] == null || row[k] === ''));
+      if (missing.length) badRows.push(`${store} 第 ${i + 1} 列少了 ${missing.join('、')}`);
+    });
+  }
+  if (badRows.length) {
+    return {
+      ok: false,
+      error: `備份檔裡有 ${badRows.length} 列缺少必要欄位，整份沒有匯入（你現在的資料沒有被動到）：`
+        + badRows.slice(0, 3).join('；')
+        + (badRows.length > 3 ? `…等 ${badRows.length} 列` : ''),
+    };
+  }
+
   // 缺的 store 當成空的，但要講出來 —— 匯入之後那部分會是空的，使用者要先知道。
   const missing = db.EXPORTABLE_STORES.filter((s) => !(s in parsed.data));
   const counts = Object.fromEntries(db.EXPORTABLE_STORES.map((s) => [s, parsed.data[s]?.length ?? 0]));

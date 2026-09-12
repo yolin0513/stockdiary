@@ -202,6 +202,68 @@ try {
   ok(!uiExport.text.includes('sk-ant'), '畫面匯出的檔案裡也沒有金鑰');
   ok(/已匯出\s*\d+\s*筆/.test(uiExport.status), '畫面上回報匯出了幾筆');
 
+  section('匯入一份內容壞掉的檔案：整份拒收，現有資料一列都不能少');
+  //
+  // **這是實測出來的資料損毀。** applyImport 的語意是「先 clear 再逐列 put」，
+  // 所以一份「外層格式合法、但某一列缺主鍵」的檔案會走到：
+  //   holdings 已經被清空 → put() 丟 DataError → 使用者原本的 0050／2330 不見了，
+  //   只剩壞檔裡寫得進去的 1101，而 changes／plans 還是舊的 —— 資料庫自相矛盾。
+  // 而畫面上只會出現一句沒翻譯的 IndexedDB 錯誤，完全沒說資料已經半毀。
+  //
+  // 修法是**動手之前先驗完每一列**（js/backup.js 的 validateImport）。
+  const badImport = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const holdings = await import('./js/holdings.js');
+    const backup = await import('./js/backup.js');
+    for (const st of db.STORE_NAMES) await db.clear(st);
+    await holdings.addOpening({ code: '2330', shares: 1000, avgCost: 500, date: '2026-01-05' });
+    await holdings.addOpening({ code: '0050', shares: 3000, avgCost: 132.4, date: '2026-01-05' });
+    const before = (await holdings.list()).map((x) => x.code).sort();
+
+    // 用**真的匯出檔**當基礎，只把 holdings 換成「一列好、一列缺 code」——
+    // 這樣外層格式一定合法，擋不擋得下來全看逐列檢查。
+    const real = await backup.buildExport();
+    real.data.holdings = [
+      { code: '1101', name: '台泥', market: '上市', supported: true, shares: 1000, avgCost: 30 },
+      { name: '沒有代號的一列' },
+    ];
+    const parsed = backup.parseBackup(JSON.stringify(real));
+
+    let applyErr = null;
+    if (parsed.ok) {
+      try { await backup.applyImport(parsed.data); } catch (e) { applyErr = `${e.name || ''}: ${e.message || e}`; }
+    }
+    const after = (await holdings.list()).map((x) => x.code).sort();
+    const changeCodes = (await db.getAll('changes')).map((c) => c.code).sort();
+
+    // 對照組：同一份檔案，把那一列補上 code 就該放行。
+    real.data.holdings = [{ code: '1101', name: '台泥', market: '上市', supported: true, shares: 1000, avgCost: 30 }];
+    const good = backup.parseBackup(JSON.stringify(real));
+
+    return {
+      before, after, changeCodes,
+      parsedOk: parsed.ok, error: parsed.error ?? null, applyErr,
+      goodOk: good.ok, goodErr: good.error ?? null,
+    };
+  });
+
+  eq(badImport.before, ['0050', '2330'], '（前提）匯入前有 0050 與 2330 兩檔');
+  eq(badImport.parsedOk, false, '**整份被拒收** —— 根本不會走到 applyImport');
+  eq(badImport.applyErr, null, '所以也不會冒出那句沒翻譯的 IndexedDB 錯誤');
+  eq(badImport.after, ['0050', '2330'], '**現有持股一列都沒少**（以前這裡只會剩 1101）');
+  eq(badImport.changeCodes, ['0050', '2330'],
+    '變動紀錄也沒被動到 —— 不然持股與紀錄會對不起來');
+
+  // 訊息要講得出「哪一個項目、第幾列、少了什麼」，還要講「你的資料沒事」。
+  ok(/holdings/.test(badImport.error), `訊息講出是哪一個項目：「${badImport.error}」`);
+  ok(/第 2 列/.test(badImport.error), '講出是第幾列（不是只說「有一列壞了」）');
+  ok(/少了 code/.test(badImport.error), '講出少了哪個欄位');
+  ok(/你現在的資料沒有被動到/.test(badImport.error),
+    '而且明講現有資料沒有被動到 —— 匯入失敗最該先回答的就是這件事');
+
+  // 對照組：不是「什麼都擋」。
+  eq(badImport.goodOk, true, `（對照）把那一列補上 code，同一份檔案就放行了${badImport.goodErr ? `，卻回：${badImport.goodErr}` : ''}`);
+
   section('沒打勾就按匯入：什麼都不做');
   const noConfirm = await page.evaluate(async () => {
     const db = await import('./js/db.js');

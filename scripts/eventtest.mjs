@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done, noneOf, everyOf, note } from './tap.mjs';
+import { ok, eq, section, done, noneOf, everyOf, note, near } from './tap.mjs';
 import { listen } from './serve.mjs';
 import { makeCalendar, latestPublishedTradingDay, DEFAULT_TODAY_THRESHOLD, prevTradingDay } from '../js/market.js';
 import { isoToRocCompact } from '../js/roc.js';
@@ -420,6 +420,75 @@ try {
   const divText2 = await showView('dividends', '#view .card');
   ok(!divText2.includes('待確認（'), '確認之後就不在待確認清單裡了');
   ok(/已確認（1 筆）/.test(divText2), '出現在已確認清單');
+
+  section('情境 5b：配股稀釋均價（端對端，手算對照）');
+  //
+  // 情境 5 驗了股數 1000 → 1049，但那筆持股**沒有填均價** —— 所以
+  // 「配股之後每股成本會下降」這件事端對端從來沒有被驗過，而它直接影響成本。
+  //
+  // 規則（js/avgcost.js 第 3 條）：配股**總成本不變、股數變多** → 每股成本下降。
+  //
+  // 手算：1,000 股 × 25.00 元 ＝ 總成本 25,000
+  //       配股率 0.04999999 → 整股 49 股（餘 0.99999 股以現金找零，App 不記錄那筆現金）
+  //       新股數 1,049 → 25,000 ÷ 1,049 ＝ 23.8322211630124…
+  //       divToNumber 是 BigInt 除法，保留到小數第九位且**截斷** → 23.832221163
+  await setup({
+    mock: {
+      dayAllCsv: dayAllCsv(EXDATE, [['1235', '興泰', 20, 0]]),
+      twt48u: twt48u([[rocChars(EXDATE), '1235', '興泰', '權息', '0.04999999', '0.00000000', '0.00000000', '0.50000000', '', '', '', '', '']]),
+      twt49u: twt49u([[rocChars(EXDATE), '1235', '興泰', '21.50', '20.00', '1.500000', '權息', '23.65', '19.35', '20.00', '20.00', '', '', '', '']]),
+    },
+    // 跟情境 5 的唯一差別：**這裡填了均價**，稀釋才看得出來。
+    holdings: [{ code: '1235', shares: 1000, avgCost: 25, date: '2026-01-05' }],
+    closes: [{ code: '1235', date: PREV, close: 21.5, change: 0.1, exMark: false }],
+  });
+
+  const dilute = await page.evaluate(async (id) => {
+    const ev = await import('./js/events.js');
+    const hd = await import('./js/holdings.js');
+    const pick = async () => (await hd.list()).find((x) => x.code === '1235');
+    const before = await pick();
+    await ev.confirm(id, {});
+    const after = await pick();
+    // 單檔持股頁的 default() 要吃代號，showView 不帶參數，所以直接叫。
+    location.hash = '#/holding/1235';
+    const view = await import('./js/views/holding.js');
+    await view.default('1235');
+    return {
+      beforeShares: before.shares,
+      beforeAvg: before.avgCost,
+      openingAvg: after.openingAvgCost,
+      afterShares: after.shares,
+      afterAvg: after.avgCost,
+      screen: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
+    };
+  }, `1235-${EXDATE}`);
+
+  eq(dilute.beforeShares, 1000, '（前提）配股前 1,000 股');
+  eq(dilute.beforeAvg, 25, '（前提）配股前均價 25.00 —— 有成本基礎，稀釋才看得出來');
+  eq(dilute.afterShares, 1049, '配股後 1,049 股（整股 49 股）');
+  eq(dilute.afterAvg, 23.832221163,
+    '均價稀釋成 23.832221163（手算 25,000 ÷ 1,049 ＝ 23.8322211630124…，截斷到小數第九位）');
+
+  // **總成本不變**才是配股的本質。截斷只會少掉億分之一元，所以容許值收得很緊。
+  const beforeCost = dilute.beforeShares * dilute.beforeAvg;
+  const afterCost = dilute.afterShares * dilute.afterAvg;
+  near(afterCost, beforeCost, 0.000001,
+    `總成本沒有變：${beforeCost} → ${afterCost.toFixed(9)}（差 ${(afterCost - beforeCost).toFixed(9)} 元）`);
+  ok(dilute.afterAvg < dilute.beforeAvg,
+    '每股成本下降了 —— 配股不是「多賺」，是同一筆錢分給更多股');
+
+  // 使用者自己填的那個數字不能被覆寫：openingAvgCost 是輸入、avgCost 是重播結果。
+  eq(dilute.openingAvg, 25, '使用者填的起始均價 25.00 沒有被改掉（稀釋算在 avgCost）');
+
+  // 對照組：均價不可以變成別的東西。
+  noneOf([25, 20, 21.5, 23.65, 0], (v) => dilute.afterAvg === v,
+    '均價沒有變成 25（完全沒稀釋）、20（當日收盤）、21.5（前收）、23.65（漲停價）或 0');
+
+  // 畫面上看得到 —— 而且綁在標籤上，不是隨便一個 23.83。
+  ok(/加權後的平均成本：\s*23\.83 元/.test(dilute.screen),
+    `單檔持股頁寫出稀釋後的均價：「${(/目前加權後的平均成本：[^。]{0,12}/.exec(dilute.screen) || ['沒找到'])[0]}」`);
+  ok(dilute.screen.includes('配股'), '變動紀錄裡看得到那一筆「配股」');
 
   section('沒有頁面錯誤');
   eq(pageErrors.filter((t) => !/favicon|503|Failed to load resource/i.test(t)), [], '沒有未預期的錯誤');

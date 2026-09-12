@@ -1577,6 +1577,30 @@ const MUTATIONS = [
     replace: "(t) => /當日損益\\\\s*[+-]?[\\\\d,]+/.test(t)",
     test: 'shelltest',
   },
+  {
+    name: '配股不稀釋均價',
+    why: '配股是「總成本不變、股數變多」。均價不跟著降的話，成本被高估、報酬率被低估 —— 而成本正是使用者在跟券商對帳的那個數字。eventtest 情境 5 只驗股數，驗不到這件事（那筆持股沒填均價）。',
+    file: 'js/avgcost.js',
+    find: 'return { avgCost: divToNumber(totalCost, newShares), reason: REASON.STOCK_DIVIDEND };',
+    replace: 'return { avgCost: oldAvg, reason: REASON.STOCK_DIVIDEND };',
+    test: 'eventtest',
+  },
+  {
+    name: '配股稀釋時除以配股前的股數',
+    why: '除錯股數的話均價完全沒變（等於沒稀釋），但 reason 還是 stockDividend —— 看起來一切正常。這是比「不稀釋」更難發現的版本。',
+    file: 'js/avgcost.js',
+    find: 'return { avgCost: divToNumber(totalCost, newShares), reason: REASON.STOCK_DIVIDEND };',
+    replace: 'return { avgCost: divToNumber(totalCost, oldShares), reason: REASON.STOCK_DIVIDEND };',
+    test: 'eventtest',
+  },
+  {
+    name: '匯入前不逐列檢查主鍵',
+    why: 'applyImport 是「先 clear 再逐列 put」。缺主鍵的那一列會在 store 已經被清空之後才丟 DataError —— 使用者原本的持股不見了、新資料只進了一半、別的 store 還是舊的。實測過一次真的會少資料。',
+    file: 'js/backup.js',
+    find: "  if (badRows.length) {",
+    replace: "  if (badRows.length && false) {",
+    test: 'backuptest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
