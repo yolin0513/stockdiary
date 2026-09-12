@@ -1557,6 +1557,26 @@ const MUTATIONS = [
     replace: "        '賣出之後股數會減少。'",
     test: 'uikittest',
   },
+  {
+    name: '沒填平均成本的也硬算未實現損益',
+    why: '沒有成本基礎就算不出報酬率。硬拿一個數字去算，畫面上會出現一個'
+      + '看起來很正常、其實完全是編的報酬率 —— 這是 holdingtest「畫面上沒有『報酬率』'
+      + '後面接著一個值」那條守的事（那條的 regex 一度壞掉，從來沒檢查過任何東西）。',
+    file: 'js/settle.js',
+    find: '    if (hd.avgCost == null) continue;',
+    replace: '    const _avg = hd.avgCost == null ? 1 : hd.avgCost;',
+    test: 'holdingtest',
+  },
+  {
+    name: '把跳脫壞掉的 regex 放回 scenariotest',
+    why: '\\s 在 regex 裡是「一個反斜線接著字母 s」，永遠不會命中 ——'
+      + '而且**不會報錯**，那條斷言只是靜靜地從此再也不檢查東西。'
+      + '這條突變守的是 shelltest 的靜態掃描真的抓得到。',
+    file: 'scripts/scenariotest.mjs',
+    find: "(t) => /當日損益\\s*[+-]?[\\d,]+/.test(t)",
+    replace: "(t) => /當日損益\\\\s*[+-]?[\\\\d,]+/.test(t)",
+    test: 'shelltest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

@@ -29,6 +29,9 @@ const TESTS = [
   'eventtest', 'dcatest', 'calcviewtest', 'versionmixtest', 'racetest', 'newstest',
   'secret-leak-test', 'insighttest', 'backuptest', 'concentrationtest', 'layouttest',
   'uikittest', 'divrecordtest',
+  // v0.7.7 之後新增的兩支端對端 —— 不補進來的話，它們的 140+ 條斷言
+  // 從來不會被假斷言健檢掃到（這正是這支報告存在的理由）。
+  'scenariotest', 'pathtest',
 ];
 
 const only = process.argv[2];

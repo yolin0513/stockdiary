@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done, noneOf, everyOf } from './tap.mjs';
+import { ok, eq, section, done, noneOf, everyOf, note } from './tap.mjs';
 import { listen } from './serve.mjs';
 import { makeCalendar, latestPublishedTradingDay, DEFAULT_TODAY_THRESHOLD, prevTradingDay } from '../js/market.js';
 import { isoToRocCompact } from '../js/roc.js';
@@ -432,5 +432,8 @@ try {
   srv.close();
 }
 
-everyOf([1], () => true, '測試跑完了');
+// 這裡不是斷言 —— 「有跑到最後一行」這件事本來就由 done() 的斷言數反映。
+// 以前寫成 everyOf([1], () => true, …)：述詞是常數、母體是寫死的，永遠不會失敗，
+// 卻混進通過數裡，看起來像多驗了一件事。
+note('測試跑完了');
 done('eventtest');

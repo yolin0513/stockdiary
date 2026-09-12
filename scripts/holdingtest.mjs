@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done, noneOf, everyOf } from './tap.mjs';
+import { ok, eq, section, done, noneOf, everyOf, note } from './tap.mjs';
 import { listen } from './serve.mjs';
 import { makeCalendar, latestPublishedTradingDay } from '../js/market.js';
 import { isoToRocCompact } from '../js/roc.js';
@@ -214,7 +214,11 @@ try {
   noneOf(costCards.titles, (t) => t.includes('未實現'), '也沒有任何一張卡片的標題是未實現');
   eq(costCards.promptNums, 0, '取而代之的說明卡片裡一個數字都沒有');
   ok(costCards.prompt, '（對照）有一張卡片告訴使用者「填了平均成本之後會顯示什麼」');
-  noneOf([text1], (t) => /報酬率s*[+-—d]/.test(t), '畫面上沒有「報酬率」後面接著一個值');
+  // 這條原本是 /報酬率s*[+-—d]/ —— 反斜線整個掉了（`s*` 匹配零個字母 s，
+  // 接著要 [+-—d] 卻碰到空白），所以拿「報酬率 +145.00%」去測也不會命中。
+  // 它守的是「沒填成本就不准出現任何未實現數字」，是很重要的一條，卻從來沒檢查過。
+  noneOf([text1], (t) => /報酬率\s*[+-]?\d/.test(t),
+    '畫面上沒有「報酬率」後面接著一個值');
 
   // ---------------------------------------------------------------
   section('情境 2：今日收盤尚未公布（端點回的是前一天）');
@@ -300,5 +304,8 @@ try {
   srv.close();
 }
 
-everyOf([1], () => true, '測試跑完了');
+// 這裡不是斷言 —— 「有跑到最後一行」這件事本來就由 done() 的斷言數反映。
+// 以前寫成 everyOf([1], () => true, …)：述詞是常數、母體是寫死的，永遠不會失敗，
+// 卻混進通過數裡，看起來像多驗了一件事。
+note('測試跑完了');
 done('holdingtest');

@@ -210,7 +210,7 @@ try {
         },
         counted: settle?.counted ?? null,
         dayPL: settle?.dayPL ?? null,
-        text: view.textContent.replace(/\\s+/g, ' '),
+        text: view.textContent.replace(/\s+/g, ' '),
       };
     }, TODAY);
 
@@ -258,7 +258,7 @@ try {
         row: settle?.byCode?.find((x) => x.code === '2330') ?? null,
         dayPL: settle?.dayPL ?? null,
         counted: settle?.counted ?? null,
-        text: document.querySelector('#view').textContent.replace(/\\s+/g, ' '),
+        text: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
       };
     }, TODAY);
 
@@ -266,9 +266,13 @@ try {
     eq(r.row?.pl, null, '**損益是 null —— 不會拿參考價去減一個不存在的收盤價**');
     eq(r.dayPL, null, '當日損益整個是 null');
     eq(r.counted, 0, '一檔都沒算進去');
-    noneOf([r.text], (t) => /當日損益\\s*[+-]?[\\d,]+/.test(t),
+    noneOf([r.text], (t) => /當日損益\s*[+-]?[\d,]+/.test(t),
       '畫面上的當日損益沒有生出一個數字');
-    ok(/當日損益\\s*—/.test(r.text) || r.text.includes('—'), '而是顯示「—」');
+    // 這條原本是 `/當日損益\\s*—/.test(r.text) || r.text.includes('—')`：
+    // 前半跳脫壞掉永遠不成立，後半只是「這一頁有破折號」—— 而破折號在那個畫面上到處都是。
+    // 改成只看**當日損益那一格**，而且要求它就是破折號。
+    ok(/當日損益\s*—/.test(r.text),
+      `當日損益那一格顯示「—」：「${/當日損益[^持]{0,12}/.exec(r.text)?.[0]}」`);
     await page.close();
   }
 

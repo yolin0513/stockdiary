@@ -93,6 +93,70 @@ detects((src) => importsOf(src).includes('./x.js'), {
   ],
 }, 'import 稽核器認得真的 import，也不會把註解裡的當真');
 
+section('沒有跳脫壞掉的 regex');
+//
+// **這一批假斷言的根因。** 用 shell heredoc 產生測試程式碼時，`\\s` 常常
+// 原樣留在檔案裡 —— 而在 regex 裡那不是「空白」，是「一個反斜線接著字母 s」。
+//
+// 最惡劣的地方是**它不會報錯**：程式跑得過、測試是綠的，那條斷言只是
+// 從此再也不會命中任何東西。實際發生過兩條，而且守的都是最重要的事：
+//   · scenariotest 「畫面上的當日損益沒有生出一個數字」
+//   · holdingtest  「畫面上沒有『報酬率』後面接著一個值」
+//
+// 所以改成靜態擋掉。判準：**regex 字面值裡出現兩個反斜線 ＋ 類別字元**。
+// 字串與樣板字串裡的 `\\s` 是對的（那是給 new RegExp() 或給突變用的原始碼），
+// 所以只掃 /…/ 這種字面值。
+const scanDirs = ['js', 'js/views', 'scripts'];
+const sourceFiles = scanDirs.flatMap((d) => fs.readdirSync(path.join(ROOT, d))
+  .filter((f) => f.endsWith('.js') || f.endsWith('.mjs'))
+  .map((f) => `${d}/${f}`));
+
+// 要匹配的是「檔案裡有**兩個**反斜線」。regex 原始碼要寫四個反斜線才代表兩個，
+// 所以用 fromCharCode 組 —— 直接寫在原始碼裡會再被跳脫一次，很容易寫成只匹配一個。
+// （第一版就寫錯成只匹配一個，結果 83 個檔全部誤報 —— 是下面的對照組抓到的。）
+/**
+ * 這個位置是不是在字串字面值裡面。
+ *
+ * 只看同一行、只認 ' " ` 三種引號，遇到跳脫就跳過下一個字元。
+ * 跨行的樣板字串認不出來 —— 那是已知的限制，不是 bug：
+ * 真的有跨行樣板字串包著 regex 的話會誤報，到時候再處理。
+ */
+function insideString(line, idx) {
+  let quote = null;
+  for (let k = 0; k < idx; k += 1) {
+    const c = line[k];
+    if (c === String.fromCharCode(92)) { k += 1; continue; }
+    if (quote) { if (c === quote) quote = null; continue; }
+    if (c === "'" || c === '"' || c === '`') quote = c;
+  }
+  return quote !== null;
+}
+
+const BS2 = String.fromCharCode(92, 92);
+const BAD_ESCAPE = new RegExp(String.fromCharCode(92, 92, 92, 92) + '[sdwSDWbn.]');
+const brokenEscapes = [];
+for (const rel of sourceFiles) {
+  // 去掉註解再掃 —— 註解裡常常「舉例」寫一個壞掉的 regex 當說明
+  // （這一段自己的註解就有兩個），那不是真的程式碼。
+  const src = stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+  src.split(/\r?\n/).forEach((line, i) => {
+    for (const m of line.matchAll(/\/((?:[^/\n]|\\\/)+)\/[gimsuy]*\s*\.(?:test|exec)\(/g)) {
+      if (!BAD_ESCAPE.test(m[1])) continue;
+      // **字串裡的 \\d 是對的。** mutationtest 的 find／replace 帶的是要塞進
+      // 別的檔案的原始碼片段，那裡就該有兩個反斜線。只有真的 regex 字面值才算壞。
+      if (insideString(line, m.index)) continue;
+      brokenEscapes.push(`${rel}:${i + 1}  /${m[1]}/`);
+    }
+  });
+}
+ok(sourceFiles.length >= 40, `（母體）掃了 ${sourceFiles.length} 個原始碼檔`);
+eq(brokenEscapes, [], '沒有任何 regex 的反斜線被跳脫兩次（那種 regex 永遠不會命中，等於假斷言）');
+// 對照組：判準本身要認得出壞的、也不能誤報好的。
+// 少了這兩條，上面那條「沒有壞掉的 regex」可能只是因為判準自己寫壞了才全過。
+const ONE_BS = String.fromCharCode(92);
+ok(BAD_ESCAPE.test(BS2 + 's'), '（對照）判準認得出被跳脫兩次的類別字元');
+ok(!BAD_ESCAPE.test(ONE_BS + 's'), '（對照）而且不會誤報正常的單反斜線');
+
 section('SHELL 清單本身');
 ok(shellAssets.length > 5, `sw.js 列了 ${shellAssets.length} 個檔案`);
 everyOf(shellAssets.filter((a) => a !== './'), (a) => fs.existsSync(path.join(ROOT, a)),
