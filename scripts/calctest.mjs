@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, near, section, done, noneOf, everyOf, detects } from './tap.mjs';
 import {
   validateInputs, simulate, compareScenarios, methodGap, monthlyFactor,
-  REQUIRED, CONTRIB_FREQ, DIVIDEND_FREQ, METHODS,
+  REQUIRED, CONTRIB_FREQ, DIVIDEND_FREQ, METHODS, MAX_FEE_RATE,
 } from '../js/calc.js';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -175,5 +175,20 @@ section('常數');
 eq(CONTRIB_FREQ, [1, 2, 3], '每月扣款次數');
 eq(DIVIDEND_FREQ, [1, 2, 4, 12], '配息頻率');
 eq(METHODS, ['value', 'share'], '兩種算法');
+
+section('試算的手續費率上限：跟定期定額同一條線');
+// 同一個單位陷阱在兩頁都有。以前試算這邊的上限是 0.999 —— 等於什麼都沒擋：
+// 填 0.1425 會被當成 14.25%，每一期都少扣一成四，而畫面上看不出來。
+{
+  const base = { amount: 5000, perMonth: 1, years: 10, growthRate: 5, yieldRate: 4, dividendFreq: 1 };
+  detects((f) => validateInputs({ ...base, feeRate: f }).errors.feeRate != null, {
+    shouldHit: [0.1425, 0.15, 0.5, 0.999, 1, 14.25, 0.0101],
+    shouldMiss: [0.001425, 0.0008, 0, 0.01, '', null, undefined],
+  }, '把百分比當比例填會被擋，真的比例放行');
+  const msg = validateInputs({ ...base, feeRate: 0.1425 }).errors.feeRate;
+  ok(String(msg).includes('14.2500%') && String(msg).includes('0.001425'),
+    `訊息講得出「你填的等於幾 %」與「應該填什麼」：「${msg}」`);
+  eq(MAX_FEE_RATE, 0.01, '上限跟 js/plans.js 一樣是 1%');
+}
 
 done('calctest');

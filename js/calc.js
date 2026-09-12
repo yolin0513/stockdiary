@@ -32,6 +32,9 @@ export const REQUIRED = ['amount', 'perMonth', 'years', 'growthRate', 'yieldRate
  * 檢查輸入。回 { ok, errors: {欄位: 訊息}, values }。
  * **空字串不是 0**：沒填就是沒填，不會被當成「成長率 0%」。
  */
+/** 手續費率的上限（1%），跟 js/plans.js 同一條線。台股券商實際是 0.1425% 打折。 */
+export const MAX_FEE_RATE = 0.01;
+
 export function validateInputs(raw = {}) {
   const errors = {};
   const values = {};
@@ -62,7 +65,15 @@ export function validateInputs(raw = {}) {
   else values.dividendFreq = Number(raw.dividendFreq);
 
   // 選填
-  values.feeRate = optionalNumber(raw.feeRate, errors, 'feeRate', { min: 0, max: 0.999, label: '扣款手續費率' }) ?? 0;
+  // 費率是**比例**不是百分比（0.001425 ＝ 0.1425%）。上限跟定期定額那一頁一致：
+  // 超過 1% 就是把百分比直接填進來了。0.999 的上限等於什麼都沒擋 ——
+  // 填 0.1425 會被當成 14.25%，算出來的每一期都少扣一成四，而畫面上看不出來。
+  values.feeRate = optionalNumber(raw.feeRate, errors, 'feeRate', { min: 0, max: MAX_FEE_RATE, label: '扣款手續費率' }) ?? 0;
+  if (errors.feeRate && Number(String(raw.feeRate).replace(/,/g, '').trim()) > MAX_FEE_RATE) {
+    errors.feeRate = `${String(raw.feeRate).trim()} 代表 `
+      + `${(Number(String(raw.feeRate).replace(/,/g, '').trim()) * 100).toFixed(4)}%，`
+      + '看起來是把百分比直接填進來了。券商說的「0.1425%」要填 0.001425。';
+  }
   values.startValue = optionalNumber(raw.startValue, errors, 'startValue', { min: 0, label: '目前已有部位市值' }) ?? 0;
   values.dividendFees = !!raw.dividendFees;
   values.method = METHODS.includes(raw.method) ? raw.method : 'value';

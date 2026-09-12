@@ -13,8 +13,27 @@
 // 因為空畫面不會爆版 —— 掃一個沒有資料的 App 等於什麼都沒掃。
 
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done, noneOf } from './tap.mjs';
+import { ok, eq, section, done, noneOf, everyOf } from './tap.mjs';
 import { listen } from './serve.mjs';
+
+// ---------------------------------------------------------------------------
+/** 清單列的欄位對齊（上面那兩項看不到的那一類）。 */
+function assertColumns(all, where) {
+  section('清單的數字欄要對齊，每一列高度要一致');
+  const withList = all.filter((p) => (p.columns ?? []).length > 0);
+  ok(withList.length > 0,
+    `有 ${withList.length} 個組合的畫面上有多列清單（母體不是空的）`);
+  everyOf(withList, (p) => p.columns.every((c) => c.rows >= 5),
+    '每一個都至少有 5 列可以互相比對（列數太少比不出對不對齊）');
+  // 換行的那一列，右側會掉到第一行底下（實測壞掉那版是 +36～38px）。
+  // 正常的情況右側是跨兩行垂直置中，只差 2～3px。
+  noneOf(withList, (p) => p.columns.some((c) => c.maxDrop > 8),
+    '**沒有任何一列的數字被擠到下一行**（右側跟代號同一行，上緣差 ≤ 8px）');
+  noneOf(withList, (p) => p.columns.some((c) => c.rightSpread > 2),
+    '數字欄的右緣對齊（同一個清單裡差 ≤ 2px）');
+  noneOf(withList, (p) => p.columns.some((c) => c.heightSpread > 2),
+    '同一個清單裡每一列的高度一致（差 ≤ 2px）');
+}
 
 const SCALES = ['sm', 'md', 'lg', 'xl'];
 // 320：iPhone SE 這種最窄的；390：主流；430：Pro Max
@@ -98,10 +117,15 @@ try {
     await db.clear('news');
     await db.clear('insights');
 
-    // 名字長、產業名長的都放進去 —— 短名字不會爆版
+    // 名字長、產業名長的都放進去 —— 短名字不會爆版。
+    // **最寬的組合一定要在裡面**：5 碼代號 ＋ 6 字名稱（00878 國泰永續高股息）。
+    // 舊的樣本三檔全是 4 碼、名稱最長 3 字，所以持股列擠不擠得下根本照不到
+    // （使用者實機回報的跑版就是這個組合造成的）。
     await holdings.addOpening({ code: '2330', shares: 123456, avgCost: 1234.56, date: '2026-09-01', note: '開帳' });
     await holdings.addOpening({ code: '5906', shares: 98765, avgCost: 41.55, date: '2026-09-01' });
     await holdings.addOpening({ code: '2882', shares: 1000000, avgCost: 80.25, date: '2026-09-01' });
+    await holdings.addOpening({ code: '00878', shares: 8000, avgCost: 20.15, date: '2026-09-01' });
+    await holdings.addOpening({ code: '00885', shares: 4000, avgCost: 18.2, date: '2026-09-01' });
     await holdings.addChange({ code: '2330', date: '2026-09-05', deltaShares: 5000, price: 1200, kind: 'manual' });
     await plans.save({ code: '2330', amount: 30000, days: [6, 16, 26], feeRate: 0.001425, reinvest: true });
 
@@ -109,9 +133,11 @@ try {
     await db.put('settle', {
       date: '2026-09-11',
       byCode: [
-        { code: '2330', close: 1234.5, status: 'ok' },
-        { code: '5906', close: 41.55, status: 'ok' },
-        { code: '2882', close: 80.25, status: 'ok' },
+        { code: '2330', close: 1234.5, basis: 1250, status: 'ok', pl: '-123456000000' },
+        { code: '5906', close: 41.55, basis: 41.2, status: 'ok', pl: '34567000000' },
+        { code: '2882', close: 80.25, basis: 80.9, status: 'ok', pl: '-650000000000' },
+        { code: '00878', close: 22.31, basis: 22.61, status: 'ok', pl: '-2400000000' },
+        { code: '00885', close: 19.05, basis: 19.3, status: 'ok', pl: '-1000000000' },
       ],
     });
 
@@ -210,7 +236,49 @@ try {
         }
       }
     }
-    return { overflow, overlaps, docW, scrollW: document.documentElement.scrollWidth, leafCount: boxes.length };
+    // ------------------------------------------------------------------
+    // 清單列的欄位對齊。
+    //
+    // **為什麼要多這一項**：溢出與重疊都看不到「這一列換行了」——
+    // 換行的那一列包得好好的，沒有超出畫面、也沒有疊到別人，
+    // 只是變成兩倍高、右側數字跑到下一行去。實測過：把持股列的格線拿掉
+    // （還原成使用者回報跑版的那一版），上面兩項照樣 10/10 全綠。
+    //
+    // 判準是**同一個清單裡，右側數字欄的左緣要一致**。
+    // 某一列被擠到下一行時，它的 .row-side 會從列首開始，左緣立刻差一大截。
+    const columns = [];
+    for (const list of root.querySelectorAll('.rows')) {
+      const rows = [...list.querySelectorAll(':scope > .row-holding')];
+      if (rows.length < 2) continue;
+      const sides = rows.map((r) => {
+        const rb = r.getBoundingClientRect();
+        const sb = r.querySelector('.row-side')?.getBoundingClientRect() ?? null;
+        const hb = r.querySelector('.row-head')?.getBoundingClientRect() ?? null;
+        return {
+          code: r.dataset.code ?? '',
+          rowH: rb.height,
+          // **右側數字有沒有被擠到下一行**：跟第一行的上緣差多少。
+          // （左緣不能當判準 —— 右對齊的欄本來就會因為數字長短而左緣不同。）
+          sideDrop: sb && hb ? sb.top - hb.top : null,
+          sideRight: sb ? sb.right : null,
+          // 第一列沒有上框線（刻意的），所以列高會少 1px —— 比對時補回來
+          h: rb.height + (getComputedStyle(r).borderTopWidth === '0px' ? 1 : 0),
+        };
+      });
+      const drops = sides.map((x) => x.sideDrop).filter((x) => x != null);
+      const rights = sides.map((x) => x.sideRight).filter((x) => x != null);
+      const hs = sides.map((x) => x.h);
+      const worst = sides.slice().sort((a, b) => (b.sideDrop ?? 0) - (a.sideDrop ?? 0))[0];
+      columns.push({
+        rows: sides.length,
+        maxDrop: drops.length ? Math.round(Math.max(...drops)) : 0,
+        rightSpread: rights.length ? Math.round(Math.max(...rights) - Math.min(...rights)) : 0,
+        heightSpread: Math.round(Math.max(...hs) - Math.min(...hs)),
+        worst: worst ? `${worst.code}(+${Math.round(worst.sideDrop ?? 0)}px)` : '',
+      });
+    }
+
+    return { overflow, overlaps, columns, docW, scrollW: document.documentElement.scrollWidth, leafCount: boxes.length };
   });
 
   // 每一個組合的結果都留著 —— 母體必須是「全部 84 組」，
@@ -270,6 +338,8 @@ try {
   noneOf(all, (p) => p.scrollW > p.docW + 1, '畫面不會橫向捲動',
     all.filter((p) => p.scrollW > p.docW + 1).slice(0, 3)
       .map((p) => `${where(p)}：scrollWidth ${p.scrollW} > ${p.docW}`).join(' ／ '));
+
+  assertColumns(all, where);
 
   eq(pageErrors, [], '整段沒有未攔截的例外');
 } finally {

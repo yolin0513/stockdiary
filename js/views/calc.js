@@ -13,13 +13,15 @@
 import { h, num, fmtMoneyMicro, fmtShares, toast, switchRow } from '../ui.js';
 import {
   validateInputs, compareScenarios, methodGap, displayTotals,
-  CONTRIB_FREQ, DIVIDEND_FREQ, DIVIDEND_FREQ_LABEL,
+  CONTRIB_FREQ, DIVIDEND_FREQ, DIVIDEND_FREQ_LABEL, MAX_FEE_RATE,
 } from '../calc.js';
 import { setTop, render } from '../shell.js';
 import * as divrecord from '../divrecord.js';
 import * as events from '../events.js';
 import * as catalog from '../catalog.js';
 import * as holdings from '../holdings.js';
+import * as plans from '../plans.js';
+import * as store from '../store.js';
 
 const DISCLAIMER = '以下結果完全由你輸入的假設算出，不是預測，也不是投資判斷。';
 
@@ -32,6 +34,10 @@ const state = {
   // 「查這一檔過去配了多少」。**跟試算完全分離**：查到的數字不會、也不能
   // 流進上面任何一個欄位。看完之後要不要採用、採用什麼數字，是使用者的決定。
   lookupCode: '', lookup: null, lookupErr: '', holdings: [],
+  // 「從你的資料帶入」用的。plans／settle 都是**他自己已經設定或已經發生的事實**，
+  // 不是對未來的假設 —— 這條界線決定了什麼能帶、什麼不能帶（見 filledFrom）。
+  plans: [], settle: null,
+  filled: null,      // { label, fields: [...] } —— 帶入之後講清楚帶了什麼
 };
 
 export default async function calcView() {
@@ -41,6 +47,8 @@ export default async function calcView() {
   try { await divrecord.load(); } catch (e) { state.lookupErr = String(e.message || e); }
   // 直接把他的持股列出來當按鈕 —— 他不該需要先知道哪一檔查得到。
   try { state.holdings = await holdings.list(); } catch { state.holdings = []; }
+  try { state.plans = await plans.list(); } catch { state.plans = []; }
+  try { state.settle = await store.latestSettle(); } catch { state.settle = null; }
   paint();
 }
 
@@ -52,11 +60,136 @@ function paint() {
         '年化成長率以複利換算到每個月；年化配息率以年率除以配息次數。' +
         '這裡的每一個數字都是你填的假設，不是任何形式的預測。'),
     ),
+    prefillCard(),
     inputCard(),
     dividendLookupCard(),
     state.result ? resultCard(state.result, state.gap) : null,
     state.result ? yearlyCard(state.result) : null,
   ].filter(Boolean));
+}
+
+// ---------- 從你自己的資料帶入 ----------
+//
+// **界線：只帶事實，不帶假設。**
+//   帶：每期扣款金額、每月扣款次數、手續費率（都是他在定期定額裡自己設的）、
+//       目前部位市值與目前股價（都是已經發生的結算結果）
+//   不帶：年化成長率、年化配息率 —— 那兩個是對未來的假設。
+//       給了預設值就等於我們替他預測，而且他會把那個數字當成我們認為合理的值。
+//
+// 帶完之後畫面會列出「帶了哪幾格」與「哪兩格沒帶、為什麼」，
+// 不要讓他以為整張表都填好了。
+
+/** 某一檔在最後一次結算裡的收盤價與市值（沒有就回 null，不猜）。 */
+function positionOf(code) {
+  const row = (state.settle?.byCode ?? []).find((r) => r.code === code);
+  if (!row || row.status !== 'ok' || !Number.isFinite(row.close)) return null;
+  const hd = state.holdings.find((h2) => h2.code === code);
+  const shares = Number(hd?.shares);
+  return {
+    close: row.close,
+    marketValue: Number.isFinite(shares) && shares > 0 ? Math.round(row.close * shares) : null,
+  };
+}
+
+/** 全部持股在最後一次結算的市值合計（算不出來的檔就不算，並回報漏了幾檔）。 */
+function totalPosition() {
+  const rows = (state.settle?.byCode ?? []).filter((r) => r.status === 'ok' && Number.isFinite(r.close));
+  let total = 0;
+  let counted = 0;
+  for (const r of rows) {
+    const hd = state.holdings.find((h2) => h2.code === r.code);
+    const shares = Number(hd?.shares);
+    if (!Number.isFinite(shares) || shares <= 0) continue;
+    total += r.close * shares;
+    counted += 1;
+  }
+  const excluded = state.holdings.filter((h2) => h2.supported).length - counted;
+  return counted > 0 ? { marketValue: Math.round(total), counted, excluded } : null;
+}
+
+function fillFromPlan(plan) {
+  const pos = positionOf(plan.code);
+  const fields = [];
+  state.amount = String(plan.amount);
+  fields.push(`每期扣款金額 ${plan.amount.toLocaleString('zh-Hant-TW')} 元`);
+  if (CONTRIB_FREQ.includes(plan.days.length)) {
+    state.perMonth = plan.days.length;
+    fields.push(`每月扣款 ${plan.days.length} 次`);
+  }
+  if (plan.feeRate) {
+    state.feeRate = String(plan.feeRate);
+    fields.push(`手續費率 ${(plan.feeRate * 100).toFixed(4)}%`);
+  }
+  if (pos?.marketValue != null) {
+    state.startValue = String(pos.marketValue);
+    fields.push(`目前部位市值 ${pos.marketValue.toLocaleString('zh-Hant-TW')} 元`);
+  }
+  if (pos?.close != null) {
+    state.price = String(pos.close);
+    fields.push(`目前股價 ${pos.close}`);
+  }
+  const info = catalog.lookup(plan.code);
+  state.filled = { label: `${plan.code} ${info.found ? info.name : ''}`, fields };
+  paint();
+}
+
+function fillFromAll() {
+  const t = totalPosition();
+  const fields = [];
+  if (t) {
+    state.startValue = String(t.marketValue);
+    fields.push(`目前部位市值 ${t.marketValue.toLocaleString('zh-Hant-TW')} 元（${t.counted} 檔合計`
+      + `${t.excluded > 0 ? `，另有 ${t.excluded} 檔算不出市值沒有計入` : ''}）`);
+  }
+  const active = state.plans.filter((x) => x.active);
+  const sum = active.reduce((a, b) => a + (Number(b.amount) || 0) * (b.days?.length || 1), 0);
+  if (sum > 0) {
+    state.amount = String(sum);
+    state.perMonth = 1;
+    fields.push(`每期扣款金額 ${sum.toLocaleString('zh-Hant-TW')} 元（${active.length} 個計畫每月合計）`);
+  }
+  state.filled = { label: '全部持股與計畫', fields };
+  paint();
+}
+
+function prefillCard() {
+  const active = state.plans.filter((x) => x.active);
+  const hasAny = active.length > 0 || (state.settle?.byCode ?? []).length > 0;
+  if (!hasAny) return null;
+
+  const buttons = active.map((plan) => {
+    const info = catalog.lookup(plan.code);
+    return h('button', {
+      class: 'chip',
+      dataset: { prefill: plan.code },
+      onclick: () => fillFromPlan(plan),
+    }, `${plan.code} ${info.found ? info.name : ''}　每次 ${plan.amount.toLocaleString('zh-Hant-TW')} 元`);
+  });
+  if (totalPosition()) {
+    buttons.push(h('button', { class: 'chip', dataset: { prefill: 'all' }, onclick: fillFromAll }, '全部持股與計畫'));
+  }
+
+  return h('section', { class: 'card', dataset: { card: 'calcPrefill' } },
+    h('h2', { class: 'card-title' }, '從你自己的資料帶入'),
+    h('p', { class: 'muted sm' },
+      '按一下就把你已經設定好的金額、扣款次數、手續費率，'
+      + '以及最後一次結算的市值與收盤價填進下面的欄位，不必重打一遍。'),
+    h('div', { class: 'chip-row' }, ...buttons),
+    state.filled
+      ? h('div', { dataset: { block: 'prefillDone' } },
+        h('p', { class: 'sm' }, `已帶入（${state.filled.label}）：`),
+        ...state.filled.fields.map((t) => h('p', { class: 'muted sm' }, `· ${t}`)),
+        // **這一段是重點**：講清楚哪兩格沒有帶、為什麼。
+        h('p', { class: 'warn sm', dataset: { note: 'prefillNotFilled' } },
+          // 這句話本身不可以出現「建議」兩個字 —— 就算是「不會給建議值」也不行。
+          // 掃描器只看字面，而且畫面上出現那兩個字本來就容易被誤讀。
+          '沒有帶入：年化價格成長率、年化配息率。那兩個是對未來的假設，'
+          + '只有你能決定要用什麼數字 —— 這個 App 不會替你填，也不會給任何參考數字。'))
+      : h('p', { class: 'muted sm' }, '帶入之後，成長率與配息率仍然要你自己填。'),
+    state.settle?.date
+      ? h('p', { class: 'muted sm' }, `市值與股價來自 ${state.settle.date} 的結算。`)
+      : null,
+  );
 }
 
 // ---------- 輸入 ----------
@@ -105,6 +238,48 @@ function toggle({ key, label, hint }) {
   });
 }
 
+/**
+ * 手續費率欄位。跟定期定額那一頁**同一套行為**：當場換算成「這一次會收幾元」。
+ *
+ * 同一個單位陷阱在兩個地方，行為卻不一樣的話，使用者在其中一頁學到的東西
+ * 到另一頁就不成立了。這裡也擋 1%，訊息也一樣。
+ */
+function feeField() {
+  const wrap = field({
+    key: 'feeRate',
+    label: '扣款手續費率',
+    hint: '用小數填，例如 0.001425 代表 0.1425%。不填就是不扣。',
+  });
+  const note = h('p', { class: 'muted sm', dataset: { hint: 'calcFeeRate' } }, '');
+  const paintNote = () => {
+    const raw = String(state.feeRate).replace(/,/g, '').trim();
+    if (raw === '') { note.className = 'muted sm'; note.replaceChildren(''); return; }
+    const f = Number(raw);
+    if (!Number.isFinite(f) || f < 0) {
+      note.className = 'warn sm';
+      note.replaceChildren('手續費率要是不小於零的數字。');
+      return;
+    }
+    if (f > MAX_FEE_RATE) {
+      note.className = 'warn sm';
+      note.replaceChildren(`${raw} 代表 ${(f * 100).toFixed(4)}%，看起來是把百分比直接填進來了。`
+        + '券商說的「0.1425%」要填 0.001425。');
+      return;
+    }
+    note.className = 'muted sm';
+    const amt = Number(String(state.amount).replace(/,/g, '').trim());
+    note.replaceChildren(`${raw} ＝ ${(f * 100).toFixed(4)}%`
+      + (Number.isFinite(amt) && amt > 0
+        ? `，每期扣款 ${amt.toLocaleString('zh-Hant-TW')} 元會收 ${(amt * f).toFixed(2)} 元`
+        : `，每 10,000 元收 ${(10000 * f).toFixed(2)} 元`));
+  };
+  const input = wrap.querySelector('input');
+  input.addEventListener('input', paintNote);
+  paintNote();
+  wrap.append(note);
+  return wrap;
+}
+
 function inputCard() {
   return h('section', { class: 'card', dataset: { card: 'calcInputs' } },
     h('h2', { class: 'card-title' }, '你的假設'),
@@ -123,7 +298,7 @@ function inputCard() {
 
     h('h2', { class: 'card-title', style: 'margin-top:12px' }, '選填'),
     field({ key: 'startValue', label: '目前已有部位的市值', suffix: '元', inputmode: 'numeric' }),
-    field({ key: 'feeRate', label: '扣款手續費率', hint: '用小數填，例如 0.001425 代表 0.1425%。不填就是不扣。' }),
+    feeField(),
     toggle({
       key: 'dividendFees',
       label: '股利扣匯費與補充保費',
@@ -163,6 +338,11 @@ function compute() {
   state.result = compareScenarios(v.values);
   state.gap = v.values.method === 'share' ? methodGap(v.values, { reinvest: true }) : null;
   paint();
+  // 按完「算一次」畫面看起來沒反應 —— 結果卡片在九個欄位以下，要自己捲很久。
+  // 捲過去，讓他知道真的算了。
+  requestAnimationFrame(() => {
+    document.querySelector('#view [data-card="calcResult"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
 }
 
 function reset() {

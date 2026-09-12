@@ -1387,6 +1387,42 @@ const MUTATIONS = [
     replace: "      ? h('p', { class: 'muted sm' }, false",
     test: 'uikittest',
   },
+  {
+    name: '帶入時順便把成長率與配息率也填了',
+    why: '那兩個是對未來的假設，不是他已經有的事實。填了就等於我們替他預測，'
+      + '而且他會把那個數字當成我們認為合理的值 —— 這是使用者從第一天就定的界線。',
+    file: 'js/views/calc.js',
+    find: '  if (pos?.close != null) {',
+    replace: '  state.growthRate = "5"; state.yieldRate = "4";\n  if (pos?.close != null) {',
+    test: 'calcviewtest',
+  },
+  {
+    name: '帶入的市值算錯',
+    why: '帶進去的數字是他自己的部位，錯了他不會發現 —— 因為那正是他懶得自己算才用帶入的。',
+    file: 'js/views/calc.js',
+    find: '    state.startValue = String(pos.marketValue);',
+    replace: '    state.startValue = String(Math.round(pos.marketValue * 1.1));',
+    test: 'calcviewtest',
+  },
+  {
+    name: '試算的手續費率上限放寬回 0.999',
+    why: '填 0.1425 會被當成 14.25%，每一期都少扣一成四，而畫面上看不出來。'
+      + '定期定額那一頁擋得住、試算這一頁擋不住的話，使用者在一頁學到的東西到另一頁就不成立。',
+    file: 'js/calc.js',
+    find: "  values.feeRate = optionalNumber(raw.feeRate, errors, 'feeRate', { min: 0, max: MAX_FEE_RATE, label: '扣款手續費率' }) ?? 0;",
+    replace: "  values.feeRate = optionalNumber(raw.feeRate, errors, 'feeRate', { min: 0, max: 0.999, label: '扣款手續費率' }) ?? 0;",
+    test: 'calctest',
+  },
+  {
+    name: '持股列改回 flex（右側數字會被擠到下一行）',
+    why: '左側寬度不固定（代號 4 或 5 碼、名稱 2～7 字、有沒有產業標籤），'
+      + '只要撐開一點右側整組就換行，那一列變兩倍高、跟別列對不齊。'
+      + '使用者實機回報的「跑版」就是這個，而溢出與重疊兩種掃描都看不到它。',
+    file: 'css/style.css',
+    find: '.row-holding {\n  display: grid;',
+    replace: '.row-holding {\n  display: flex;',
+    test: 'layouttest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

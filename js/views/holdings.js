@@ -74,22 +74,24 @@ function manageRow(hd, plRow) {
 
   // 不支援報價的持股：這一列不建立任何 .num 節點
   if (!hd.supported) {
-    return h('a', { class: 'row row-unsupported', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
+    // 不支援報價的列也走同一套格線，不然它會跟上下兩列對不齊。
+    // 右欄放「不支援報價」的標籤 —— 那一格本來就是「這一檔今天怎麼樣」。
+    return h('a', { class: 'row row-holding row-unsupported', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
       head,
+      h('div', { class: 'row-mid' }, h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`)),
       h('div', { class: 'row-side' },
-        h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`),
         h('span', { class: 'tag' }, STATUS_TEXT.unsupported),
       ),
     );
   }
 
-  return h('a', { class: 'row', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
+  return h('a', { class: 'row row-holding', href: `#/holdings/${hd.code}`, dataset: { code: hd.code } },
     head,
     h('div', { class: 'row-mid' },
-      h('span', { class: 'muted sm' }, `${fmtShares(hd.shares)} 股`),
+      h('span', { class: 'muted sm row-shares' }, `${fmtShares(hd.shares)} 股`),
       hd.avgCost != null
-        ? h('span', { class: 'muted sm' }, '　均價 ', num(fmtPrice(hd.avgCost)))
-        : h('span', { class: 'muted sm' }, '　未填均價'),
+        ? h('span', { class: 'muted sm row-avg' }, '　均價 ', num(fmtPrice(hd.avgCost)))
+        : h('span', { class: 'muted sm row-avg' }, '　未填均價'),
     ),
     h('div', { class: 'row-side' }, ...dayPLParts(plRow)),
   );

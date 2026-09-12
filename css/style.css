@@ -371,6 +371,75 @@ a.btn {
 }
 .rows > .row:first-child { border-top: 0; }
 
+/* ---------- 持股列：兩欄格線 ----------
+ *
+ * 為什麼不用 flex：.row 是 flex-wrap，左側寬度不固定（代號 4 或 5 碼、
+ * 名稱 2～7 字、有沒有產業標籤），只要左側撐開一點，**右側的損益整組就被擠到下一行**。
+ * 七列裡有幾列變成兩倍高、對不齊 —— 使用者回報的「跑版」就是這個。
+ *
+ * 格線把右側變成**自己的欄**：左欄多寬都不影響右欄的位置，
+ * 而左欄超過寬度是自己處理（截斷），不會去推右欄。
+ */
+.row-holding {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+}
+.row-holding .row-head { grid-column: 1; grid-row: 1; flex-wrap: nowrap; min-width: 0; }
+.row-holding .row-mid  { grid-column: 1; grid-row: 2; min-width: 0; }
+.row-holding .row-side { grid-column: 2; grid-row: 1 / span 2; margin-left: 0; }
+
+/* 左欄自己處理溢出：名字先被截斷，代號與產業標籤保持完整 ——
+   名字截掉還看得出是哪一檔，代號截掉就認不出來了。 */
+.row-holding .row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.row-holding .row-code,
+.row-holding .tag { flex: 0 0 auto; }
+/* 4 碼與 5 碼代號要對齊（0050 / 00878）。tabular-nums 讓每個數字等寬，
+   min-width 讓 4 碼佔到跟 5 碼一樣的位置。 */
+.row-holding .row-code { min-width: 5ch; }
+.row-holding .row-mid,
+.row-holding .row-side { white-space: nowrap; }
+
+/* 每一列的高度要一樣。產業標籤（.tag 有 padding 與外框）會把第一行撐高 3px，
+   於是有標籤的列比沒標籤的高 —— 七列擺在一起就看得出參差。
+   給兩行各一個固定的最小高度，有沒有標籤都落在同一個總高。 */
+.row-holding .row-head { min-height: 26px; }
+/* 第二行的「均價」要對齊：股數的字數不一樣（3,000 股 vs 10,000 股），
+   不給寬度的話每一列的均價都從不同的位置開始。 */
+.row-holding .row-shares { display: inline-block; min-width: 8ch; }
+/* 最窄的機型（SE）配特大字級時，左欄那條對齊用的 min-width 會把「均價」推進
+   右欄的位置，兩行數字疊在一起（layouttest 抓到，320px × 特大）。
+   對齊是錦上添花，讀得到數字才是必要的 —— 空間不夠就先放棄對齊。 */
+@media (max-width: 360px) {
+  .row-holding .row-shares { min-width: 0; }
+}
+/* nowrap 的內容超出格線欄位時預設不會被裁掉，會直接畫到隔壁欄上。
+   讓它在自己的欄位裡截斷 —— 但截斷是最後手段，下面先把空間讓出來。 */
+.row-holding .row-head,
+.row-holding .row-mid { overflow: hidden; text-overflow: ellipsis; }
+
+/* 最窄的機型（SE 320px）配大／特大字級時，左欄真的放不下「股數 ＋ 均價」，
+   均價會被推到右欄的數字上。**寧可不顯示，也不要疊或截斷** ——
+   均價在單檔詳情頁看得到，當日損益才是這一頁的主角。 */
+@media (max-width: 360px) {
+  :root[data-font-scale='lg'] .row-holding .row-avg,
+  :root[data-font-scale='xl'] .row-holding .row-avg,
+  /* 產業標籤同理：它是 flex: 0 0 auto，不會縮，名字截斷了它照樣把自己
+     推到右欄的數字上。產業別在單檔詳情與產業分布都看得到。 */
+  :root[data-font-scale='lg'] .row-holding .tag,
+  :root[data-font-scale='xl'] .row-holding .tag { display: none; }
+}
+.row-holding .row-mid { min-height: 20px; }
+.row-holding .tag { line-height: 1.25; }
+
 .row-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
 .row-code { font-weight: 700; font-variant-numeric: tabular-nums; }
 .row-name { color: var(--fg-muted); overflow-wrap: anywhere; }
