@@ -45,7 +45,7 @@ export default async function home() {
   }
 
   render([
-    pendingBanner(pendingEvents, pendingChanges),
+    ...pendingBanners(pendingEvents, pendingChanges),
     dayPLCard(settled, settleDate, upd),
     marketValueCard(settled),
     unrealizedCard(unreal, held),
@@ -80,19 +80,44 @@ function newsCard() {
 }
 
 /** 有待確認的除權息事件時，首頁最上面提示一下（PLAN §2.2 第 6 點）。 */
-function pendingBanner(evts, changes) {
-  if (evts.length === 0 && changes.length === 0) return null;
-  // 兩種待確認都有的話，帶去除權息那一頁（股利金額比較容易忘），
-  // 只有扣款的話就帶去定期定額。
-  const href = evts.length ? '#/dividends' : '#/plans';
-  const parts = [];
-  if (evts.length) parts.push(`${evts.length} 筆除權息`);
-  if (changes.length) parts.push(`${changes.length} 筆扣款`);
-  return h('a', { class: 'banner', href, dataset: { card: 'pendingBanner' } },
+/**
+ * 待確認的提示列。**一種一條，各自帶到自己那一頁。**
+ *
+ * 以前是一條合併的：寫著「1 筆除權息、1 筆扣款等你確認」，但只帶去股利頁 ——
+ * 而股利頁上一個通往定期定額的連結都沒有（實測過）。提示列答應了兩件事只給一件，
+ * 另一半要自己想到回總覽再點一次（那時 href 才會變成 /plans）。
+ * 每個月扣款日之後如果剛好也有除權息就會踩到。
+ */
+function pendingBanners(evts, changes) {
+  const out = [];
+  if (evts.length) {
+    out.push(bannerRow({
+      card: 'pendingBannerEvents',
+      href: '#/dividends',
+      title: `有 ${evts.length} 筆除權息等你確認`,
+      // B：除息日 ≠ 入帳日。四個官方端點（TWT48U／TWT49U／TWT48U_ALL／
+      // openapi t187ap45_L）實測都沒有現金股利發放日，所以我們只知道除息日。
+      // 與其讓他以為錢已經到了，不如講清楚什麼時候再來。
+      sub: '收到券商的股利通知之後再來確認就好，這筆不會消失',
+    }));
+  }
+  if (changes.length) {
+    out.push(bannerRow({
+      card: 'pendingBannerChanges',
+      href: '#/plans',
+      title: `有 ${changes.length} 筆定期定額扣款等你確認`,
+      sub: '對照券商的成交通知確認股數，確認之後才會計入持股',
+    }));
+  }
+  return out;
+}
+
+function bannerRow({ card, href, title, sub }) {
+  return h('a', { class: 'banner', href, dataset: { card } },
     h('span', { class: 'banner-icon' }, '💰'),
     h('span', { class: 'banner-body' },
-      `有 ${parts.join('、')}等你確認`,
-      h('span', { class: 'muted sm banner-sub' }, '對照券商通知確認之後才會計入'),
+      title,
+      h('span', { class: 'muted sm banner-sub' }, sub),
     ),
     h('span', { class: 'banner-go' }, '›'),
   );
@@ -142,6 +167,11 @@ function dayPLCard(settled, settleDate, upd) {
         ' ', num(fmtMoneyMicro(settled.dividendMicro)), ' 元')
       : null,
     note ? h('p', { class: 'muted sm' }, note) : null,
+    // 看到「當日損益 −18,450」之後，下一個問題一定是「哪一檔造成的」。
+    // 總覽上答不出來（整頁沒有任何代號），持股頁每一列都有 —— 給一條路過去。
+    settled?.dayPLMicro != null
+      ? h('a', { class: 'btn', href: '#/holdings', dataset: { link: 'perHolding' } }, '看每一檔的當日損益')
+      : null,
   );
 }
 

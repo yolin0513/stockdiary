@@ -154,7 +154,11 @@ try {
   const plansText = await showView('plans', '#view [data-card="pendingChanges"]');
   ok(plansText.includes('待確認扣款（3 筆）'), '定期定額頁列出三筆');
   const homeText = await showView('home', '#view .big-number');
-  ok(homeText.includes('3 筆扣款'), `首頁頂部提示：「${homeText.slice(0, 40)}…」`);
+  // v0.7.10 起提示列一種一條，文案從「3 筆扣款」變成「3 筆定期定額扣款」。
+  // 這裡不要再比對整句 —— 改成驗**語意**：講得出筆數、而且那一條真的通往定期定額。
+  ok(/3 筆[^，。]*扣款/.test(homeText), `首頁提示列講得出筆數：「${homeText.slice(0, 44)}…」`);
+  const bannerHref = await page.evaluate(() => document.querySelector('#view [data-card="pendingBannerChanges"]')?.getAttribute('href') ?? null);
+  eq(bannerHref, '#/plans', '而且那一條帶去定期定額頁（不是股利頁）');
 
   // =================================================================
   section('情境 2：確認扣款 —— 有填成交價才更新均價');

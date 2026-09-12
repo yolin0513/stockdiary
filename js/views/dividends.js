@@ -35,7 +35,16 @@ export default async function dividendsView() {
 function pendingCard(list) {
   return h('section', { class: 'card', dataset: { card: 'pendingEvents' } },
     h('h2', { class: 'card-title' }, `待確認（${list.length} 筆）`),
-    h('p', { class: 'muted sm' }, '除權息日已經過了。對照券商的通知確認金額，確認後才會計入累積已領股利。'),
+    // **除息日 ≠ 入帳日。** 四個官方端點都沒有現金股利發放日（TWT48U、TWT49U、
+    // TWT48U_ALL、openapi t187ap45_L，2026-09 實測），所以這個 App 只知道除息日。
+    // 除息日隔天就叫人「對照券商通知確認」是不合理的 —— 那時錢還沒進來、通知也還沒寄。
+    // 講清楚什麼時候再來，並保證這筆不會消失。
+    // 畫面字串裡不可以出現 markdown 記號 —— h() 全是 textNode，星號會原樣印在畫面上。
+    h('p', { class: 'sm' }, '下面的日期是除息日，不是入帳日。'),
+    h('p', { class: 'muted sm' }, '現金股利通常要等除息日之後幾週才會真的入帳，'
+      + '而證交所沒有公布發放日，所以這裡算不出那一天。'),
+    h('p', { class: 'muted sm' }, '等你收到券商的股利通知再回來確認就好 —— '
+      + '這筆會留著，不會消失，也不會自動確認。'),
     h('div', { class: 'rows' }, ...list.map(pendingRow)),
   );
 }
@@ -44,7 +53,8 @@ function pendingRow(e) {
   const hasAmount = e.amountEst != null;
   return h('div', { class: 'row', dataset: { eventId: e.id } },
     h('div', { class: 'row-head' },
-      h('span', { class: 'row-code' }, fmtDate(e.exDate)),
+      // 日期前面要有「除息」兩個字。只寫 9/7 的話，三個月後回來看會以為那是入帳日。
+      h('span', { class: 'row-code' }, `除息 ${fmtDate(e.exDate)}`),
       h('span', { class: 'row-name' }, `${e.code} ${e.name}`),
       // 認不得的 kind 不要畫一顆空的標籤 —— 空 pill 看起來像畫面壞了
       KIND_LABEL[e.kind] ? h('span', { class: 'tag' }, KIND_LABEL[e.kind]) : null,
@@ -121,6 +131,7 @@ async function confirmFlow(e) {
       h('label', { class: 'sm muted' }, '實收金額（元）'),
       input,
       h('p', { class: 'muted sm' }, '以券商實際入帳為準。金額填錯了之後也可以取消確認重填。'),
+      h('p', { class: 'muted sm' }, '還沒收到通知的話，先按「取消」就好 —— 這筆會留在待確認裡等你。'),
     ),
     actions: [
       { label: '取消', value: 'cancel' },
@@ -132,7 +143,12 @@ async function confirmFlow(e) {
   if (go === 'confirm') {
     try {
       await events.confirm(e.id, { amountActual: input.value, autoFees });
-      toast('已確認');
+      // 講出實際記進去的金額，他可以當場跟券商通知對。
+      const saved = (await events.confirmed()).find((x) => x.id === e.id);
+      const amount = saved?.amountActual != null ? fmtMoneyMicro(BigInt(saved.amountActual)) : null;
+      toast(amount != null
+        ? `已確認 ${e.code}：記入 ${amount} 元`
+        : `已確認 ${e.code}：沒有填金額，不計入總計`, 4200);
     } catch (err) { toast(String(err.message || err)); }
   } else if (go === 'dismiss') {
     const yes = await confirmDialog(
@@ -213,9 +229,10 @@ function upcomingRow(e) {
 function historyCard(list) {
   return h('section', { class: 'card' },
     h('h2', { class: 'card-title' }, `已確認（${list.length} 筆）`),
+    h('p', { class: 'muted sm' }, '日期是除息日。這個 App 沒有入帳日 —— 證交所沒有公布。'),
     h('div', { class: 'rows' }, ...list.map((e) => h('div', { class: 'row', dataset: { eventId: e.id } },
       h('div', { class: 'row-head' },
-        h('span', { class: 'row-code' }, fmtDate(e.exDate)),
+        h('span', { class: 'row-code' }, `除息 ${fmtDate(e.exDate)}`),
         h('span', { class: 'row-name' }, `${e.code} ${e.name}`),
       ),
       h('div', { class: 'row-side' },

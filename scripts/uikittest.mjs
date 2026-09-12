@@ -185,6 +185,127 @@ try {
   eq(home.rows, 0, '總覽上沒有任何持股列（持股頁本來就有，而且更完整）');
   ok(home.text.includes('當日損益'), '（對照）總覽該有的東西還在');
 
+  section('每天盤後的兩條路徑：提示列、入口、確認之後的回饋');
+  //
+  // 走查發現的四件事，每一條都是他每天會踩到的：
+  //   A 提示列答應兩件事只給一件（合併成一條、只帶去股利頁，而股利頁上
+  //     一個通往定期定額的連結都沒有）
+  //   B 除息日被當成入帳日（證交所沒有公布發放日，四個官方端點都實測過）
+  //   C 確認之後只說「已確認」，沒說確認了什麼 —— 他手上正拿著券商通知在對
+  //   D 總覽答不出「是哪一檔」，整頁沒有代號也沒有通往持股頁的連結
+  const daily = await page.evaluate(async () => {
+    const db = await import('./js/db.js');
+    const holdings = await import('./js/holdings.js');
+    const plans = await import('./js/plans.js');
+    for (const st of db.STORE_NAMES) await db.clear(st);
+    const d = (n) => { const x = new Date(); x.setDate(x.getDate() - n); return x.toLocaleDateString('sv'); };
+    const iso = new Date().toLocaleDateString('sv');
+    await holdings.addOpening({ code: '0050', shares: 3000, avgCost: 132.4, date: d(300) });
+    await holdings.addOpening({ code: '00878', shares: 8000, avgCost: 20.15, date: d(200) });
+    await plans.save({ code: '0050', amount: 6000, days: [6], feeRate: 0.001425, reinvestDividend: false, active: true, startDate: d(300), createdAt: `${d(300)}T00:00:00.000Z` });
+    await db.put('settle', {
+      date: iso, dayPL: '-6750000000', marketValue: '500000000000', dividend: null, counted: 2,
+      excludedUnsupported: 0, excludedMissing: 0, includeDividend: true,
+      byCode: [
+        { code: '0050', shares: 3000, close: 107.7, basis: 109.15, basisSource: 'prevClose', status: 'ok', pl: '-4350000000' },
+        { code: '00878', shares: 8000, close: 22.31, basis: 22.61, basisSource: 'prevClose', status: 'ok', pl: '-2400000000' },
+      ],
+      settledAt: new Date().toISOString(),
+    });
+    const planId = (await db.getAll('plans'))[0].id;
+    await db.put('changes', {
+      id: `dca-0050-${d(2)}`, code: '0050', date: d(2), deltaShares: 55, price: null,
+      estimatePrice: 107.7, kind: 'dca', status: 'pending', planId, amount: 6000, note: '定期定額 6,000 元',
+      estimate: { amount: 6000, fee: 9, shares: 55, price: 107.7, remainder: '377500000' },
+    });
+    await db.put('events', {
+      id: `00878@${d(5)}`, code: '00878', name: '國泰永續高股息', exDate: d(5), kind: 'cash',
+      cashPerShare: 0.55, stockRate: 0, status: 'pending', sharesHeld: 8000,
+      amountEst: '4400000000', amountActual: null, refPrice: 22.61, refPriceSource: 'twse',
+    });
+
+    const home = await import('./js/views/home.js');
+    await home.default();
+    await new Promise((r) => setTimeout(r, 400));
+    const banners = [...document.querySelectorAll('#view a.banner')].map((x) => ({
+      card: x.dataset.card, href: x.getAttribute('href'),
+      text: x.textContent.replace(/\s+/g, ' ').trim(),
+      h: Math.round(x.getBoundingClientRect().height),
+    }));
+    const perHolding = (() => {
+      const a = document.querySelector('#view [data-link="perHolding"]');
+      return a ? { href: a.getAttribute('href'), h: Math.round(a.getBoundingClientRect().height), text: a.textContent.trim() } : null;
+    })();
+
+    // 確認扣款
+    const pv = await import('./js/views/plans.js');
+    await pv.default();
+    await new Promise((r) => setTimeout(r, 400));
+    document.querySelector('#view [data-card="pendingChanges"] .row button').click();
+    await new Promise((r) => setTimeout(r, 500));
+    const m1 = document.querySelector('#modalRoot').firstElementChild;
+    [...m1.querySelectorAll('button')].find((x) => x.textContent.trim() === '確認').click();
+    await new Promise((r) => setTimeout(r, 500));
+    const dcaToast = (() => { const e = document.getElementById('toast'); return e && !e.hidden ? e.textContent.trim() : ''; })();
+    const hd = await db.get('holdings', '0050');
+
+    // 確認股利
+    const dv = await import('./js/views/dividends.js');
+    await dv.default();
+    await new Promise((r) => setTimeout(r, 400));
+    const divCard = document.querySelector('#view [data-card="pendingEvents"]');
+    const divCardText = divCard.textContent.replace(/\s+/g, ' ').trim();
+    const divRowDate = divCard.querySelector('.row-code').textContent.trim();
+    divCard.querySelector('.row button').click();
+    await new Promise((r) => setTimeout(r, 500));
+    const m2 = document.querySelector('#modalRoot').firstElementChild;
+    const divModalText = m2.textContent.replace(/\s+/g, ' ').trim();
+    [...m2.querySelectorAll('button')].find((x) => x.textContent.trim() === '確認').click();
+    await new Promise((r) => setTimeout(r, 500));
+    const divToast = (() => { const e = document.getElementById('toast'); return e && !e.hidden ? e.textContent.trim() : ''; })();
+
+    return { banners, perHolding, dcaToast, divToast, shares: hd.shares, avgCost: hd.avgCost, divCardText, divRowDate, divModalText };
+  });
+
+  // ---- A：一種一條，各自帶到自己那一頁 ----
+  eq(daily.banners.length, 2, `兩種待確認 → **兩條**提示列（${daily.banners.map((b2) => b2.card).join('、')}）`);
+  eq(daily.banners.map((b2) => b2.href).sort(), ['#/dividends', '#/plans'],
+    '一條帶去股利、一條帶去定期定額 —— 沒有哪一種是沒有路的');
+  everyOf(daily.banners, (b2) => b2.h >= 44, `兩條都夠大（${daily.banners.map((b2) => `${b2.h}px`).join('、')}）`);
+  ok(daily.banners.some((b2) => /除權息/.test(b2.text) && b2.href === '#/dividends'),
+    '講除權息的那一條帶去股利頁');
+  ok(daily.banners.some((b2) => /扣款/.test(b2.text) && b2.href === '#/plans'),
+    '講扣款的那一條帶去定期定額頁');
+  noneOf(daily.banners, (b2) => /除權息/.test(b2.text) && /扣款/.test(b2.text),
+    '**沒有任何一條同時答應兩件事**（那正是以前只給一件的原因）');
+
+  // ---- D：總覽有一條路通往「哪一檔」 ----
+  ok(daily.perHolding != null, `當日損益卡片上有通往持股頁的入口：「${daily.perHolding?.text}」`);
+  eq(daily.perHolding?.href, '#/holdings', '而且真的指向持股頁');
+  ok(daily.perHolding?.h >= 44, `觸控區夠大（${daily.perHolding?.h}px）`);
+
+  // ---- C：確認之後講得出確認了什麼 ----
+  // 手算：3,000 ＋ 55 ＝ 3,055 股
+  eq(daily.shares, 3055, '（前提）扣款真的記進去了：3,000 ＋ 55 ＝ 3,055 股');
+  everyOf(['0050', '55', '3,055'], (t) => daily.dcaToast.includes(t),
+    `確認扣款的回饋講得出代號、加了幾股、現在有幾股：「${daily.dcaToast}」`);
+  ok(/131\.9[56]/.test(daily.dcaToast), '也講得出加權後的均價 —— 他手上正拿著券商通知在對');
+  ok(daily.dcaToast !== '已確認', '**不是只說「已確認」**');
+
+  // ---- B：除息日不是入帳日 ----
+  ok(daily.divRowDate.startsWith('除息'),
+    `待確認那一列的日期標成「除息」：「${daily.divRowDate}」`);
+  everyOf(['除息日，不是入帳日', '沒有公布發放日', '不會消失'],
+    (t) => daily.divCardText.includes(t),
+    '卡片講清楚：那是除息日、證交所沒有發放日、這筆不會消失');
+  everyOf(['00878', '4,400'], (t) => daily.divToast.includes(t),
+    `確認股利的回饋講得出代號與記入的金額：「${daily.divToast}」`);
+  ok(/還沒收到通知/.test(daily.divModalText),
+    '確認對話框也講了「還沒收到通知就先取消」');
+  // 不可以憑空生出一個入帳日
+  noneOf(['入帳日：', '預計入帳', '發放日：'], (t) => daily.divCardText.includes(t),
+    '**沒有編出一個入帳日** —— 四個官方端點都沒有這個欄位');
+
   section('持股頁每一列都看得到當日損益，而且標明是哪一天');
   //
   // 每天盤後最常走的那條路是「總覽看到當日損益 −18,450 → 那是哪一檔造成的？」。

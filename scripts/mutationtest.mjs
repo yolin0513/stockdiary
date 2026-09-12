@@ -1423,6 +1423,43 @@ const MUTATIONS = [
     replace: '.row-holding {\n  display: flex;',
     test: 'layouttest',
   },
+  {
+    name: '待確認的提示列合併成一條（只給一件事）',
+    why: '提示列寫「1 筆除權息、1 筆扣款等你確認」卻只帶去股利頁，'
+      + '而股利頁上一個通往定期定額的連結都沒有（實測過）—— 另一半等於沒有路。'
+      + '每個月扣款日之後如果剛好也有除權息就會踩到。',
+    file: 'js/views/home.js',
+    find: '  if (changes.length) {',
+    replace: '  if (false) {',
+    test: 'uikittest',
+  },
+  {
+    name: '總覽拿掉通往持股頁的入口',
+    why: '看到「當日損益 −18,450」之後，下一個問題一定是「哪一檔造成的」。'
+      + '總覽整頁沒有任何代號（實測過），沒有這條連結就只能自己想到去按底部分頁。',
+    file: 'js/views/home.js',
+    find: "      ? h('a', { class: 'btn', href: '#/holdings', dataset: { link: 'perHolding' } }, '看每一檔的當日損益')",
+    replace: '      ? null',
+    test: 'uikittest',
+  },
+  {
+    name: '股利那一列的日期不標「除息」',
+    why: '證交所沒有公布現金股利發放日（TWT48U／TWT49U／TWT48U_ALL／'
+      + 'openapi t187ap45_L 四個端點都實測過），所以這個 App 只知道除息日。'
+      + '不標的話，三個月後回來看會以為那是入帳日。',
+    file: 'js/views/dividends.js',
+    find: "      h('span', { class: 'row-code' }, `除息 ${fmtDate(e.exDate)}`),\n      h('span', { class: 'row-name' }, `${e.code} ${e.name}`),\n      // 認不得的 kind",
+    replace: "      h('span', { class: 'row-code' }, fmtDate(e.exDate)),\n      h('span', { class: 'row-name' }, `${e.code} ${e.name}`),\n      // 認不得的 kind",
+    test: 'uikittest',
+  },
+  {
+    name: '扣款確認的回饋退回「已確認」三個字',
+    why: '他按完確認的當下手上正拿著券商通知在對。只說「已確認」的話，要驗證股數與均價對不對得走到 持股 → 該檔 才看得到。',
+    file: 'js/views/plans.js',
+    find: '      const after = (await holdings.list()).find((x) => x.code === c.code);',
+    replace: '      const after = { shares: null, avgCost: null }; const added = 0; toast("已確認"); store.notifyChanged(); plansView(); return;',
+    test: 'uikittest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

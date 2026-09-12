@@ -55,6 +55,50 @@
     反例太弱被別條規則順便擋掉、掃描器把註解當程式碼。
     寫完一條 `noneOf`／`everyOf` 就問一次：**這個母體現在有幾個元素？**
 
+## 測試範圍：平常只跑受影響的，全面檢測由使用者叫（v0.7.10 起）
+
+使用者的指示：「全部專案不用每次上線都做全面測試，只需要針對此次調整的部分做測試，
+我會測到一個進度就請你全面檢測。」
+
+### 平常上線
+
+只跑**受影響**的測試，加上這次新增／修改的斷言所對應的那幾條突變。
+
+```bash
+node scripts/<受影響的測試>.mjs
+node scripts/mutationtest.mjs --only <這次的突變關鍵字>
+```
+
+**沒有放寬的那一條：新的斷言仍然必須經突變驗證會紅。** 少跑的是「跟這次無關的那些」，
+不是「這次該有的驗證」。一條沒有被突變證明過會紅的新斷言，跟沒有寫是一樣的。
+
+### 全面檢測
+
+**只在使用者要求時**跑：完整 27 支 ＋ 全部突變（約 3.5 小時）＋ `sweep` ＋ `upgradecheck`。
+
+### 怎麼判斷「受影響」
+
+**寧可多跑一支，不要漏。** 判斷方式：
+
+1. `grep -l "views/<改到的檔>" scripts/*.mjs` —— 誰 import 了它
+2. 改到的如果是 view，加上會走那條路由的端對端測試（`layouttest`／`uikittest`／
+   `racetest`／`pathtest`／`scenariotest`）
+3. **這幾個檔案被大量共用，動到就自動放大範圍：**
+
+| 檔案 | 至少要跑 |
+|---|---|
+| `css/style.css` | `layouttest`、`uikittest`、`calcviewtest` |
+| `js/app.js`、`js/router.js`、`js/shell.js` | `shelltest`、`racetest`、`versionmixtest`、`pathtest` |
+| `js/db.js` | `backuptest`、`pathtest`、`scenariotest`、`holdingtest` |
+| `js/store.js`、`js/update.js` | `pathtest`、`scenariotest`、`holdingtest`、`dcatest` |
+| `js/version.js`／bump | `shelltest`、`versionmixtest`、`upgradecheck` |
+
+### 副作用：文案一改，別的測試可能就紅
+
+同一輪改 `home.js` 的提示列文案，`dcatest` 有一條在比對「3 筆扣款」這個字串，
+改成「3 筆定期定額扣款」之後就對不上了。**那不是壞掉，是斷言寫得太貼字面。**
+遇到就把它改成驗語意（筆數＋連結指向哪裡），不要只把字串改成新的 —— 下次再改文案又會紅。
+
 ## 開發順序與驗收條件
 
 ### M0 驗證與骨架（第一步從這裡開始）

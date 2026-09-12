@@ -114,7 +114,12 @@ async function confirmFlow(c) {
   if (go === 'confirm') {
     try {
       await holdings.confirmChange(c.id, { deltaShares: sharesInput.value, price: priceInput.value });
-      toast('已確認');
+      // 「已確認」三個字不夠 —— 他手上正拿著券商通知在對。
+      // 把**實際記進去的數字**講出來，當場就能核對：對不上就按刪除重來。
+      const after = (await holdings.list()).find((x) => x.code === c.code);
+      const added = Number(String(sharesInput.value).replace(/,/g, '').trim());
+      toast(`已確認 ${c.code}：＋${fmtShares(added)} 股，持有 ${fmtShares(after?.shares)} 股`
+        + (after?.avgCost != null ? `，均價 ${fmtPrice(after.avgCost)}` : ''), 4200);
       store.notifyChanged();
     } catch (e) { toast(String(e.message || e)); return; }
   } else if (go === 'delete') {
