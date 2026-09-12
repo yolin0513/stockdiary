@@ -10,10 +10,10 @@
 //
 // 測試（scripts/calcviewtest.mjs）會掃整頁的文字**與屬性**，禁用詞一個都不能出現。
 
-import { h, num, fmtMoneyMicro, fmtShares, toast, switchRow } from '../ui.js';
+import { h, num, fmtMoneyMicro, toast, switchRow, NO_VALUE } from '../ui.js';
 import {
-  validateInputs, compareScenarios, methodGap, displayTotals,
-  CONTRIB_FREQ, DIVIDEND_FREQ, DIVIDEND_FREQ_LABEL, MAX_FEE_RATE,
+  validateInputs,
+  CONTRIB_FREQ, DIVIDEND_FREQ, DIVIDEND_FREQ_LABEL, MAX_FEE_RATE, compareMulti,
 } from '../calc.js';
 import { setTop, render } from '../shell.js';
 import * as divrecord from '../divrecord.js';
@@ -30,13 +30,18 @@ const state = {
   amount: '', perMonth: 1, years: '', growthRate: '', yieldRate: '',
   dividendFreq: 1, feeRate: '', startValue: '', dividendFees: false,
   method: 'value', price: '',
-  result: null, gap: null, errors: {},
+  errors: {},
   // 「查這一檔過去配了多少」。**跟試算完全分離**：查到的數字不會、也不能
   // 流進上面任何一個欄位。看完之後要不要採用、採用什麼數字，是使用者的決定。
   lookupCode: '', lookup: null, lookupErr: '', holdings: [],
   // 「從你的資料帶入」用的。plans／settle 都是**他自己已經設定或已經發生的事實**，
   // 不是對未來的假設 —— 這條界線決定了什麼能帶、什麼不能帶（見 filledFrom）。
   plans: [], settle: null,
+  // 每一檔各自的假設。0050、0056、00878、2330 的性質差很多，
+  // 用同一組成長率與配息率算出來的東西沒有意義（使用者自己提的）。
+  // 每一列：{ code, name, amount, startValue, growthRate, yieldRate, price }
+  legs: [],
+  multi: null,
   filled: null,      // { label, fields: [...] } —— 帶入之後講清楚帶了什麼
 };
 
@@ -49,7 +54,31 @@ export default async function calcView() {
   try { state.holdings = await holdings.list(); } catch { state.holdings = []; }
   try { state.plans = await plans.list(); } catch { state.plans = []; }
   try { state.settle = await store.latestSettle(); } catch { state.settle = null; }
+  if (state.legs.length === 0) state.legs = defaultLegs();
   paint();
+}
+
+/**
+ * 預設的標的清單：有計畫的排前面，其餘持股跟在後面。
+ *
+ * **只鋪出「哪幾檔」，不填任何數字。** 金額與市值要按「從你自己的資料帶入」
+ * 才會進來；成長率與配息率永遠要他自己填（那是對未來的假設）。
+ */
+function defaultLegs() {
+  const seen = new Set();
+  const out = [];
+  for (const pl of state.plans.filter((x) => x.active)) {
+    if (seen.has(pl.code)) continue;
+    seen.add(pl.code);
+    const info = catalog.lookup(pl.code);
+    out.push({ code: pl.code, name: info.found ? info.name : '', amount: '', startValue: '', growthRate: '', yieldRate: '', price: '' });
+  }
+  for (const hd of state.holdings) {
+    if (seen.has(hd.code) || !hd.supported) continue;
+    seen.add(hd.code);
+    out.push({ code: hd.code, name: hd.name ?? '', amount: '', startValue: '', growthRate: '', yieldRate: '', price: '' });
+  }
+  return out;
 }
 
 function paint() {
@@ -61,10 +90,11 @@ function paint() {
         '這裡的每一個數字都是你填的假設，不是任何形式的預測。'),
     ),
     prefillCard(),
+    legsCard(),
     inputCard(),
     dividendLookupCard(),
-    state.result ? resultCard(state.result, state.gap) : null,
-    state.result ? yearlyCard(state.result) : null,
+    state.multi && state.multi.total ? multiResultCard(state.multi) : null,
+    state.multi && state.multi.total ? yearlyCard(state.multi.total.yearly) : null,
   ].filter(Boolean));
 }
 
@@ -107,9 +137,22 @@ function totalPosition() {
   return counted > 0 ? { marketValue: Math.round(total), counted, excluded } : null;
 }
 
+/** 把帶入的數字寫進對應的那一列（沒有那一列就補一列）。 */
+function legFor(code) {
+  let leg = state.legs.find((x) => x.code === code);
+  if (!leg) {
+    const info = catalog.lookup(code);
+    leg = { code, name: info.found ? info.name : '', amount: '', startValue: '', growthRate: '', yieldRate: '', price: '' };
+    state.legs.push(leg);
+  }
+  return leg;
+}
+
 function fillFromPlan(plan) {
   const pos = positionOf(plan.code);
   const fields = [];
+  const leg = legFor(plan.code);
+  leg.amount = String(plan.amount);
   state.amount = String(plan.amount);
   fields.push(`每期扣款金額 ${plan.amount.toLocaleString('zh-Hant-TW')} 元`);
   if (CONTRIB_FREQ.includes(plan.days.length)) {
@@ -121,10 +164,12 @@ function fillFromPlan(plan) {
     fields.push(`手續費率 ${(plan.feeRate * 100).toFixed(4)}%`);
   }
   if (pos?.marketValue != null) {
+    leg.startValue = String(pos.marketValue);
     state.startValue = String(pos.marketValue);
     fields.push(`目前部位市值 ${pos.marketValue.toLocaleString('zh-Hant-TW')} 元`);
   }
   if (pos?.close != null) {
+    leg.price = String(pos.close);
     state.price = String(pos.close);
     fields.push(`目前股價 ${pos.close}`);
   }
@@ -136,6 +181,22 @@ function fillFromPlan(plan) {
 function fillFromAll() {
   const t = totalPosition();
   const fields = [];
+  // 每一檔各自帶自己的 —— 不要把所有人的金額加成一筆，那就失去分開設定的意義
+  for (const pl of state.plans.filter((x) => x.active)) {
+    const leg = legFor(pl.code);
+    leg.amount = String(pl.amount);
+    const pos = positionOf(pl.code);
+    if (pos?.marketValue != null) leg.startValue = String(pos.marketValue);
+    if (pos?.close != null) leg.price = String(pos.close);
+  }
+  for (const hd of state.holdings) {
+    if (!hd.supported) continue;
+    const leg = legFor(hd.code);
+    const pos = positionOf(hd.code);
+    if (pos?.marketValue != null) leg.startValue = String(pos.marketValue);
+    if (pos?.close != null) leg.price = String(pos.close);
+  }
+  fields.push(`${state.legs.length} 檔各自帶入自己的扣款金額、目前市值與收盤價`);
   if (t) {
     state.startValue = String(t.marketValue);
     fields.push(`目前部位市值 ${t.marketValue.toLocaleString('zh-Hant-TW')} 元（${t.counted} 檔合計`
@@ -280,24 +341,105 @@ function feeField() {
   return wrap;
 }
 
+/**
+ * 為什麼這兩格沒有「長期平均」可以參考 —— 兩個原因都不一樣，所以分開講。
+ *
+ * 這是查證之後的結論，不是省事：
+ *
+ * 配息率：證交所公開的股利分派資料（openapi t187ap45_L）只涵蓋上市**公司**
+ *   877 檔、**0 檔 ETF**，而且只有民國 114–115 兩個年度（每檔平均 1.0 筆）。
+ *   他的 0050／0056／00878 一筆都沒有。
+ *
+ * 成長率：STOCK_DAY 的歷史收盤價**沒有還原分割與配息**。實測 0050 在
+ *   114/06/18 從 188.65 變成 47.57（1:4 分割），直接拿兩點相除算出來的
+ *   五年年化是 −5.25% —— **連正負號都是錯的**。證交所只還原「當天的漲跌」
+ *   （那一天的漲跌價差欄寫 +0.41），不還原收盤價序列，而分割比例又不在除權息表裡。
+ *
+ * 所以兩格都不給參考值。**寧可空白，也不要給一個錯得看不出來的數字** ——
+ * 它會直接乘進試算結果裡。
+ */
+function whyNoReference(kind) {
+  if (kind === 'yield') {
+    return h('p', { class: 'muted sm', dataset: { note: 'noYieldReference' } },
+      '算不出長期平均。證交所公開的股利分派資料只涵蓋上市公司，不含 ETF，'
+      + '而且只有兩個年度 —— 你的 ETF 一筆都查不到。'
+      + '你在「股利」頁確認過的紀錄會累積起來，那是你真正領到的錢。');
+  }
+  return h('p', { class: 'muted sm', dataset: { note: 'noGrowthReference' } },
+    '算不出長期平均。證交所的歷史收盤價沒有還原分割與配息 —— '
+    + '例如 0050 在 2025 年做過 1:4 分割，收盤價一天之內從 188.65 變成 47.57，'
+    + '直接拿前後兩個價格相除會算出一個連正負號都相反的數字。');
+}
+
+/** 一檔一列的假設。數值欄位一律空白，沒有預設值。 */
+function legCard(leg, i) {
+  const f = (key, label, opts = {}) => {
+    const input = h('input', {
+      class: 'field',
+      type: 'text',
+      inputmode: opts.inputmode ?? 'decimal',
+      placeholder: '',
+      value: leg[key] ?? '',
+      dataset: { legField: `${leg.code}:${key}` },
+      oninput: (e) => { leg[key] = e.target.value; },
+    });
+    return h('div', { class: 'calc-field' },
+      h('label', { class: 'sm muted' }, label, opts.suffix ? h('span', { class: 'muted' }, `（${opts.suffix}）`) : null),
+      input,
+      opts.note ?? null);
+  };
+
+  return h('div', { class: 'card card-sub', dataset: { leg: leg.code } },
+    h('div', { class: 'row-head' },
+      h('span', { class: 'row-code' }, leg.code),
+      h('span', { class: 'row-name' }, leg.name || ''),
+      h('button', {
+        class: 'btn btn-sm',
+        dataset: { removeLeg: leg.code },
+        onclick: () => { state.legs.splice(i, 1); state.multi = null; paint(); },
+      }, '不算這一檔'),
+    ),
+    f('amount', '每期扣款金額', { suffix: '元', inputmode: 'numeric' }),
+    f('startValue', '目前已有部位的市值', { suffix: '元', inputmode: 'numeric' }),
+    f('growthRate', '年化價格成長率', { suffix: '%', note: whyNoReference('growth') }),
+    f('yieldRate', '年化配息率', { suffix: '%', note: whyNoReference('yield') }),
+    state.method === 'share' ? f('price', '目前股價', { suffix: '元' }) : null,
+  );
+}
+
+function legsCard() {
+  return h('section', { class: 'card', dataset: { card: 'calcLegs' } },
+    h('h2', { class: 'card-title' }, `每一檔各自的假設（${state.legs.length} 檔）`),
+    h('p', { class: 'muted sm' },
+      '每一檔的成長率與配息率分開填 —— 市值型、高股息、個股的性質不一樣，'
+      + '用同一組數字算出來的東西沒有意義。'),
+    h('p', { class: 'muted sm' },
+      // 畫面字串裡不可以有 markdown 記號（h() 全是 textNode，星號會原樣印出來）
+      '沒填完的那一檔不會被算進去，也不會被當成 0 —— 空白代表還沒決定。'),
+    ...state.legs.map((leg, i) => legCard(leg, i)),
+    state.legs.length === 0
+      ? h('p', { class: 'muted' }, '還沒有標的。先到「持股」或「定期定額」建立，再回來試算。')
+      : null,
+  );
+}
+
 function inputCard() {
   return h('section', { class: 'card', dataset: { card: 'calcInputs' } },
-    h('h2', { class: 'card-title' }, '你的假設'),
-    field({ key: 'amount', label: '每期扣款金額', suffix: '元', inputmode: 'numeric' }),
+    // 每檔都一樣的設定放這裡；每檔不一樣的（金額、市值、成長率、配息率、股價）
+    // 在上面那張「每一檔各自的假設」。
+    h('h2', { class: 'card-title' }, '共用設定'),
+    h('p', { class: 'muted sm' }, '這幾項每一檔都套用同一個值。'),
     chips({
       key: 'perMonth', label: '每月扣款次數',
       options: CONTRIB_FREQ.map((n) => ({ value: n, label: `${n} 次` })),
     }),
     field({ key: 'years', label: '期間', suffix: '年', inputmode: 'numeric' }),
-    field({ key: 'growthRate', label: '年化價格成長率', suffix: '%', hint: '可以填負數。' }),
-    field({ key: 'yieldRate', label: '年化配息率', suffix: '%' }),
     chips({
       key: 'dividendFreq', label: '配息頻率',
       options: DIVIDEND_FREQ.map((n) => ({ value: n, label: DIVIDEND_FREQ_LABEL[n] })),
     }),
 
     h('h2', { class: 'card-title', style: 'margin-top:12px' }, '選填'),
-    field({ key: 'startValue', label: '目前已有部位的市值', suffix: '元', inputmode: 'numeric' }),
     feeField(),
     toggle({
       key: 'dividendFees',
@@ -316,30 +458,45 @@ function inputCard() {
         ? '金額法：市值直接乘上成長率與配息率，全程高精度小數，不管買不買得到整股。'
         : '股數法：每期用可用現金買整數股，買不足一股的餘額結轉到下一期，不捨棄也不四捨五入。',
     }),
-    state.method === 'share'
-      ? field({ key: 'price', label: '目前股價', suffix: '元' })
-      : null,
-
     h('button', { class: 'btn btn-primary', onclick: compute }, '算一次'),
     h('button', { class: 'btn', onclick: reset }, '全部清空'),
   );
 }
 
 function compute() {
-  const v = validateInputs(state);
-  state.errors = v.errors;
-  if (!v.ok) {
-    state.result = null;
-    state.gap = null;
+  // 共用設定的錯誤仍然照舊驗（期間、次數、頻率、費率）。
+  // 每一檔自己的欄位由 compareMulti 判斷 —— 沒填完的那一檔不算，而且會被列出來。
+  const probe = validateInputs({
+    ...state,
+    // 這三個在共用設定裡已經沒有欄位了，借一組能過的值來驗其餘的共用項
+    amount: '0', growthRate: '0', yieldRate: '0',
+  });
+  state.errors = {};
+  for (const k of ['years', 'perMonth', 'dividendFreq', 'feeRate']) {
+    if (probe.errors[k]) state.errors[k] = probe.errors[k];
+  }
+  if (Object.keys(state.errors).length) {
+    state.multi = null;
     paint();
-    toast('還有欄位沒填');
+    toast('共用設定還有欄位沒填好');
     return;
   }
-  state.result = compareScenarios(v.values);
-  state.gap = v.values.method === 'share' ? methodGap(v.values, { reinvest: true }) : null;
+
+  const shared = {
+    years: probe.values.years,
+    perMonth: probe.values.perMonth,
+    dividendFreq: probe.values.dividendFreq,
+    feeRate: probe.values.feeRate,
+    dividendFees: !!state.dividendFees,
+    method: state.method,
+  };
+  state.multi = compareMulti(state.legs, shared);
+  if (state.multi.rows.length === 0) {
+    paint();
+    toast('每一檔都還沒填完，沒有東西可以算');
+    return;
+  }
   paint();
-  // 按完「算一次」畫面看起來沒反應 —— 結果卡片在九個欄位以下，要自己捲很久。
-  // 捲過去，讓他知道真的算了。
   requestAnimationFrame(() => {
     document.querySelector('#view [data-card="calcResult"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   });
@@ -347,40 +504,16 @@ function compute() {
 
 function reset() {
   for (const k of ['amount', 'years', 'growthRate', 'yieldRate', 'feeRate', 'startValue', 'price']) state[k] = '';
+  for (const leg of state.legs) {
+    for (const k of ['amount', 'startValue', 'growthRate', 'yieldRate', 'price']) leg[k] = '';
+  }
   state.perMonth = 1;
   state.dividendFreq = 1;
   state.dividendFees = false;
   state.method = 'value';
-  state.result = null;
-  state.gap = null;
-  state.errors = {};
+  state.multi = null;
+  state.filled = null;
   paint();
-}
-
-// ---------- 結果 ----------
-
-function scenarioBlock(title, subtitle, sim) {
-  // 畫面上的數字全部用四捨五入到元之後的版本 —— 分項加起來一定等於總計。
-  const d = displayTotals(sim);
-  return h('div', { class: 'scenario' },
-    h('h3', { class: 'scenario-title' }, title),
-    h('p', { class: 'muted sm' }, subtitle),
-    h('p', { class: 'mid-number' }, num(fmtMoneyMicro(d.totalEndMicro))),
-    h('p', { class: 'muted sm' }, '期末手上總共（元）'),
-    h('div', { class: 'kv' },
-      kv('累積投入', d.investedMicro),
-      kv('期末市值', d.valueMicro),
-      sim.reinvest
-        ? kv('已再投入的配息', d.dividendReinvestedMicro)
-        : kv('已領到的配息', d.paidOutMicro),
-      kv('累積配息（毛額）', d.dividendTotalMicro),
-    ),
-    sim.shares != null
-      ? h('p', { class: 'muted sm' },
-        '期末 ', num(fmtShares(sim.shares)), ' 股，未投入現金 ',
-        num(fmtMoneyMicro(sim.leftoverCashMicro)), ' 元（已計入期末市值）')
-      : null,
-  );
 }
 
 function kv(label, micro) {
@@ -390,30 +523,72 @@ function kv(label, micro) {
   );
 }
 
-function resultCard(result, gap) {
-  return h('section', { class: 'card', dataset: { card: 'calcResult' } },
-    h('h2', { class: 'card-title' }, '結果'),
-    h('p', { class: 'disclaimer' }, DISCLAIMER),
-    h('div', { class: 'scenarios' },
-      scenarioBlock('你的假設 A', '配息再投入', result.reinvest),
-      scenarioBlock('你的假設 B', '配息領現', result.payout),
+function multiResultCard(multi) {
+  const yuan = (m) => (m == null ? NO_VALUE : fmtMoneyMicro(m));
+  const legRow = (r) => h('div', { class: 'row row-holding', dataset: { resultCode: r.code } },
+    h('div', { class: 'row-head' },
+      h('span', { class: 'row-code' }, r.code),
+      h('span', { class: 'row-name' }, r.name || ''),
+      r.usedMethod !== multi.rows[0].usedMethod ? null : null,
     ),
-    gap
-      ? h('p', { class: 'muted sm' },
-        '同一組假設下，金額法的期末比股數法高 ',
-        num(fmtMoneyMicro(gap.diffMicro)),
-        ` 元（約 ${gap.inShares.toFixed(2)} 股）——差在「湊不滿一股的現金閒置著，沒有跟著成長」。`)
+    h('div', { class: 'row-mid' },
+      h('span', { class: 'muted sm' }, '投入 ', num(yuan(r.reinvest.investedMicro)))),
+    h('div', { class: 'row-side' },
+      num(yuan(r.reinvest.totalEndMicro)),
+      h('span', { class: 'muted sm' }, '配息領現 ', num(yuan(r.payout.totalEndMicro)))),
+  );
+
+  return h('section', { class: 'card', dataset: { card: 'calcResult' } },
+    h('h2', { class: 'card-title' }, `結果（${multi.total.counted} 檔）`),
+    h('p', { class: 'disclaimer' }, DISCLAIMER),
+
+    h('h3', { class: 'sub-title' }, '全部加起來'),
+    h('div', { class: 'scenarios' },
+      h('div', { class: 'scenario' },
+        h('h3', { class: 'scenario-title' }, '你的假設 A'),
+        h('p', { class: 'muted sm' }, '配息再投入'),
+        h('p', { class: 'mid-number' }, num(yuan(multi.total.reinvest.totalEndMicro))),
+        h('p', { class: 'muted sm' }, '期末手上總共（元）'),
+        h('div', { class: 'kv' },
+          kv('累積投入', multi.total.reinvest.investedMicro),
+          kv('累積配息（毛額）', multi.total.reinvest.dividendTotalMicro)),
+      ),
+      h('div', { class: 'scenario' },
+        h('h3', { class: 'scenario-title' }, '你的假設 B'),
+        h('p', { class: 'muted sm' }, '配息領現'),
+        h('p', { class: 'mid-number' }, num(yuan(multi.total.payout.totalEndMicro))),
+        h('p', { class: 'muted sm' }, '期末手上總共（元）'),
+        h('div', { class: 'kv' },
+          kv('累積投入', multi.total.payout.investedMicro),
+          kv('已領到的配息', multi.total.payout.paidOutMicro)),
+      ),
+    ),
+    h('p', { class: 'muted sm' }, '合計就是下面每一檔加起來的結果，沒有別的假設。'),
+
+    h('h3', { class: 'sub-title' }, '每一檔'),
+    h('div', { class: 'rows' }, ...multi.rows.map(legRow)),
+
+    // **沒算到的那幾檔一定要講出來。** 不講的話，合計看起來就像是全部的結果。
+    multi.skipped.length
+      ? h('div', { dataset: { block: 'calcSkipped' } },
+        h('h3', { class: 'sub-title' }, `沒有算進去（${multi.skipped.length} 檔）`),
+        ...multi.skipped.map((x) => h('p', { class: 'warn sm' },
+          `${x.code} ${x.name || ''}：還沒填 ${x.missing.join('、')}`)),
+        h('p', { class: 'muted sm' }, '空白代表還沒決定，不是 0 —— 所以這幾檔完全沒有算，上面的合計也不含它們。'))
       : null,
   );
 }
 
-function yearlyCard(result) {
-  const a = result.reinvest.yearly;
-  const b = result.payout.yearly;
-  const maxValue = a.reduce((m, r) => (r.valueMicro > m ? r.valueMicro : m), 1n);
+/**
+ * 逐年表與圖。改成多檔之後畫的是**合計** —— 每一年把各檔加起來。
+ * 逐檔各畫一張的話，四檔就是四張圖，讀的人反而對不出總共會變怎樣。
+ */
+function yearlyCard(yearly) {
+  if (!yearly?.length) return null;
+  const maxValue = yearly.reduce((m, r) => (r.valueMicro > m ? r.valueMicro : m), 1n);
   return h('section', { class: 'card', dataset: { card: 'calcYearly' } },
-    h('h2', { class: 'card-title' }, '逐年（你的假設 A：配息再投入）'),
-    h('div', { class: 'chart' }, ...a.map((r) => {
+    h('h2', { class: 'card-title' }, '逐年（全部加起來，你的假設 A：配息再投入）'),
+    h('div', { class: 'chart' }, ...yearly.map((r) => {
       const invPct = Number(r.investedMicro * 100n / maxValue);
       const valPct = Number(r.valueMicro * 100n / maxValue);
       return h('div', { class: 'chart-col', title: `第 ${r.year} 年` },
@@ -435,35 +610,17 @@ function yearlyCard(result) {
           h('th', {}, 'A：市值'),
           h('th', {}, 'B：市值'),
           h('th', {}, 'B：已領配息'))),
-        h('tbody', {}, ...a.map((r, i) => h('tr', {},
+        h('tbody', {}, ...yearly.map((r) => h('tr', {},
           h('td', {}, String(r.year)),
           h('td', { class: 'num' }, fmtMoneyMicro(r.investedMicro)),
           h('td', { class: 'num' }, fmtMoneyMicro(r.valueMicro)),
-          h('td', { class: 'num' }, fmtMoneyMicro(b[i].valueMicro)),
-          h('td', { class: 'num' }, fmtMoneyMicro(b[i].dividendPaidOutMicro)),
+          h('td', { class: 'num' }, fmtMoneyMicro(r.valueBMicro)),
+          h('td', { class: 'num' }, fmtMoneyMicro(r.paidOutBMicro)),
         ))),
       ),
     ),
   );
 }
-
-
-// ---------- 查配息紀錄（事實，不是預測） ----------
-//
-// 這張卡片的設計底線，每一條都是刻意的：
-//
-//   · **不提供「帶入」按鈕。** 只要是我們替使用者把配息換算成配息率，
-//     那個假設就是我們構造的 —— 按鈕只是把責任偽裝成他的選擇。
-//   · **不出現任何百分比。** 除以股價就是殖利率，殖利率就是預期報酬的語言。
-//   · **不年化。**「一年配四次所以一年配 X 元」就是推算未來。
-//   · **不算平均**，只做合計。加總是事實，平均是推論。
-//   · 三種來源分開、各自標明，永遠不合併計算。
-//
-// 為什麼第一個區塊是「下一次除權息」而不是「過去配了多少」：
-// 證交所**沒有公開 ETF 的歷史收益分配**（2026-09-11 實測，見 FEASIBILITY §11），
-// 所以對持有 ETF 的人來說，「公司公告的股利分派」那份資料一筆都查不到。
-// 但 TWT48U 預告表**有 ETF** —— 下一次配多少是已公告的事實。
-// 把重心放在歷史上，這個功能對 ETF 持有人就是全空的（使用者實機回報過）。
 
 async function runLookup(code) {
   state.lookupCode = code;

@@ -1460,6 +1460,41 @@ const MUTATIONS = [
     replace: '      const after = { shares: null, avgCost: null }; const added = 0; toast("已確認"); store.notifyChanged(); plansView(); return;',
     test: 'uikittest',
   },
+  {
+    name: '沒填完的那一檔當成 0 照樣算進去',
+    why: '空白代表「還沒決定」，不是「假設它不成長、不配息」。當成 0 會生出一個'
+      + '看起來很正常的結果，而且合計也被汙染 —— 使用者不會發現那一檔根本沒填。',
+    file: 'js/calc.js',
+    find: "    if (missing.length) { skipped.push({ code: leg.code, name: leg.name, missing }); continue; }",
+    replace: "    if (missing.length) { leg = { ...leg, growthRate: leg.growthRate || 0, yieldRate: leg.yieldRate || 0, amount: leg.amount || 0 }; }",
+    test: 'calctest',
+  },
+  {
+    name: '一檔都沒填完時合計回 0 而不是 null',
+    why: '0 會被讀成「算出來是零」。什麼都沒算就是沒有答案，那要回 null。',
+    file: 'js/calc.js',
+    find: '  if (rows.length === 0) return { rows, skipped, total: null };',
+    replace: '  if (rows.length === 0) return { rows, skipped, total: { reinvest: { totalEndMicro: 0n, investedMicro: 0n, dividendTotalMicro: 0n }, payout: { totalEndMicro: 0n, investedMicro: 0n, dividendTotalMicro: 0n, paidOutMicro: 0n }, counted: 0, yearly: [] } };',
+    test: 'calctest',
+  },
+  {
+    name: '每一檔共用同一組成長率與配息率',
+    why: '0050、0056、00878、2330 的性質差很多，用同一組假設算出來的東西沒有意義 ——'
+      + '那正是使用者要求分開設定的原因。',
+    file: 'js/calc.js',
+    find: '      growthRate: Number(leg.growthRate),\n      yieldRate: Number(leg.yieldRate),',
+    replace: '      growthRate: Number(legs[0].growthRate),\n      yieldRate: Number(legs[0].yieldRate),',
+    test: 'calctest',
+  },
+  {
+    name: '試算的成長率欄位不再說明為什麼沒有參考值',
+    why: '使用者問過「為什麼不自動帶出長期平均」。留白不解釋，他會以為是壞了或偷懶；'
+      + '而真正的理由（未還原價、0050 做過 1:4 分割）用實例講才聽得懂。',
+    file: 'js/views/calc.js',
+    find: "  return h('p', { class: 'muted sm', dataset: { note: 'noGrowthReference' } },",
+    replace: "  return h('p', { class: 'muted sm', dataset: { note: 'gone' } },",
+    test: 'calcviewtest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

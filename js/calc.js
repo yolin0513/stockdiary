@@ -275,6 +275,103 @@ export function methodGap(values, { reinvest }) {
  * 所以總計**用四捨五入後的分項相加**，保證畫面上的數字彼此加得起來。
  * 代價是總計與精確值最多差 1 元，而這一頁本來就只顯示到元。
  */
+/**
+ * 每一檔各自的假設，一起試算。
+ *
+ * 為什麼要分開：0050、0056、00878、2330 的性質差很多，用同一組成長率與配息率
+ * 算出來的東西沒有意義（使用者自己提的）。
+ *
+ * legs: [{ code, name, amount, startValue, growthRate, yieldRate, price }]
+ * shared: { years, perMonth, dividendFreq, feeRate, dividendFees, method }
+ *
+ * **沒填完的那一檔不算，也不會被當成 0。** 空白代表「還沒決定」，
+ * 不是「假設它不成長／不配息」—— 拿 0 去算會生出一個看起來很正常的錯數字。
+ * 回傳裡的 skipped 就是那幾檔，畫面必須把它們講出來。
+ */
+export function compareMulti(legs, shared) {
+  const rows = [];
+  const skipped = [];
+
+  for (const leg of legs ?? []) {
+    const missing = [];
+    if (!Number.isFinite(Number(leg.growthRate)) || String(leg.growthRate).trim() === '') missing.push('年化價格成長率');
+    if (!Number.isFinite(Number(leg.yieldRate)) || String(leg.yieldRate).trim() === '') missing.push('年化配息率');
+    if (!Number.isFinite(Number(leg.amount)) || String(leg.amount).trim() === '') missing.push('每期扣款金額');
+    if (missing.length) { skipped.push({ code: leg.code, name: leg.name, missing }); continue; }
+
+    const values = {
+      amount: Number(leg.amount),
+      startValue: Number(leg.startValue ?? 0) || 0,
+      growthRate: Number(leg.growthRate),
+      yieldRate: Number(leg.yieldRate),
+      price: leg.price == null || String(leg.price).trim() === '' ? null : Number(leg.price),
+      years: shared.years,
+      perMonth: shared.perMonth,
+      dividendFreq: shared.dividendFreq,
+      feeRate: shared.feeRate ?? 0,
+      dividendFees: !!shared.dividendFees,
+    };
+    // 股數法需要價格。**沒有價格的那一檔改用金額法**，並且在回傳裡標出來 ——
+    // 硬用股數法會拿一個不存在的價格去除，算出來的股數是假的。
+    values.method = shared.method === 'share' && hasPrice(leg) ? 'share' : 'value';
+    const pair = compareScenarios(values);
+    if (!pair) { skipped.push({ code: leg.code, name: leg.name, missing: ['算不出來'] }); continue; }
+    rows.push({
+      sims: pair,
+      code: leg.code,
+      name: leg.name,
+      usedMethod: values.method,
+      values,
+      reinvest: displayTotals(pair.reinvest),
+      payout: displayTotals(pair.payout),
+    });
+  }
+
+  if (rows.length === 0) return { rows, skipped, total: null };
+
+  const sum = (pick) => rows.reduce((acc, r) => acc + (pick(r) ?? 0n), 0n);
+  const total = {
+    reinvest: {
+      investedMicro: sum((r) => r.reinvest.investedMicro),
+      totalEndMicro: sum((r) => r.reinvest.totalEndMicro),
+      dividendTotalMicro: sum((r) => r.reinvest.dividendTotalMicro),
+    },
+    payout: {
+      investedMicro: sum((r) => r.payout.investedMicro),
+      totalEndMicro: sum((r) => r.payout.totalEndMicro),
+      dividendTotalMicro: sum((r) => r.payout.dividendTotalMicro),
+      paidOutMicro: sum((r) => r.payout.paidOutMicro),
+    },
+    counted: rows.length,
+    // 逐年合計：每一年把各檔加起來。各檔的年數都一樣（期間是共用設定），
+    // 所以逐年表對得起來；真的長度不一致就以最短的為準，不要對錯年。
+    yearly: sumYearly(rows),
+  };
+  return { rows, skipped, total };
+}
+
+/** 把每一檔的逐年表加起來。長度不一致時以最短的為準 —— 寧可少幾年，也不要把不同年份加在一起。 */
+function sumYearly(rows) {
+  if (rows.length === 0) return [];
+  const n = Math.min(...rows.map((r) => r.sims.reinvest.yearly.length));
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    let invested = 0n; let valueA = 0n; let valueB = 0n; let paidB = 0n;
+    for (const r of rows) {
+      invested += r.sims.reinvest.yearly[i].investedMicro;
+      valueA += r.sims.reinvest.yearly[i].valueMicro;
+      valueB += r.sims.payout.yearly[i].valueMicro;
+      paidB += r.sims.payout.yearly[i].dividendPaidOutMicro;
+    }
+    out.push({ year: rows[0].sims.reinvest.yearly[i].year, investedMicro: invested, valueMicro: valueA, valueBMicro: valueB, paidOutBMicro: paidB });
+  }
+  return out;
+}
+
+function hasPrice(leg) {
+  return leg.price != null && String(leg.price).trim() !== '' && Number(leg.price) > 0;
+}
+
 export function displayTotals(sim) {
   const value = roundYuan(sim.finalValueMicro);
   const paidOut = roundYuan(sim.dividendPaidOutMicro);

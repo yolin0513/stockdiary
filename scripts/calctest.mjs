@@ -10,8 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, near, section, done, noneOf, everyOf, detects } from './tap.mjs';
 import {
   validateInputs, simulate, compareScenarios, methodGap, monthlyFactor,
-  REQUIRED, CONTRIB_FREQ, DIVIDEND_FREQ, METHODS, MAX_FEE_RATE,
+  REQUIRED, CONTRIB_FREQ, DIVIDEND_FREQ, METHODS, MAX_FEE_RATE, compareMulti,
 } from '../js/calc.js';
+import { toMicro } from '../js/money.js';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const yuan = (micro) => (micro == null ? null : Number(micro) / 1e6);
@@ -189,6 +190,67 @@ section('試算的手續費率上限：跟定期定額同一條線');
   ok(String(msg).includes('14.2500%') && String(msg).includes('0.001425'),
     `訊息講得出「你填的等於幾 %」與「應該填什麼」：「${msg}」`);
   eq(MAX_FEE_RATE, 0.01, '上限跟 js/plans.js 一樣是 1%');
+}
+
+section('每一檔各自的假設：沒填完的不算，也不會被當成 0');
+// 使用者自己提的：0050、0056、00878、2330 的性質差很多，同一組假設算出來沒有意義。
+// 這裡守的是**分開算之後的兩件事**：合計等於各檔相加、沒填完的被列出來而不是被當成 0。
+{
+  const shared = { years: 10, perMonth: 1, dividendFreq: 4, feeRate: 0.001425, dividendFees: false, method: 'value' };
+  const legs = [
+    { code: '0050', name: '元大台灣50', amount: 6000, startValue: 323100, growthRate: 6, yieldRate: 3 },
+    { code: '0056', name: '元大高股息', amount: 3000, startValue: 176000, growthRate: 3, yieldRate: 8 },
+    { code: '2330', name: '台積電', amount: '', startValue: 2410000, growthRate: '', yieldRate: '' },
+  ];
+  const r = compareMulti(legs, shared);
+
+  eq(r.rows.length, 2, '填完的兩檔算進去了');
+  eq(r.skipped.length, 1, '沒填完的那一檔沒有算');
+  eq(r.skipped[0].code, '2330', '而且講得出是哪一檔');
+  everyOf(['年化價格成長率', '年化配息率', '每期扣款金額'], (f) => r.skipped[0].missing.includes(f),
+    `也講得出缺哪幾格（${r.skipped[0].missing.join('、')}）`);
+
+  // **合計必須等於各檔相加** —— 差一塊都不行
+  const sumEnd = r.rows.reduce((a, x) => a + x.reinvest.totalEndMicro, 0n);
+  eq(r.total.reinvest.totalEndMicro, sumEnd, '合計剛好等於每一檔加起來（配息再投入）');
+  const sumPay = r.rows.reduce((a, x) => a + x.payout.totalEndMicro, 0n);
+  eq(r.total.payout.totalEndMicro, sumPay, '合計剛好等於每一檔加起來（配息領現）');
+  eq(r.total.counted, 2, '合計講得出它含幾檔');
+
+  // 手算：0050 投入 ＝ 323,100 起始 ＋ 6,000 × 12 × 10 ＝ 1,043,100
+  eq(r.rows[0].reinvest.investedMicro, toMicro(1043100),
+    '手算 0050 累積投入 ＝ 323,100 ＋ 6,000 × 12 × 10 ＝ 1,043,100');
+
+  // **每一檔真的用了自己的假設** —— 不是共用同一組
+  ok(r.rows[0].values.growthRate === 6 && r.rows[1].values.growthRate === 3,
+    `兩檔的成長率各自是 6% 與 3%（${r.rows[0].values.growthRate}、${r.rows[1].values.growthRate}）`);
+  ok(r.rows[0].values.yieldRate === 3 && r.rows[1].values.yieldRate === 8,
+    '配息率也各自不同');
+  // 對照：假設真的不同就一定算出不同的結果
+  ok(r.rows[0].reinvest.totalEndMicro !== r.rows[1].reinvest.totalEndMicro,
+    '（對照）不同的假設算出不同的結果 —— 不是兩檔共用同一組');
+}
+
+section('一檔都沒填完：不回一個 0，回「沒有東西可以算」');
+{
+  const shared = { years: 10, perMonth: 1, dividendFreq: 1, feeRate: 0, dividendFees: false, method: 'value' };
+  const r = compareMulti([{ code: '0050', name: '元大台灣50', amount: '', growthRate: '', yieldRate: '' }], shared);
+  eq(r.rows.length, 0, '沒有任何一檔算得出來');
+  eq(r.total, null, '**合計是 null，不是 0** —— 0 會被讀成「算出來是零」');
+  eq(r.skipped.length, 1, '而且那一檔被列出來');
+}
+
+section('空白不是 0：填 0 與留白是兩件事');
+{
+  const shared = { years: 5, perMonth: 1, dividendFreq: 1, feeRate: 0, dividendFees: false, method: 'value' };
+  const zero = compareMulti([{ code: 'A', amount: 1000, startValue: 0, growthRate: 0, yieldRate: 0 }], shared);
+  const blank = compareMulti([{ code: 'A', amount: 1000, startValue: 0, growthRate: '', yieldRate: '' }], shared);
+  eq(zero.rows.length, 1, '成長率填 0 是有效的假設（他就是要假設不成長）');
+  eq(blank.rows.length, 0, '**留白則完全不算**');
+  eq(blank.skipped.length, 1, '而且被列進沒算的名單');
+  // 手算：不成長不配息，5 年每月扣 1,000 ＝ 60,000
+  eq(zero.rows[0].reinvest.totalEndMicro, toMicro(60000),
+    '手算 填 0 的那一檔：1,000 × 12 × 5 ＝ 60,000');
 }
 
 done('calctest');
