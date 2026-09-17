@@ -6,7 +6,7 @@
  *
  * 每次改動任何 SHELL 檔案都要 bump VERSION，否則使用者拿到的還是舊程式。
  */
-const VERSION = 'stockdiary-v0.7.21';
+const VERSION = 'stockdiary-v0.7.22';
 const SHELL = `${VERSION}-shell`;
 
 const SHELL_ASSETS = [
@@ -85,6 +85,15 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+const NAV_TIMEOUT_MS = 3000;
+
+function navigateWithTimeout(request) {
+  const fromCache = () => caches.match('./index.html');
+  const timer = new Promise((resolve) => setTimeout(() => resolve(null), NAV_TIMEOUT_MS));
+  return Promise.race([fetch(request).catch(() => null), timer])
+    .then((res) => res || fromCache().then((hit) => hit || fetch(request)));
+}
+
 self.addEventListener('fetch', (e) => {
   const { request } = e;
   if (request.method !== 'GET') return;
@@ -94,7 +103,10 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    e.respondWith(fetch(request).catch(() => caches.match('./index.html')));
+    // network-first，但**最多等 3 秒**。GitHub Pages 慢或行動網路訊號差的時候，
+    // 以前要等到 fetch 自己失敗（可能幾十秒）才退回快取 —— 而 index.html 本來就在 SHELL 裡。
+    // 換版仍然靠 registration.update()（那條路不經過這裡），所以逾時退回舊 index.html 不會卡在舊版。
+    e.respondWith(navigateWithTimeout(request));
     return;
   }
 

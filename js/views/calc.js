@@ -28,7 +28,7 @@ const DISCLAIMER = '以下結果完全由你輸入的假設算出，不是預測
 // 畫面狀態。**每一個數值欄位的初始值都是空字串。**
 const state = {
   amount: '', perMonth: 1, years: '', growthRate: '', yieldRate: '',
-  dividendFreq: 1, feeRate: '', startValue: '', dividendFees: false,
+  dividendFreq: 1, feeRate: '', dividendFees: false,
   method: 'value', price: '',
   errors: {},
   // 「查這一檔過去配了多少」。**跟試算完全分離**：查到的數字不會、也不能
@@ -191,7 +191,6 @@ function fillFromPlan(plan) {
   }
   if (pos?.marketValue != null) {
     leg.startValue = String(pos.marketValue);
-    state.startValue = String(pos.marketValue);
     fields.push(`目前部位市值 ${pos.marketValue.toLocaleString('zh-Hant-TW')} 元`);
   }
   if (pos?.close != null) {
@@ -225,7 +224,6 @@ function fillFromAll() {
   }
   fields.push(`${state.legs.length} 檔各自帶入自己的扣款金額、目前市值與收盤價`);
   if (t) {
-    state.startValue = String(t.marketValue);
     fields.push(`目前部位市值 ${t.marketValue.toLocaleString('zh-Hant-TW')} 元（${t.counted} 檔合計`
       + `${t.excluded > 0 ? `，另有 ${t.excluded} 檔算不出市值沒有計入` : ''}）`);
   }
@@ -468,7 +466,7 @@ function inputCard() {
       options: DIVIDEND_FREQ.map((n) => ({ value: n, label: DIVIDEND_FREQ_LABEL[n] })),
     }),
 
-    h('h2', { class: 'card-title', style: 'margin-top:12px' }, '選填'),
+    h('h2', { class: 'card-title mt-12' }, '選填'),
     feeField(),
     toggle({
       key: 'dividendFees',
@@ -476,7 +474,7 @@ function inputCard() {
       hint: '開啟後每筆配息扣匯費 10 元；單筆達 20,000 元再扣 2.11%。',
     }),
 
-    h('h2', { class: 'card-title', style: 'margin-top:12px' }, '算法'),
+    h('h2', { class: 'card-title mt-12' }, '算法'),
     chips({
       key: 'method', label: '零股與未滿一股',
       options: [
@@ -622,8 +620,9 @@ function yearlyCard(yearly) {
       const valPct = Number(r.valueMicro * 100n / maxValue);
       return h('div', { class: 'chart-col', title: `第 ${r.year} 年` },
         h('div', { class: 'chart-bars' },
-          h('div', { class: 'chart-bar chart-bar-value', style: `height:${valPct}%` }),
-          h('div', { class: 'chart-bar chart-bar-invested', style: `height:${invPct}%` }),
+          // 高度走 CSS 變數（CSSOM），不是 style 屬性字串 —— CSP 沒有 unsafe-inline
+          h('div', { class: 'chart-bar chart-bar-value', style: { '--h': `${valPct}%` } }),
+          h('div', { class: 'chart-bar chart-bar-invested', style: { '--h': `${invPct}%` } }),
         ),
         h('span', { class: 'chart-label' }, String(r.year)),
       );

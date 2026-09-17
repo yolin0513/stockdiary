@@ -3,7 +3,7 @@
 import * as db from './db.js';
 import * as prefs from './prefs.js';
 import * as catalog from './catalog.js';
-import { makeCalendar, latestPublishedTradingDay, todayPending, calendarRunway as runwayOf } from './market.js';
+import { makeCalendar, calendarRunway as runwayOf } from './market.js';
 import { createClient } from './twseclient.js';
 import * as updater from './update.js';
 import * as prices from './prices.js';
@@ -24,7 +24,6 @@ const state = {
 const listeners = new Set();
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 function emit() { for (const fn of listeners) { try { fn(); } catch (e) { console.error(e); } } }
-export function notifyChanged() { emit(); }
 
 export async function init() {
   if (state.ready) return;
@@ -67,18 +66,6 @@ export function calendarRunway(now = new Date()) {
 export function calendarError() { return state.calendarError; }
 export function catalogError() { return state.catalogError; }
 export function lastUpdate() { return state.lastUpdate; }
-
-/** 現在這個時刻，收盤資料應該已公布的最新交易日；拿不到回 null。 */
-export function expectedSettleDate(now = new Date()) {
-  if (!state.calendar) return null;
-  return latestPublishedTradingDay(state.calendar, now, prefs.get('todayDataThreshold'));
-}
-
-/** 今天是交易日但還沒到公布門檻。 */
-export function isTodayPending(now = new Date()) {
-  if (!state.calendar) return false;
-  return todayPending(state.calendar, now, prefs.get('todayDataThreshold'));
-}
 
 /**
  * 開頁自動更新一次。同一時間只跑一個（重複呼叫拿到同一個 promise）。

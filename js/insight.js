@@ -17,8 +17,6 @@ import * as secrets from './secrets.js';
 import * as db from './db.js';
 import { forAI } from './news.js';
 
-export const CONSENT_KEY = 'insightConsent';
-
 /**
  * 越界的樣式。
  *

@@ -22,7 +22,7 @@
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **228 條突變**逐一證明關鍵斷言改壞會紅。
+測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **234 條突變**逐一證明關鍵斷言改壞會紅。
 （這兩個數字由 `npm run doctest` 從程式數出來核對 —— 文件漂移過一次：STATUS 與 README 都停在 138，實際已經 182。）
 突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
 （所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
@@ -359,6 +359,14 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
     · 五條突變各自驗紅：看門狗等 10 分鐘／聽不到載入失敗／畫面有東西也出手／unregister 放回去／不標 booted。
     · 通則：**「走網路才拿得到」的東西，在換版與離線的路上一律要有可退的快取**；而任何「畫錯誤畫面的程式碼」
       都必須放在會壞的那張圖之外。
+40. **`String.prototype.replace(字串, 字串)` 會把替換字串裡的 `$$` 吃成一個 `$`。**
+    用腳本改測試碼時，把含 `page.$$eval(` 的一段當替換字串塞回去，出來的是 `page.$eval(` ——
+    語法完全合法、只是行為變了（`$eval` 回單一元素，`.map` 不是函式）。這批實際踩到：
+    A8 的 calcviewtest 補丁用 `${anchor}` 把原本那行 `$$eval` 重新塞回去，連原本好的那行一起壞。
+    · `$$`、`$&`、`` $` ``、`$'`、`$1` 在替換字串裡**全部是特殊序列**。
+    · 要原樣塞進去就用 `split(a).join(b)`，或 `replace(a, () => b)`（函式回傳值不解析特殊序列）。
+    · 這跟第 30 條（heredoc 吃反斜線）是同一族：**經手的工具會偷改內容的字元**，而且不報錯。
+      含 `$`、反斜線、反引號的程式碼，寫檔前後都要 grep 一次確認字元還在。
 
 ## 非同步畫面的守門（v0.5.2，實際發生過的 bug）
 
@@ -648,6 +656,19 @@ TWT49U 的日期參數無效（`FEASIBILITY.md` §10.8），只給得到「最�
 真的還是覺得有必要，要在報告裡講明「這是你上次拿掉的，我建議重新考慮，理由是⋯⋯」，
 由他決定 —— 不要默默加回去。
 
+## CSP、死碼、SW 導覽逾時（批次 4，v0.7.22）
+
+`SPEC_全面優化.md` §8 第 4 批：A8、A11、A15、B2。凍結區一個字都沒碰。
+
+| 項目 | 做了什麼 | 要記得的 |
+|---|---|---|
+| A8 CSP | `style-src` 拿掉 `'unsafe-inline'`。6 處 inline style：`confirmDialog` 改 `.pre-line`、`calc.js` 兩個標題改 `.mt-12`、逐年圖的高度與集中度長條的寬度改 **CSS 變數**（`--h`／`--w`，用 `el.style.setProperty`，CSSOM 不受 CSP 限制） | **CSP 擋掉的 inline style 是靜默的**：長條寬度全變 0、畫面看起來很正常。所以 `h()` 的 `style` 只吃物件、字串直接丟錯；`shelltest` 靜態掃字串型 `style:`；`pathtest`／`calcviewtest` 量瀏覽器**真的畫出來**的寬高 —— 三道都要有 |
+| A11 死碼 | 刪：`holdings.allChanges`／`allPending`、`prices.getCloses`、`router.resetHistory`／`navRestoredScroll`（連 `restoredScroll` 變數）、`store.expectedSettleDate`／`isTodayPending`／`notifyChanged`（與 views 裡兩處呼叫）、`insight.CONSENT_KEY`、`calc.js` 的 `state.startValue`（只寫不讀，第 34 條） | **沒照 SPEC 原文刪的**：`store.subscribe`／`emit`（A9 起 `progressLine` 是真訂閱者，第 36 條）、`secrets.setCap`（A10 用了）、`secrets.hasKey`（測試在用，保留）、`money.ratio`（**凍結區**，等解凍）。`shelltest` 加「零使用匯出」掃描：母體是 js/ 每一個 export，逐一到 js/＋scripts/ 數引用，允許清單只有 `money.ratio` 並寫理由 |
+| A15 收重複 | `newId()` → `db.newId()`（holdings／plans 各刪一份）；變動類型中文 → `holdings.CHANGE_KIND_LABEL`（views/holding、views/plans 各刪一份） | 取名 `CHANGE_KIND_LABEL` 而不是 `KIND_LABEL`：`dividend.js` 已經有一個語意不同的 `KIND_LABEL`（除息／除權／除權息），撞名會出事。`divRound`／`roundToYuanMicro` 在凍結檔裡，不動（SPEC §5） |
+| B2 SW 導覽逾時 | `sw.js` 導覽請求 network-first **最多等 3 秒**，逾時退回快取的 `index.html`；換版仍靠 `registration.update()`（不經 fetch handler） | SPEC 寫的對照組（逾時改 0 → `upgradecheck` 分辨）**分辨不了**：SW 更新走 `reg.update()` 直接抓 sw.js，index.html 永遠走快取也照樣換版。改用 `serve.mjs` 的 `mutateHtml` 往 index.html 塞一個 `<meta name="x-served">` 標記 —— 網路正常時要看得到（network-first）、伺服器拖 6 秒時看不到（退回快取）且開頁 < 4.5 秒。逾時 0 → 標記看不到 → 紅；逾時拿掉 → 開頁 ≥ 6 秒 → 紅 |
+
+`scripts/serve.mjs` 現在有四種注入：`shouldFail`（404）、`shouldHang`（永遠不回應）、`delayMs`（拖幾毫秒）、`mutateHtml`（改寫 index.html）。
+沒傳就跟以前一模一樣。
 ## 無障礙與 PWA（批次 3，v0.7.20）
 
 `SPEC_全面優化.md` §3 A3～A7、A16。全部有 `uikittest`／`shelltest` 的斷言與突變守著。

@@ -35,8 +35,6 @@ export const KEEP_DAYS = 14;
 const REFETCH_MS = 30 * 60 * 1000; // 同一來源 30 分鐘內不重抓（PLAN §3）
 const TIMEOUT_MS = 8000;
 
-export function sourceById(id) { return SOURCES.find((s) => s.id === id) ?? null; }
-
 export function urlOf(source) {
   return source.via === 'worker' ? `${WORKER}/rss?src=${source.id}` : source.url;
 }

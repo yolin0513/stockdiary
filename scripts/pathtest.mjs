@@ -230,7 +230,10 @@ try {
         bars: [...view.querySelectorAll('.bar-row')].map((b) => ({
           industry: b.dataset.industry,
           pct: b.querySelector('.bar-pct')?.textContent,
-          fill: b.querySelector('.bar-fill')?.style.width,
+          // A8 之後寬度走 CSS 變數 --w（CSSOM），不是 style 屬性字串
+          fill: b.querySelector('.bar-fill')?.style.getPropertyValue('--w'),
+          fillPx: b.querySelector('.bar-fill') ? parseFloat(getComputedStyle(b.querySelector('.bar-fill')).width) : null,
+          trackPx: b.querySelector('.bar-track') ? parseFloat(getComputedStyle(b.querySelector('.bar-track')).width) : null,
         })),
       };
     }, { TODAY, PREV });
@@ -243,7 +246,11 @@ try {
     // 集中度只有一個產業 → 100%，不可以是 NaN 或 0
     eq(r.bars.length, 1, '產業分布只有一條');
     eq(r.bars[0].pct, '100.0%', '只有一檔就是 100.0%（不是 NaN、不是 0）');
-    eq(r.bars[0].fill, '100%', '條狀圖也畫滿');
+    eq(r.bars[0].fill, '100%', '條狀圖也畫滿（--w 是 100%）');
+    // CSP 的 style-src 沒有 unsafe-inline 之後，style 屬性字串會被**靜默**忽略 ——
+    // 長條寬度全變 0、畫面看起來很正常。所以要量瀏覽器真的畫出來的寬度，不能只看變數。
+    ok(r.bars[0].fillPx > 0 && r.bars[0].trackPx > 0 && Math.abs(r.bars[0].fillPx - r.bars[0].trackPx) < 2,
+      `長條真的畫滿了（fill ${r.bars[0].fillPx}px ≈ track ${r.bars[0].trackPx}px）—— CSS 變數沒被 CSP 擋掉`);
     // 母體是**一個字串**，所以它是空字串的時候這條也會通過 ——
     // 持股頁沒渲染出來的話，「沒有 NaN」就變成一句空話。先證明那一頁有東西。
     ok(r.holdingsText.length > 20 && r.holdingsText.includes('2330'),
@@ -1090,6 +1097,68 @@ try {
     srv11b.closeAllConnections?.();   // 斬掉那條永遠不回應的連線，close() 才不會等它
     srv11b.close();
     void navB;   // 逾時已經被 .catch 吞掉，這裡只是講明它不必等
+  }
+
+  section('路徑 12：導覽請求慢 6 秒 —— SW 3 秒就退回快取，開頁不能空等（B2）');
+  //
+  // sw.js 對導覽請求是 network-first。以前沒有逾時：GitHub Pages 慢或行動網路訊號差時，
+  // 開 App 要等到 fetch 自己失敗（可能幾十秒）才退回快取 —— 而 index.html 本來就在 SHELL 裡。
+  // 這裡讓伺服器把 index.html 拖 6 秒：第一次開（沒有 SW）真的會等 6 秒；
+  // SW 裝好之後再開，3 秒就該退回快取、畫面完整可用。
+  {
+    let slow = false;
+    let marker = '';
+    const { srv: srv12, port: port12 } = await listen(0, {
+      delayMs: (pn) => (slow && (pn === '/' || pn === '/index.html') ? 6000 : 0),
+      mutateHtml: (html) => (marker ? html.replace('<head>', `<head><meta name="x-served" content="${marker}">`) : html),
+    });
+    const ctx = await browser.createBrowserContext();
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(90000);
+
+    // 先正常開一次，讓 SW 裝好、快取填滿
+    await page.goto(`http://localhost:${port12}/`, { waitUntil: 'networkidle0' });
+    await page.waitForSelector('#view .card');
+    await page.waitForFunction(() => !!navigator.serviceWorker?.controller, { timeout: 30000 });
+    const ready = await page.evaluate(async () => {
+      const keys = await caches.keys();
+      const c = await caches.open(keys.find((k) => k.endsWith('-shell')));
+      return { controlled: !!navigator.serviceWorker.controller, indexCached: !!(await c.match('./index.html')) };
+    });
+    eq(ready.controlled, true, '（前提）SW 已經接手');
+    eq(ready.indexCached, true, '（前提）index.html 在 SHELL 快取裡 —— 退回快取才有東西可退');
+
+    // 對照 A：網路正常時拿到的是**網路版**（有標記）—— 逾時改成 0 的話這裡會紅
+    marker = 'network-' + Date.now();
+    await page.goto(`http://localhost:${port12}/`, { waitUntil: 'networkidle0' });
+    await page.waitForSelector('#view .card');
+    const fresh = await page.evaluate(() => document.querySelector('meta[name="x-served"]')?.content ?? null);
+    eq(fresh, marker, '（對照）網路正常：導覽拿到的是網路上那一份（有這次才塞進去的標記），不是快取');
+
+    // 慢 6 秒：SW 3 秒退回快取
+    slow = true;
+    marker = 'slow-' + Date.now();
+    const t0 = Date.now();
+    await page.goto(`http://localhost:${port12}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForSelector('#tabbar .tab', { timeout: 30000 });
+    await page.waitForSelector('#view .card', { timeout: 30000 });
+    const ms = Date.now() - t0;
+    const slowRes = await page.evaluate(() => ({
+      served: document.querySelector('meta[name="x-served"]')?.content ?? null,
+      tabs: document.querySelectorAll('#tabbar .tab').length,
+      cards: document.querySelectorAll('#view .card').length,
+      title: document.getElementById('topTitle').textContent,
+    }));
+    ok(ms < 4500, `伺服器拖 6 秒，開頁只花 ${ms}ms —— SW 3 秒就退回快取了（沒有逾時的話 ≥ 6000ms）`);
+    ok(ms >= 2500, `（前提）它真的等過那 3 秒（${ms}ms）—— 不是一開始就走快取（那樣對照 A 就不會過）`);
+    ok(slowRes.served !== marker, '慢的時候拿到的不是這次網路上那一份（是退回的快取）');
+    ok(slowRes.tabs >= 4 && slowRes.cards >= 1, `而且畫面是完整的殼（${slowRes.tabs} 格分頁、${slowRes.cards} 張卡），不是空白`);
+    ok(slowRes.title !== 'StockDiary', `頂列有畫出來（${slowRes.title}）`);
+
+    await page.close();
+    await ctx.close();
+    srv12.closeAllConnections?.();
+    srv12.close();
   }
 
   eq(pageErrors.filter((e) => !/favicon/.test(e)), [], '整段沒有未攔截的例外');

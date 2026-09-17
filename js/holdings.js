@@ -109,19 +109,16 @@ export async function changesOf(code) {
   return rows.sort((a, b) => a.date.localeCompare(b.date) || String(a.id).localeCompare(String(b.id)));
 }
 
-export async function allChanges() {
-  return db.getAll('changes');
-}
-
-export async function allPending() {
-  return pendingOf(await db.getAll('changes'));
-}
+/** 持股變動類型的中文。views/holding.js 與 views/plans.js 以前各抄一份（A15 收成一份）。 */
+export const CHANGE_KIND_LABEL = {
+  opening: '快速設定持股',
+  manual: '手動調整',
+  dca: '定期定額扣款',
+  dividendReinvest: '配息再投入',
+  stockDividend: '配股',
+};
 
 // ---------- 寫入 ----------
-
-function newId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 /** 把 holdings.shares 重算成「已確認變動的總和」。唯一會寫 shares 的地方。 */
 export async function recomputeShares(code) {
@@ -166,7 +163,7 @@ export async function addOpening({ code, shares, avgCost = null, date = localISO
     costNote: null,
   });
   await db.put('changes', {
-    id: newId(),
+    id: db.newId(),
     code: info.code,
     date,
     deltaShares: Number(shares),
@@ -191,7 +188,7 @@ export async function addChange({ code, date = localISODate(), deltaShares, pric
     throw new Error(`賣出 ${Math.abs(deltaShares)} 股會讓庫存變成負的（目前 ${current} 股）`);
   }
 
-  const id = newId();
+  const id = db.newId();
   await db.put('changes', {
     id, code: key, date, deltaShares: Number(deltaShares),
     price: price == null || price === '' ? null : Number(price),

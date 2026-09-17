@@ -584,7 +584,8 @@ input[type="file"]::file-selector-button {
 }
 .chart-col { flex: 1 1 0; min-width: 14px; display: flex; flex-direction: column; align-items: center; height: 100%; }
 .chart-bars { position: relative; flex: 1; width: 100%; display: flex; align-items: flex-end; }
-.chart-bar { position: absolute; bottom: 0; width: 100%; border-radius: 3px 3px 0 0; }
+/* 高度由 JS 用 CSSOM 設 --h（CSP 沒有 unsafe-inline，style 屬性字串會被靜默忽略） */
+.chart-bar { position: absolute; bottom: 0; width: 100%; border-radius: 3px 3px 0 0; height: var(--h, 0%); }
 .chart-bar-value { background: var(--accent); }
 .chart-bar-invested { background: var(--fg-muted); opacity: 0.85; width: 55%; left: 22.5%; }
 .chart-label { font-size: 0.7em; color: var(--fg-muted); margin-top: 4px; }
@@ -644,7 +645,7 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
 .bar-label { overflow-wrap: anywhere; }
 .bar-pct { flex: none; font-variant-numeric: tabular-nums; }
 .bar-track { height: .55em; min-height: 6px; border-radius: 999px; background: var(--bg-card-2); overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 999px; background: var(--gold); }
+.bar-fill { height: 100%; border-radius: 999px; background: var(--gold); width: var(--w, 0%); }
 
 /* 可收合清單的標題列。整條都是按鈕，特大字級時也好按。 */
 .collapse-head {
@@ -743,3 +744,7 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
   outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }
+
+/* A8：把僅有的幾處 inline style 收成 class，CSP 才拿得掉 unsafe-inline */
+.pre-line { white-space: pre-line; }
+.mt-12 { margin-top: 12px; }

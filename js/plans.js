@@ -144,10 +144,6 @@ export const reinvestChangeId = (eventId) => `rei:${eventId}`;
 
 // ---------- 讀寫 ----------
 
-function newId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 export async function list() {
   const rows = await db.getAll('plans');
   return rows
@@ -169,7 +165,7 @@ export async function save(plan) {
     throw new Error(`${info.code} ${info.name} 是${info.market}股票，這個版本拿不到它的收盤價，無法估算扣款股數`);
   }
   const row = {
-    id: plan.id || newId(),
+    id: plan.id || db.newId(),
     code: info.code,
     name: info.name,
     amount: Number(plan.amount),

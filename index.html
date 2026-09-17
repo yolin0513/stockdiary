@@ -9,7 +9,7 @@
   <meta name="color-scheme" content="dark" />
   <!-- 關鍵是 script-src 'self'：只跑本站自己的 JS。就算頁面被注入，也沒有程式碼
        能讀 IndexedDB 把 AI 金鑰送出去。connect-src 只開實際會連的幾個主機。 -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://www.twse.com.tw https://api.anthropic.com https://www.cnbc.com https://feeds.content.dowjones.io https://stockdiary-news.yolin0513.workers.dev; object-src 'none'; base-uri 'self'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://www.twse.com.tw https://api.anthropic.com https://www.cnbc.com https://feeds.content.dowjones.io https://stockdiary-news.yolin0513.workers.dev; object-src 'none'; base-uri 'self'; form-action 'none'" />
   <meta name="description" content="StockDiary 股息日記 — 記錄台股上市持股、每日結算當日損益、累積已領股利、除權息日曆與定期定額。純前端、免註冊、離線可用。不提供投資建議。" />
   <title>StockDiary 股息日記</title>
 
@@ -22,14 +22,14 @@
   <meta name="apple-mobile-web-app-title" content="股息日記" />
 
   <link rel="stylesheet" href="./css/style.css" />
-  <link rel="modulepreload" href="./js/app.js?v=stockdiary-v0.7.21" />
+  <link rel="modulepreload" href="./js/app.js?v=stockdiary-v0.7.22" />
   <link rel="modulepreload" href="./js/router.js" />
   <link rel="modulepreload" href="./js/store.js" />
   <link rel="modulepreload" href="./js/db.js" />
   <link rel="modulepreload" href="./js/ui.js" />
   <link rel="modulepreload" href="./js/shell.js" />
   <link rel="modulepreload" href="./js/prefs.js" />
-  <link rel="modulepreload" href="./js/views/home.js?v=stockdiary-v0.7.21" />
+  <link rel="modulepreload" href="./js/views/home.js?v=stockdiary-v0.7.22" />
 </head>
 <body>
   <div id="app">
@@ -52,6 +52,6 @@
   <noscript>StockDiary 需要啟用 JavaScript 才能執行。</noscript>
   <!-- 開機看門狗：普通 script、沒有 import，module 圖整張死掉時它還活著（見 js/bootguard.js） -->
   <script src="./js/bootguard.js"></script>
-  <script type="module" src="./js/app.js?v=stockdiary-v0.7.21"></script>
+  <script type="module" src="./js/app.js?v=stockdiary-v0.7.22"></script>
 </body>
 </html>

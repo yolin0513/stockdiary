@@ -8,17 +8,10 @@
 import { h, num, fmtMoneyMicro, fmtMoney, fmtPrice, fmtShares, fmtDate, toast, modal, confirmDialog, switchRow } from '../ui.js';
 import * as plans from '../plans.js';
 import * as holdings from '../holdings.js';
+import { CHANGE_KIND_LABEL } from '../holdings.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
 import { setTop, render } from '../shell.js';
-
-const KIND_LABEL = {
-  dca: '定期定額扣款',
-  dividendReinvest: '配息再投入',
-  manual: '手動調整',
-  stockDividend: '配股',
-  opening: '快速設定持股',
-};
 
 export default async function plansView() {
   setTop({ title: '定期定額' });
@@ -56,7 +49,7 @@ function pendingRow(c) {
     h('div', { class: 'row-head' },
       h('span', { class: 'row-code' }, fmtDate(c.date)),
       h('span', { class: 'row-name' }, `${c.code} ${info.found ? info.name : ''}`),
-      h('span', { class: 'tag' }, KIND_LABEL[c.kind] ?? c.kind),
+      h('span', { class: 'tag' }, CHANGE_KIND_LABEL[c.kind] ?? c.kind),
     ),
     h('p', { class: 'row-note muted sm' },
       c.note || '',
@@ -120,7 +113,6 @@ async function confirmFlow(c) {
       const added = Number(String(sharesInput.value).replace(/,/g, '').trim());
       toast(`已確認 ${c.code}：＋${fmtShares(added)} 股，持有 ${fmtShares(after?.shares)} 股`
         + (after?.avgCost != null ? `，均價 ${fmtPrice(after.avgCost)}` : ''), 4200);
-      store.notifyChanged();
     } catch (e) { toast(String(e.message || e)); return; }
   } else if (go === 'delete') {
     const yes = await confirmDialog(`刪掉 ${fmtDate(c.date)} 這筆待確認扣款？\n如果券商那天其實沒有扣款，刪掉是對的。`, { danger: true, okLabel: '刪掉' });

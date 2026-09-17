@@ -205,6 +205,20 @@ try {
   const rows = await page.$$eval('#view table.yearly tbody tr', (els) => els.length);
   eq(rows, 10, '逐年表有 10 列');
   const bars = await page.$$eval('#view .chart-col', (els) => els.length);
+  // A8：長條的高度走 CSS 變數 --h（CSSOM）。CSP 沒有 unsafe-inline 之後，style 屬性字串會被
+  // **靜默**忽略 —— 高度全變 0、圖表變成一排空底、畫面看起來很正常。所以要量瀏覽器真的畫出來的高度。
+  const barPx = await page.$$eval('#view .chart-bar-value', (els) => els.map((e) => ({
+    h: parseFloat(getComputedStyle(e).height),
+    v: e.style.getPropertyValue('--h'),
+    parent: parseFloat(getComputedStyle(e.parentElement).height),
+  })));
+  ok(barPx.length >= 5, `（前提）有 ${barPx.length} 根價值長條`);
+  everyOf(barPx, (b) => /^\d+(\.\d+)?%$/.test(b.v), '每一根的 --h 都是百分比');
+  ok(barPx.some((b) => b.h > 0), `長條真的有高度（最高 ${Math.max(...barPx.map((b) => b.h)).toFixed(1)}px）—— CSS 變數沒被 CSP 擋掉`);
+  everyOf(barPx.filter((b) => parseFloat(b.v) > 0), (b) => b.h > 0 && b.h <= b.parent + 1,
+    '--h > 0 的每一根，畫出來的高度都 > 0 且不超過容器');
+  // 對照：最高那根的 --h 應該接近 100%（逐年圖以最大值為滿）
+  ok(Math.max(...barPx.map((b) => parseFloat(b.v))) >= 99, '（對照）最高那根接近 100%');
   eq(bars, 10, '折線／長條圖有 10 根');
   const yearlyText = await page.$eval('#view [data-card="calcYearly"]', (el) => el.textContent.replace(/\s+/g, ' '));
   noneOf(BANNED.map((w) => ({ w, hit: yearlyText.includes(w) })), (x) => x.hit, '逐年表也沒有禁用詞');

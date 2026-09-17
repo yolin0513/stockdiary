@@ -13,10 +13,8 @@ let depth = 0;
 const trail = [];
 const scrollMemory = new Map();
 let curRaw = '/';
-let restoredScroll = false;
 
 function rememberScroll() { scrollMemory.set(curRaw, window.scrollY); }
-export function navRestoredScroll() { return restoredScroll; }
 
 export function route(pattern, handler) {
   const keys = [];
@@ -62,15 +60,6 @@ export function back(fallback = '/') {
   else navigate(fallback, { replace: true });
 }
 export function canGoBack() { return depth > 0; }
-
-export function resetHistory(path = '/') {
-  trail.length = 0;
-  trail.push(path);
-  depth = 0;
-  const target = '#' + path;
-  if ((location.hash || '#/') === target) resolve();
-  else location.replace(target);
-}
 
 function parse(hash) {
   const raw = (hash ?? location.hash).replace(/^#/, '') || '/';
@@ -124,7 +113,6 @@ async function renderOnce() {
   const my = paintGen;
   const { raw, path, query } = parse();
   const restore = scrollMemory.has(raw) ? scrollMemory.get(raw) : null;
-  restoredScroll = restore != null;
   curRaw = raw;
 
   for (const r of routes) {

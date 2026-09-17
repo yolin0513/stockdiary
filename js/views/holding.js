@@ -5,20 +5,13 @@
 
 import { h, num, fmtShares, fmtPrice, fmtDate, toast, modal, confirmDialog, NO_VALUE } from '../ui.js';
 import * as holdings from '../holdings.js';
+import { CHANGE_KIND_LABEL } from '../holdings.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
 import { STATUS_TEXT, BASIS_SOURCE_TEXT } from '../settle.js';
 import { setTop, render } from '../shell.js';
 import { navigate } from '../router.js';
 import { localISODate } from '../roc.js';
-
-const KIND_LABEL = {
-  opening: '快速設定持股',
-  manual: '手動調整',
-  dca: '定期定額扣款',
-  dividendReinvest: '配息再投入',
-  stockDividend: '配股',
-};
 
 export default async function holdingView(code) {
   const list = await holdings.list();
@@ -127,7 +120,7 @@ function changeRow(hd, c) {
   return h('div', { class: 'row', dataset: { changeId: c.id } },
     h('div', { class: 'row-head' },
       h('span', { class: 'row-code' }, fmtDate(c.date)),
-      h('span', { class: 'row-name' }, KIND_LABEL[c.kind] ?? c.kind),
+      h('span', { class: 'row-name' }, CHANGE_KIND_LABEL[c.kind] ?? c.kind),
       c.status === 'pending' ? h('span', { class: 'tag tag-warn' }, '待確認') : null,
     ),
     h('div', { class: 'row-side' },

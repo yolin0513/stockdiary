@@ -16,6 +16,13 @@ export function h(tag, props = {}, ...children) {
     if (v == null || v === false) continue;
     if (k === 'class') el.className = v;
     else if (k === 'dataset') Object.assign(el.dataset, v);
+    else if (k === 'style') {
+      // CSP 的 style-src 沒有 'unsafe-inline'：style="…" 屬性會被**靜默**忽略
+      // （長條圖寬度全變 0，畫面看起來很正常）。CSSOM（el.style.setProperty）不受限，
+      // 所以這裡只吃物件；字串一律丟錯，讓回頭路在測試裡就炸。
+      if (typeof v !== 'object') throw new TypeError(`h(): style 只接受物件（{ '--w': '40%' }），不接受字串「${v}」`);
+      for (const [prop, val] of Object.entries(v)) if (val != null) el.style.setProperty(prop, String(val));
+    }
     else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
     else if (URL_ATTRS.has(k)) {
       if (SAFE_URL.test(String(v).trim())) el.setAttribute(k, v);
@@ -117,7 +124,7 @@ export function modal({ title, body, actions, closeX = false }) {
 
 export async function confirmDialog(message, { danger = false, okLabel = '確定', cancelLabel = '取消' } = {}) {
   return modal({
-    body: h('p', { style: 'white-space:pre-line' }, message),
+    body: h('p', { class: 'pre-line' }, message),
     actions: [
       { label: cancelLabel, value: false },
       { label: okLabel, value: true, primary: !danger, danger },

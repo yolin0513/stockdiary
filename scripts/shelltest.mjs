@@ -524,6 +524,87 @@ section('更新流程不 unregister；看門狗不 import 任何東西');
   ok(/資料不會不見/.test(read('js/bootguard.js')), '救援卡先講「你的資料不會不見」');
 }
 
+section('CSP 沒有 unsafe-inline；程式裡沒有字串型 inline style（A8）');
+{
+  const csp = /content="([^"]*default-src[^"]*)"/.exec(read('index.html'))?.[1] ?? '';
+  ok(csp.length > 50, `（前提）讀得到 CSP：${csp.slice(0, 60)}…`);
+  const styleSrc = /style-src ([^;]+)/.exec(csp)?.[1] ?? '';
+  ok(styleSrc.length > 0, `（前提）有 style-src：${styleSrc}`);
+  ok(!/unsafe-inline/.test(styleSrc), "style-src 沒有 'unsafe-inline'（頁面被注入時也塞不進 style 屬性）");
+  ok(/script-src 'self'(;|$)/.test(csp), "（對照）script-src 仍然只有 'self'");
+
+  // 字串型的 style: 在 CSP 下會被**靜默**忽略（長條圖寬度全變 0，畫面看起來很正常）。
+  // h() 現在對字串直接丟錯，這裡再用靜態掃描擋一次 —— 兩道都要有：
+  // 丟錯只在那段程式跑到時才會炸，靜態掃描連沒被測試跑到的頁也擋得到。
+  const srcFiles = [...fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js')).map((f) => `js/${f}`),
+    ...fs.readdirSync(path.join(ROOT, 'js/views')).filter((f) => f.endsWith('.js')).map((f) => `js/views/${f}`)];
+  const STRING_STYLE = /\bstyle:\s*(['"`])/;
+  const hits = [];
+  for (const rel of srcFiles) {
+    const src = stripComments(read(rel));
+    src.split('\n').forEach((line, i) => { if (STRING_STYLE.test(line)) hits.push(`${rel}:${i + 1}`); });
+  }
+  ok(srcFiles.length > 30, `（前提）掃了 ${srcFiles.length} 支程式`);
+  eq(hits, [], 'h() 的呼叫裡沒有任何字串型 style:（要用物件走 CSSOM）');
+  detects((line) => STRING_STYLE.test(line), {
+    shouldHit: ["h('p', { style: 'white-space:pre-line' }, x)", 'style: `height:${pct}%`', 'style: "margin-top:12px"'],
+    shouldMiss: ["h('div', { style: { '--w': '40%' } })", "el.style.setProperty('--w', '40%')", 'const style = getComputedStyle(el)'],
+  }, '（對照）判準抓得到字串型、放得過物件型與 CSSOM');
+}
+
+section('零使用的匯出：App 與測試都沒人用的 export 要清掉（A11）');
+//
+// 稽核（SPEC §1.2）量到 12 個完全沒人用的匯出；其中一個（setCap）是「畫面承諾了卻沒做」，
+// 一個（subscribe）到 A9 才真的有訂閱者。這裡把「零使用」變成一條會紅的斷言：
+// 母體是 js/ 底下**每一個** export 的宣告，逐一到 js/ 與 scripts/ 數引用。
+// 只有測試在用的保留（純函式給測試直接呼叫是這個專案的設計）。
+{
+  const jsFiles = [...fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js')).map((f) => `js/${f}`),
+    ...fs.readdirSync(path.join(ROOT, 'js/views')).filter((f) => f.endsWith('.js')).map((f) => `js/views/${f}`)];
+  // mutationtest.mjs 要排除：它的 find／replace 字串是**別的檔案的原始碼片段**（第 30 條註明過的性質），
+  // 不是任何 export 的消費者。不排除的話，「塞一個沒人用的匯出」那條突變會被它自己的 replace 字串
+  // 算成有人用 —— 實測過，掃描因此沒紅。
+  const scriptFiles = fs.readdirSync(path.join(ROOT, 'scripts'))
+    .filter((f) => f.endsWith('.mjs') && f !== 'mutationtest.mjs')
+    .map((f) => `scripts/${f}`);
+  // 語料：js/、scripts/、sw.js、index.html。**這一節自己要排除** —— 允許清單那一行寫著被允許的名字，
+  // 不排除的話它會把自己算成「有人用」（實際發生過：ratio 因此被判成有人用）。
+  const SELF_START = "section('零使用的匯出";
+  const corpus = [...jsFiles, ...scriptFiles, 'sw.js', 'index.html'].map((rel) => {
+    let src = stripComments(read(rel));
+    if (rel === 'scripts/shelltest.mjs') {
+      const i = src.indexOf(SELF_START);
+      const j = src.indexOf("\nsection('", i + 1);
+      if (i >= 0) src = src.slice(0, i) + (j >= 0 ? src.slice(j) : '');
+    }
+    return { rel, src };
+  });
+
+  const decls = [];
+  for (const rel of jsFiles) {
+    const src = stripComments(read(rel));
+    for (const m of src.matchAll(/^export (?:async )?(?:function|const|let|class) (\w+)/gm)) decls.push({ rel, name: m[1] });
+  }
+  ok(decls.length > 150, `（前提）js/ 底下有 ${decls.length} 個匯出宣告`);
+
+  const usesOf = (d) => corpus.reduce((n, f) => {
+    const rx = new RegExp(`\\b${d.name}\\b`, 'g');
+    let c = (f.src.match(rx) || []).length;
+    if (f.rel === d.rel) c -= 1;   // 自己的宣告那一行不算
+    return n + Math.max(0, c);
+  }, 0);
+  const unused = decls.filter((d) => usesOf(d) === 0).map((d) => `${d.rel}:${d.name}`);
+
+  // 允許清單要寫**理由**。money.js 在凍結區（SPEC §0），ratio 等解凍再收。
+  const ALLOW = { 'js/money.js:ratio': '凍結區（SPEC §0）：等 Yolin 給備份 JSON 與折數之後再一起收' };
+  const stray = unused.filter((u) => !(u in ALLOW));
+  eq(stray, [], `除了允許清單（${Object.keys(ALLOW).join('、')}），沒有任何匯出是 App 與測試都沒人用的`);
+  everyOf(Object.keys(ALLOW), (k) => unused.includes(k), '（對照）允許清單裡的每一個都真的還沒人用 —— 有人用了就該從清單拿掉');
+  // 對照：判準真的算得出「有人用」
+  ok(usesOf({ rel: 'js/ui.js', name: 'h' }) > 100, `（對照）ui.h 被引用 ${usesOf({ rel: 'js/ui.js', name: 'h' })} 次 —— 計數器不是永遠回 0`);
+  ok(usesOf({ rel: 'js/store.js', name: 'subscribe' }) >= 2, '（對照）store.subscribe 從 A9 起真的有人用（progressLine），不能再當死 API');
+}
+
 section('sw.js 不會快取外部請求');
 ok(/url\.origin !== self\.location\.origin/.test(swSource) &&
   /if \(url\.origin !== self\.location\.origin\) return;/.test(swSource),
@@ -552,6 +633,24 @@ try {
   ok((await page.$$('#tabbar .tab')).length >= 2, '底部分頁畫出來了');
   const title = await page.$eval('#topTitle', (el) => el.textContent);
   ok(title.includes('StockDiary'), `頂列標題：「${title}」`);
+
+  section('h() 對字串型 style 直接丟錯，物件型走 CSSOM（A8）');
+  // CSP 沒有 unsafe-inline 之後，style 屬性字串會被瀏覽器靜默忽略 —— 長條圖寬度全變 0，
+  // 畫面看起來很正常。h() 丟錯讓回頭路在測試裡就炸；靜態掃描是第二道。
+  const styleProbe = await page.evaluate(async () => {
+    const { h } = await import('./js/ui.js');
+    let threw = null;
+    try { h('div', { style: 'width:40%' }); } catch (e) { threw = String(e.message || e); }
+    const ok1 = h('div', { class: 'bar-fill', style: { '--w': '40%' } });
+    document.body.append(ok1);
+    const w = ok1.style.getPropertyValue('--w');
+    const attr = ok1.getAttribute('style');
+    ok1.remove();
+    return { threw, w, attr };
+  });
+  ok(styleProbe.threw != null && /style 只接受物件/.test(styleProbe.threw), `字串型 style 直接丟錯：「${styleProbe.threw}」`);
+  eq(styleProbe.w, '40%', '物件型 style 走 CSSOM 設得進去（--w = 40%）');
+  ok(typeof styleProbe.attr === 'string' && styleProbe.attr.includes('--w'), '（對照）設完之後 style 屬性上看得到那個變數 —— CSSOM 寫入不受 CSP 限制');
 
   section('h() 不接受 html: prop');
   const hRes = await page.evaluate(async () => {

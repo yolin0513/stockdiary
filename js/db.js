@@ -36,6 +36,11 @@ export const STORE_NAMES = Object.keys(STORES);
  * 實測過：匯入一份 holdings 裡有一列缺 code 的檔案，原本的 0050／2330 不見了、
  * 只剩壞檔裡的 1101，而 changes／plans 還是舊的 —— 資料庫進入自相矛盾的狀態。
  */
+/** 新紀錄的 id：時間戳＋亂數。holdings 與 plans 以前各有一份一模一樣的（A15 收成一份）。 */
+export function newId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function keyPathOf(store) {
   return STORES[store]?.keyPath ?? null;
 }

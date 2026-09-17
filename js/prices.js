@@ -72,16 +72,6 @@ export async function getClose(code, date) {
   return row ?? null;
 }
 
-/** 一次讀多檔某一天的收盤。 */
-export async function getCloses(codes, date) {
-  const out = {};
-  for (const code of codes) {
-    const row = await db.get('closes', [code, date]);
-    if (row) out[code] = row;
-  }
-  return out;
-}
-
 /**
  * 組出結算用的 quotes：今日收盤 ＋ 前一交易日收盤 ＋ 除權息標記。
  *

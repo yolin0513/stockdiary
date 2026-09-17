@@ -232,7 +232,6 @@ async function addFlow() {
   try {
     await holdings.addOpening({ code: info.code, shares, avgCost, date: localISODate() });
     toast(`已加入 ${info.code} ${info.name}`);
-    store.notifyChanged();
     // 新增了持股就重新結算一次（這時候才有東西要算）
     store.update({ force: true }).then(() => holdingsView());
     holdingsView();
@@ -275,7 +274,7 @@ function bar(r) {
       h('span', { class: 'bar-label' }, r.industry),
       h('span', { class: 'bar-pct' }, `${pct.toFixed(1)}%`)),
     h('div', { class: 'bar-track' },
-      h('div', { class: 'bar-fill', style: `width: ${Math.max(0, Math.min(100, pct))}%` })),
+      h('div', { class: 'bar-fill', style: { '--w': `${Math.max(0, Math.min(100, pct))}%` } })),
     h('p', { class: 'muted sm' }, `${r.codes.join('、')}　${fmtMoneyMicro(r.valueMicro)} 元`));
 }
 
