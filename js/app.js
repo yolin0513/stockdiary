@@ -134,10 +134,35 @@ async function forceUpdate() {
 }
 
 // ---------- 啟動 ----------
+/**
+ * 開機等 store.init() **最多**這麼久。
+ *
+ * 使用者回報（v0.7.18）：按下「更新」之後只剩標題列、下面整片空白，只能把 App 滑掉重開。
+ * 連底部分頁都沒有 —— 分頁是 renderTabs() 畫的、標題列是 index.html 靜態的，
+ * 所以那一刻 boot() 卡在 startRouter() 之前，也就是卡在 await store.init()。
+ * iOS Safari 在 Service Worker 剛換手（reload 落在 activate 進行中）時，
+ * 之後的 fetch／IndexedDB 有機會永遠不回來 —— AbortSignal.timeout 也救不了吊死的請求。
+ *
+ * 所以開機不能無條件等：時間到就先把路由與分頁畫出來（每一頁本來就會對
+ * 「尚未取得代號表／開休市日」講清楚），資料晚到再 refresh()。
+ */
+const BOOT_DEADLINE_MS = 6000;
+
 (async function boot() {
   setSlowIndicator(() => { if (viewIsEmpty()) renderLoading(); });
   renderLoading();
-  await store.init();
+
+  let initDone = false;
+  const initP = store.init()
+    .catch((e) => { console.warn('store.init 失敗，先開畫面', e); })
+    .then(() => { initDone = true; });
+  await Promise.race([initP, new Promise((r) => setTimeout(r, BOOT_DEADLINE_MS))]);
+  if (!initDone) {
+    console.warn(`store.init 超過 ${BOOT_DEADLINE_MS}ms 還沒回來，先開畫面`);
+    // 晚到的資料回來時重畫目前這一頁（走 router.refresh()，受同一套守門保護）
+    initP.then(() => refresh());
+  }
+
   prefs.applyFontScale();
   startRouter();
   renderTabs();
@@ -184,7 +209,18 @@ function setupUpdates(reg) {
   let reloading = false;
   let firstControl = !navigator.serviceWorker.controller;
 
-  const reload = () => { if (!reloading) { reloading = true; location.reload(); } };
+  // 不在 controllerchange 的當下同步 reload。
+  // 那一刻新 SW 還在 activate（clients.claim() 是在 activate 的 waitUntil 裡呼叫的），
+  // iOS Safari 在這個空窗 reload 有機會讓新文件的請求全部吊死 —— 畫面就停在空白。
+  // 等 navigator.serviceWorker.ready（activate 完全結束）再多讓一個 tick，才重載。
+  const reload = () => {
+    if (reloading) return;
+    reloading = true;
+    const go = () => location.reload();
+    const ready = navigator.serviceWorker?.ready ?? Promise.resolve();
+    Promise.race([ready, new Promise((r) => setTimeout(r, 3000))])
+      .then(() => setTimeout(go, 250), () => setTimeout(go, 250));
+  };
 
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (firstControl) { firstControl = false; return; }

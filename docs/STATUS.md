@@ -22,7 +22,7 @@
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **212 條突變**逐一證明關鍵斷言改壞會紅。
+測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **214 條突變**逐一證明關鍵斷言改壞會紅。
 （這兩個數字由 `npm run doctest` 從程式數出來核對 —— 文件漂移過一次：STATUS 與 README 都停在 138，實際已經 182。）
 突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
 （所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
@@ -320,6 +320,24 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
     · 底下那個例外（settings 為什麼在他的手機上炸）**還沒找到**。這一版的目的是讓他下次能截圖。
       能想到而且實測排除的：BigInt 混進 `capMicroUsd`／`usedMicroUsd`（會炸，但 `save()`／`addUsage` 一直存 Number）、
       overlay／pointer-events、`renderIsStale` 卡死、更新提示列蓋住分頁。
+38. **開機不能無條件等資料 —— `await store.init()` 卡住，整個 App 就只剩標題列。**
+    v0.7.18 上線後 Yolin 回報：按下「更新」之後只剩最上面的標題列、下面整片空白，只能把 App 滑掉重開。
+    **連底部分頁都沒有**是關鍵線索：分頁是 `renderTabs()` 畫的、標題列是 index.html 靜態的，
+    所以那一刻 `boot()` 卡在 `startRouter()` 之前 —— 也就是卡在 `await store.init()`。
+    iOS Safari 在 Service Worker 剛換手（`location.reload()` 落在 activate 進行中、`clients.claim()` 那一瞬間）
+    時，新文件的 fetch／IndexedDB 有機會**永遠不回來**，`AbortSignal.timeout` 救不了吊死的請求。
+    MealMate 同一套開機碼，同一個症狀。
+    · v0.7.19 起：`BOOT_DEADLINE_MS = 6000`，`store.init()` 逾時或丟例外就照樣 `startRouter()` ＋ `renderTabs()`
+      （每一頁本來就會對「尚未取得」講清楚），資料晚到再 `refresh()`。
+    · 換版的 `reload()` 改成等 `navigator.serviceWorker.ready`（activate 完全結束）再多一個 tick 才重載，
+      不在 `controllerchange` 當下同步 reload。
+    · 斷言缺口：`upgradecheck` 點完「點一下更新」以前**只驗快取名稱換了** —— SW 換好、畫面沒畫出來，
+      它看不見。現在多驗：跑的是新版、分頁 ≥ 4 格、`#view` 至少一張卡、沒有轉圈圈、點分頁真的換頁。
+      `pathtest` 路徑 10 讓 `data/*.json` 的 fetch 永遠 pending（連 signal 都不理），量「導覽開始到第一張卡」
+      必須落在硬期限附近（實測 6123ms），並附「它真的等過 init（> 3000ms）」的前提。
+    · 兩條突變：期限拉到 60 秒 → pathtest 紅；重載後不畫分頁 → upgradecheck 紅。
+    · 通則：**任何「先等 X 再開畫面」的 await，都要問：X 永遠不回來時，使用者看到什麼？**
+      答案是「空白」的話，就要有硬期限。
 
 ## 非同步畫面的守門（v0.5.2，實際發生過的 bug）
 

@@ -104,6 +104,9 @@ async function freshApp(plan = {}, { seed = null } = {}) {
       // 換掉交易日曆 —— 驗「日曆快用完」與「已經跨年」用的。
       // 與其偽造 Date（會連動整個 App 的時間判斷），不如給一份真的快用完的日曆：
       // 驗到的是同一件事，而且更接近真實的失敗樣子。
+      // 開機時的靜態資料請求**永遠不回來**，而且不理 AbortSignal ——
+      // 模擬 iOS 在 SW 剛換手時吊死的 fetch。真的吊死的請求正是這個樣子。
+      if (p.hangData && /data\/(calendar|stocks|dividends)\.json/.test(url)) return new Promise(() => {});
       if (p.calendarJson && url.includes('data/calendar.json')) return json(p.calendarJson);
       if (!url.includes('twse.com.tw')) return real(input, init);
       window.__calls.push({ url, at: Date.now() });
@@ -919,6 +922,56 @@ try {
     noneOf([over.homeText], (t) => /當日損益\s*[+-]?[\d,]+\s*元/.test(t),
       '畫面上沒有生出一個假的當日損益數字');
     await pageOver.close();
+  }
+
+  section('路徑 10：開機時資料請求永遠不回來 —— 畫面不能停在空白');
+  //
+  // 使用者回報（v0.7.18）：按下「更新」之後只剩標題列、下面整片空白，只能把 App 滑掉重開。
+  // 連底部分頁都沒有 → boot() 卡在 await store.init()，路由與分頁根本沒啟動。
+  // iOS Safari 在 SW 剛換手時 fetch 有機會永遠不回來，AbortSignal.timeout 救不了吊死的請求。
+  //
+  // 這裡讓 data/*.json 的 fetch 永遠 pending（連 signal 都不理），
+  // 然後量「分頁與畫面多久出現」。開機有硬期限的話，幾秒內就要看得到。
+  {
+    const page = await freshApp({
+      dayAll: dayAllCsv(TODAY, [['2330', '台積電', 2410, '-40.0000']]),
+      hangData: true,
+    });
+    // freshApp() 回來時已經等到第一張卡了，所以時間要問頁面自己：
+    // performance.now() 是從這次導覽開始算的毫秒數 —— 那才是「使用者盯著空白等了多久」。
+    const st = await page.evaluate(() => ({
+      tabs: document.querySelectorAll('#tabbar .tab').length,
+      cards: document.querySelectorAll('#view .card').length,
+      firstCardAt: Math.round(performance.now()),
+      // 資料真的沒回來（前提）：不然這一節等於在測正常開機
+      catalogLoaded: !!document.querySelector('#view [data-card="start"]'),
+    }));
+    ok(st.tabs >= 4, `資料請求吊死，底部分頁仍然出現了（${st.tabs} 格）`, 'boot() 卡在 store.init()，分頁沒畫');
+    ok(st.cards >= 1, `畫面也畫出來了，不是一片空白（${st.cards} 張卡）`);
+    // 硬期限是 6 秒。沒有期限的話：fetch 有 15 秒 timeout 的會等到 15 秒，
+    // 吊死不理 signal 的（這一節就是）會**永遠**等不到 —— freshApp 自己就先逾時了。
+    ok(st.firstCardAt < 9000,
+      `從導覽開始到第一張卡只花 ${st.firstCardAt}ms（硬期限 6000ms ＋ 餘裕）—— 不是等到 15 秒 timeout`);
+    ok(st.firstCardAt > 3000,
+      `（前提）它真的等過 store.init（${st.firstCardAt}ms > 3000ms）—— 資料請求確實被吊住了，不是正常開機`);
+
+    const after = await page.evaluate(async () => {
+      const text = document.querySelector('#view').textContent.replace(/\s+/g, ' ');
+      // 分頁點得動
+      document.querySelector('#tabbar .tab[href="#/settings"]').click();
+      await new Promise((r) => setTimeout(r, 800));
+      return {
+        text,
+        title: document.getElementById('topTitle').textContent,
+        settingsText: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
+      };
+    });
+    ok(/尚未取得|還沒有持股|開始使用|尚未結算/.test(after.text),
+      `畫面講得出現在的狀態：「${after.text.slice(0, 60)}」`);
+    eq(after.title, '設定', '點底部分頁真的能換頁（不是畫出來了但點不動）');
+    ok(/尚未取得/.test(after.settingsText), '設定頁對拿不到的資料講「尚未取得」，不假裝有');
+    noneOf([after.settingsText], (t) => /NaN|undefined|null/.test(t), '沒有 NaN／undefined 漏出來');
+    await page.close();
   }
 
   eq(pageErrors.filter((e) => !/favicon/.test(e)), [], '整段沒有未攔截的例外');

@@ -213,6 +213,27 @@ try {
         return (names.map((n) => (/stockdiary-v[\d.]+/.exec(n) || [])[0]).filter(Boolean)[0]) ?? null;
       });
       eq(after, NEW_VERSION, '點下「點一下更新」之後就換到新版了');
+
+      // **更新之後畫面不能是空的。** 使用者回報（v0.7.18）：按下更新只剩標題列、
+      // 下面整片空白，只能把 App 滑掉重開。以前這裡只驗「快取名稱換了」——
+      // SW 換好了、畫面卻沒畫出來，這條斷言看不見。
+      await b.page.waitForSelector('#view .card', { timeout: 15000 }).catch(() => {});
+      const screen = await b.page.evaluate(async () => {
+        const running = (await import('./js/version.js')).APP_VERSION;
+        const tabs = document.querySelectorAll('#tabbar .tab').length;
+        const cards = document.querySelectorAll('#view .card').length;
+        const text = document.querySelector('#view').textContent.replace(/\s+/g, ' ');
+        const spinner = !!document.querySelector('#view .wait-box');
+        // 可互動：點一個分頁要換得了頁
+        document.querySelector('#tabbar .tab[href="#/settings"]')?.click();
+        await new Promise((r) => setTimeout(r, 800));
+        return { running, tabs, cards, text, spinner, titleAfterTap: document.getElementById('topTitle').textContent };
+      });
+      eq(screen.running, NEW_VERSION, '重載之後真的在跑新版');
+      ok(screen.tabs >= 4, `底部分頁在（${screen.tabs} 格）—— 不是只剩標題列`);
+      ok(screen.cards >= 1, `畫面畫出來了（${screen.cards} 張卡），不是一片空白`);
+      ok(!screen.spinner, '也不是卡在「載入中…」的轉圈圈');
+      eq(screen.titleAfterTap, '設定', '而且點得動：點底部「設定」真的換頁');
     }
     await b.page.close();
   }

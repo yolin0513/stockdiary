@@ -1844,6 +1844,22 @@ const MUTATIONS = [
     replace: '      h(\'p\', { class: \'mono sm\', dataset: { field: \'viewErrorMessage\' } }, \'（略）\'),',
     test: 'shelltest',
   },
+  {
+    name: '開機沒有硬期限（store.init 吊死就整個不開）',
+    why: '使用者回報：按下「更新」之後只剩標題列、下面整片空白，只能把 App 滑掉重開。iOS 在 SW 剛換手時 fetch／IndexedDB 有機會永遠不回來，boot() 無條件等 store.init() 的話，路由與分頁永遠不啟動。把期限拉到 60 秒等於沒有期限：pathtest 路徑 10 的 freshApp 會先逾時。',
+    file: 'js/app.js',
+    find: 'const BOOT_DEADLINE_MS = 6000;',
+    replace: 'const BOOT_DEADLINE_MS = 60000;',
+    test: 'pathtest',
+  },
+  {
+    name: '換版重載之後路由沒啟動（畫面就是那片空白）',
+    why: '「更新之後畫面是空的」以前沒有任何斷言看得見 —— upgradecheck 只驗快取名稱換了。重載後 boot() 若走不到 startRouter()，沒有任何 view 會被 render，分頁與卡片都不會出現，使用者看到的正是「只剩標題列、下面整片空白」。（第一版突變改的是 boot 裡的 renderTabs()，但 shell.render() 自己也會畫分頁，拿掉沒效果 —— 第 34 條那種改在死路上。）',
+    file: 'js/app.js',
+    find: '  prefs.applyFontScale();\n  startRouter();',
+    replace: '  prefs.applyFontScale();\n  // startRouter();',
+    test: 'upgradecheck',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

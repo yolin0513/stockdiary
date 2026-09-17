@@ -1,6 +1,6 @@
 {
   "name": "stockdiary",
-  "version": "0.7.18",
+  "version": "0.7.19",
   "description": "StockDiary 股息日記 — 免帳號、純前端、離線可用的台股上市持股記帳 PWA：每日結算當日損益、累積已領股利、除權息日曆、定期定額與試算器。不含任何投資建議。",
   "type": "module",
   "private": true,
