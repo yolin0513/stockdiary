@@ -537,6 +537,99 @@ try {
   everyOf(counted, (c) => c.n >= 3, '每一頁每一種字級都至少掃到 3 個可點元素（沒有哪一頁是空的）');
   eq(tooSmall, [], '沒有任何可點元素低於 44px');
 
+  section('設定頁每一個控制項都點得到，而且點了有反應');
+  //
+  // 使用者回報（v0.7.17）：「設定頁無法點擊」。桌面、手機視口、有無金鑰、換版路徑
+  // 全部重現不出來 —— 但這個 App 到那時為止**沒有任何一條斷言**在守「設定頁的每個
+  // 控制項都真的點得到」。有沒有 overlay 蓋住、有沒有例外讓整頁事件失效、
+  // 點下去狀態有沒有變 —— 這三件事分開驗。
+  //
+  // 「點得到」用 elementFromPoint 驗：那是瀏覽器自己的命中測試，
+  // 任何 z-index／pointer-events／位移造成的遮蔽都逃不過它。
+  // 「有反應」用真的 click 驗：狀態（aria-checked、location.hash）要真的變。
+  {
+    const errsBefore = pageErrors.length;
+    const r = await page.evaluate(async () => {
+      const secrets = await import('./js/secrets.js');
+      const prefs = await import('./js/prefs.js');
+      const settings = await import('./js/views/settings.js');
+      // 種一把假金鑰：有金鑰才會畫「AI 金鑰」那張卡（用量上限欄位在那裡）
+      if (!(await secrets.hasKey())) await secrets.save({ key: 'sk-ant-api03-' + 'A'.repeat(50) });
+
+      const scan = async () => {
+        location.hash = '#/settings';
+        await settings.default();
+        await new Promise((z) => setTimeout(z, 300));
+        const els = [...document.querySelectorAll(
+          '#view button, #view [role="switch"], #view input, #view select, #tabbar .tab')];
+        const blocked = [];
+        const noPointer = [];
+        for (const el of els) {
+          el.scrollIntoView({ block: 'center' });
+          await new Promise((z) => setTimeout(z, 15));
+          const b = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          const label = (el.textContent || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 14);
+          if (!(hit && (hit === el || el.contains(hit)))) {
+            blocked.push({ label, hit: hit ? `${hit.tagName}.${hit.className}` : null });
+          }
+          for (let a = el; a; a = a.parentElement) {
+            if (getComputedStyle(a).pointerEvents === 'none') { noPointer.push(label); break; }
+          }
+        }
+        window.scrollTo(0, 0);
+        return { count: els.length, blocked, noPointer,
+          cards: [...document.querySelectorAll('#view .card')].map((c) => c.dataset.card ?? c.querySelector('.card-title')?.textContent ?? '?') };
+      };
+
+      const md = await scan();
+      await prefs.set('fontSize', 'xl');
+      const xl = await scan();
+      await prefs.set('fontSize', 'md');
+      await settings.default();
+      await new Promise((z) => setTimeout(z, 300));
+
+      // 真的點：開關要翻、分頁要走
+      const sw = document.querySelector('#view [role="switch"]');
+      const swBefore = sw.getAttribute('aria-checked');
+      sw.click();
+      await new Promise((z) => setTimeout(z, 300));
+      const swAfter = document.querySelector('#view [role="switch"]').getAttribute('aria-checked');
+      sw.click();   // 翻回去，不留副作用
+      await new Promise((z) => setTimeout(z, 200));
+
+      const capField = document.querySelector('#view [data-field="aiCap"]');
+      const capBtn = [...document.querySelectorAll('#view button')].find((b) => b.textContent === '儲存上限');
+      const capBefore = (await secrets.status()).capMicroUsd;
+      capField.value = '3.25';
+      capBtn.click();
+      await new Promise((z) => setTimeout(z, 400));
+      const capAfter = (await secrets.status()).capMicroUsd;
+      await secrets.setCap(capBefore);
+
+      const homeTab = document.querySelector('#tabbar .tab[href="#/"]');
+      homeTab.click();
+      await new Promise((z) => setTimeout(z, 500));
+      const hashAfterTab = location.hash;
+
+      return { md, xl, swBefore, swAfter, capBefore, capAfter, hashAfterTab };
+    });
+
+    ok(r.md.cards.includes('aiKeyConfigured'),
+      `（前提）有金鑰，所以「AI 金鑰」那張卡在畫面上（${r.md.cards.join('、')}）`);
+    ok(r.md.count >= 20, `（前提）設定頁＋分頁列掃到 ${r.md.count} 個控制項`);
+    eq(r.md.blocked, [], '標準字級：每一個控制項的中心點，命中測試都打到它自己（沒有東西蓋在上面）');
+    eq(r.md.noPointer, [], '標準字級：沒有任何控制項或它的祖先被設成 pointer-events: none');
+    eq(r.xl.count, r.md.count, '特大字級下控制項數量一樣（沒有哪個因為版面擠掉而消失）');
+    eq(r.xl.blocked, [], '特大字級：命中測試一樣全部打到自己');
+    eq(r.xl.noPointer, [], '特大字級：一樣沒有 pointer-events: none');
+
+    ok(r.swBefore !== r.swAfter, `真的點開關，狀態真的翻了（${r.swBefore} → ${r.swAfter}）`);
+    eq(r.capAfter, 3250000, `真的點「儲存上限」，設定真的存進去了（${r.capBefore} → ${r.capAfter} 微美金）`);
+    eq(r.hashAfterTab, '#/', '從設定頁點底部的「總覽」分頁，真的走得出去');
+    eq(pageErrors.length, errsBefore, '整段沒有新的頁面例外（例外會讓整頁事件失效，那正是「無法點擊」的一種成因）');
+  }
+
   eq(pageErrors, [], '整段沒有未攔截的例外');
 } finally {
   await browser.close();

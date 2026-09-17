@@ -1804,6 +1804,30 @@ const MUTATIONS = [
     replace: '    const note = null;',
     test: 'holdingtest',
   },
+  {
+    name: '設定頁：畫到一半丟例外',
+    why: '使用者回報「設定頁無法點擊」。一個沒被攔住的例外會讓 render() 根本沒跑到 —— 畫面停在上一頁的內容、什麼都點不動，而且不會有任何提示。',
+    file: 'js/views/settings.js',
+    find: '  const key = await secrets.status();',
+    replace: '  const key = await secrets.status(); if (key) throw new Error(\'設定頁畫到一半壞掉\');',
+    test: 'uikittest',
+  },
+  {
+    name: '設定頁：一張卡片變成整頁遮罩',
+    why: '任何 position: fixed; inset: 0 的東西（例如沒收乾淨的 modal 遮罩）都會讓整頁看起來正常、卻什麼都點不到。命中測試（elementFromPoint）是唯一抓得到這種事的斷言。',
+    file: 'js/views/settings.js',
+    find: '  return h(\'section\', { class: \'card\', dataset: { card: \'about\' } },',
+    replace: '  return h(\'section\', { class: \'card modal-overlay\', dataset: { card: \'about\' } },',
+    test: 'uikittest',
+  },
+  {
+    name: '設定頁：開關點了不會翻',
+    why: '「點得到」跟「點了有反應」是兩件事。事件處理器綁壞了的話，命中測試照樣全過，只有真的去點、再看狀態有沒有變，才抓得到。',
+    file: 'js/ui.js',
+    find: '  sw.addEventListener(\'click\', toggle);',
+    replace: '  sw.addEventListener(\'dblclick\', toggle);',
+    test: 'uikittest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
