@@ -1,6 +1,6 @@
 {
   "name": "stockdiary",
-  "version": "0.1.0",
+  "version": "0.7.16",
   "description": "StockDiary 股息日記 — 免帳號、純前端、離線可用的台股上市持股記帳 PWA：每日結算當日損益、累積已領股利、除權息日曆、定期定額與試算器。不含任何投資建議。",
   "type": "module",
   "private": true,
@@ -22,8 +22,9 @@
     "parsetest": "node scripts/parsetest.mjs",
     "datatest": "node scripts/datatest.mjs",
     "shelltest": "node scripts/shelltest.mjs",
+    "doctest": "node scripts/doctest.mjs",
     "mutationtest": "node scripts/mutationtest.mjs",
-    "test": "node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/settletest.mjs && node scripts/changestest.mjs && node scripts/dividendtest.mjs && node scripts/plantest.mjs && node scripts/calctest.mjs && node scripts/throttletest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/holdingtest.mjs && node scripts/eventtest.mjs && node scripts/dcatest.mjs && node scripts/calcviewtest.mjs && node scripts/versionmixtest.mjs && node scripts/racetest.mjs && node scripts/newstest.mjs && node scripts/secret-leak-test.mjs && node scripts/insighttest.mjs && node scripts/backuptest.mjs && node scripts/concentrationtest.mjs && node scripts/layouttest.mjs && node scripts/uikittest.mjs && node scripts/divrecordtest.mjs && node scripts/scenariotest.mjs && node scripts/pathtest.mjs && node scripts/mutationtest.mjs",
+    "test": "node scripts/doctest.mjs && node scripts/roctest.mjs && node scripts/fmttest.mjs && node scripts/parsetest.mjs && node scripts/settletest.mjs && node scripts/changestest.mjs && node scripts/dividendtest.mjs && node scripts/plantest.mjs && node scripts/calctest.mjs && node scripts/throttletest.mjs && node scripts/datatest.mjs && node scripts/shelltest.mjs && node scripts/holdingtest.mjs && node scripts/eventtest.mjs && node scripts/dcatest.mjs && node scripts/calcviewtest.mjs && node scripts/versionmixtest.mjs && node scripts/racetest.mjs && node scripts/newstest.mjs && node scripts/secret-leak-test.mjs && node scripts/insighttest.mjs && node scripts/backuptest.mjs && node scripts/concentrationtest.mjs && node scripts/layouttest.mjs && node scripts/uikittest.mjs && node scripts/divrecordtest.mjs && node scripts/scenariotest.mjs && node scripts/pathtest.mjs && node scripts/mutationtest.mjs",
     "livecheck": "node scripts/livecheck.mjs",
     "sweep": "node scripts/sweep.mjs",
     "observe-publish-time": "node scripts/observe-twse-publish-time.mjs",
@@ -58,7 +59,7 @@
     "uxshots": "node scripts/uxshots.mjs"
   },
   "devDependencies": {
-    "puppeteer": "^23.0.0",
-    "wrangler": "^4.129.0"
+    "puppeteer": "23.11.1",
+    "wrangler": "4.131.0"
   }
 }

@@ -234,6 +234,11 @@ try {
     eq(r.bars.length, 1, '產業分布只有一條');
     eq(r.bars[0].pct, '100.0%', '只有一檔就是 100.0%（不是 NaN、不是 0）');
     eq(r.bars[0].fill, '100%', '條狀圖也畫滿');
+    // 母體是**一個字串**，所以它是空字串的時候這條也會通過 ——
+    // 持股頁沒渲染出來的話，「沒有 NaN」就變成一句空話。先證明那一頁有東西。
+    ok(r.holdingsText.length > 20 && r.holdingsText.includes('2330'),
+      `（前提）持股頁真的畫出來了，共 ${r.holdingsText.length} 字`,
+      r.holdingsText.slice(0, 200));
     noneOf([r.holdingsText], (t) => /NaN|Infinity|undefined|null/.test(t),
       '畫面上沒有 NaN／Infinity／undefined');
     await page.close();

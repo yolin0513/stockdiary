@@ -24,6 +24,8 @@ const OUT = path.join(ROOT, 'assert-audit.jsonl');
 
 // 只跑不需要真網路、也不會改寫原始碼的那些（mutationtest 會跑別的測試，會重複計數）
 const TESTS = [
+  // 純靜態、最快，放第一個
+  'doctest',
   'roctest', 'fmttest', 'parsetest', 'settletest', 'changestest', 'dividendtest',
   'plantest', 'calctest', 'throttletest', 'datatest', 'shelltest', 'holdingtest',
   'eventtest', 'dcatest', 'calcviewtest', 'versionmixtest', 'racetest', 'newstest',

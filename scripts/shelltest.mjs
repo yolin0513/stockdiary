@@ -14,6 +14,7 @@ import puppeteer from 'puppeteer';
 import { ok, eq, section, done, noneOf, everyOf, detects } from './tap.mjs';
 import { listen } from './serve.mjs';
 import { stripComments } from './srcscan.mjs';
+import { selectAffected, moduleClosure, moduleRefsOf } from './affected.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -187,10 +188,12 @@ detects(
   '稽核器只管 JS 模組，抽掉非模組資產不會誤報'
 );
 
-section('版本號三個地方必須一致');
+section('版本號四個地方必須一致');
 // 這是「按按鈕跳回首頁」那個 bug 的結構性防線：
 // js/version.js（程式看得到的版本）、sw.js（快取名稱）、index.html（HTTP 快取鍵）
 // 只要有一個沒跟上，瀏覽器就可能把新舊檔案湊在一起。
+// 第四處 package.json 不影響執行期，但它停在 0.1.0 而 App 已經 0.7.x 的話，
+// 看 repo 的人會以為這個專案沒在動 —— 所以也一起釘住。
 const appVersion = /export const APP_VERSION = '([^']+)';/.exec(read('js/version.js'))?.[1];
 const APP_VERSION_IN_SRC = appVersion;
 const swVersion = /const VERSION = '([^']+)';/.exec(read('sw.js'))?.[1];
@@ -202,6 +205,13 @@ ok(/^stockdiary-v\d+\.\d+\.\d+$/.test(String(appVersion)), `js/version.js 的版
 ok(sameVersion(swVersion), 'sw.js 的 VERSION 與 js/version.js 一致', `sw.js 是 ${swVersion}`);
 ok(htmlStamps.length >= 2, `index.html 有 ${htmlStamps.length} 個帶版本的資源網址`);
 everyOf(htmlStamps, sameVersion, 'index.html 每一個 ?v= 都是同一個版本');
+// package.json 的 version 沒有 stockdiary-v 前綴（npm 的 semver 不吃）。
+// 補回前綴之後走**同一個** sameVersion 比對器 —— 分成兩份比對法的話，
+// 下面那條對照組就只驗到其中一份，另一份可以寬鬆到什麼都放行也沒人知道。
+const pkgVersion = JSON.parse(read('package.json')).version;
+ok(sameVersion(`stockdiary-v${pkgVersion}`),
+  `package.json 的 version 與 js/version.js 一致（${pkgVersion}）`,
+  `package.json 是 ${pkgVersion}，js/version.js 是 ${appVersion}`);
 // 對照組：上面三條都建立在「字串相等」上，所以要證明那個相等是**嚴格**的。
 // 反例以前只有一個（appVersion 自己），等於只驗了 `x !== x` 是 false ——
 // 那條幾乎什麼都沒守到。真正會出事的是**寬鬆比對**：包含、忽略大小寫、
@@ -333,6 +343,101 @@ detects(viewsWritingViewDirectly, {
     'mount(bar, ...tabs);',
   ],
 }, '這個稽核器抓得到繞過去的寫法，也不會亂抓');
+
+section('受影響的突變挑選器（mutationtest --changed）');
+//
+// 全套突變 3.5 小時，所以日常只跑「這次改動影響到的」那幾條。
+// 挑選器壞掉的樣子是**少挑了幾條** —— 跟全綠長得一模一樣，不會有人發現。
+// 所以它自己要被驗證，而且要用假資料驗（真資料會隨程式碼一起漂移）。
+
+const FAKE_MUTATIONS = [
+  { name: 'm1', file: 'js/settle.js', test: 'settletest' },
+  { name: 'm2', file: 'js/money.js', test: 'settletest' },
+  { name: 'm3', file: 'js/twse.js', test: 'parsetest' },
+  { name: 'm4', file: 'js/ui.js', test: 'uikittest' },
+  { name: 'm5', file: 'sw.js', test: 'shelltest' },
+];
+// 假的「這支測試碰得到哪些模組」表
+const FAKE_DEPS = {
+  settletest: ['js/settle.js', 'js/money.js'],
+  parsetest: ['js/twse.js'],
+  uikittest: ['js/ui.js', 'js/shell.js'],
+  shelltest: ['js/app.js', 'js/ui.js'],
+};
+const pick = (changed) =>
+  selectAffected(FAKE_MUTATIONS, changed, (t) => FAKE_DEPS[t] || []).map((m) => m.name);
+
+// 1. 突變要改的那個檔案被改了
+eq(pick(['js/twse.js']), ['m3'], '改到 js/twse.js → 只挑 parsetest 那條');
+
+// 2. 那支測試**間接**碰得到的模組被改了（m1 的檔案沒被改，但 settletest 用得到 money.js）
+eq(pick(['js/money.js']), ['m1', 'm2'],
+  '改到 js/money.js → settletest 的兩條都挑（m1 的 file 不是 money.js，靠相依挑到）');
+
+// 3. 測試檔自己被改了（斷言可能被改弱）
+eq(pick(['scripts/parsetest.mjs']), ['m3'], '改到 scripts/parsetest.mjs → 挑 parsetest 的突變');
+
+// 4. 一個模組被多支測試碰到
+eq(pick(['js/ui.js']), ['m4', 'm5'], '改到 js/ui.js → uikittest 與 shelltest 的都挑');
+
+// 對照組：**不該挑的真的沒挑到**。少了這條，一個「永遠全挑」的挑選器也會通過上面每一條。
+eq(pick(['docs/STATUS.md']), [], '只改文件 → 一條都不挑');
+eq(pick([]), [], '什麼都沒改 → 一條都不挑');
+ok(pick(['js/twse.js']).length < FAKE_MUTATIONS.length,
+  `挑選是有篩掉東西的（5 條裡只挑了 ${pick(['js/twse.js']).length} 條）`);
+
+// moduleRefsOf 要認得**兩種**根目錄不同的 import。
+// 只認 Node 端那種的話，所有端對端測試都會算成「沒碰到任何模組」——
+// 而那正是最需要跑的那幾支（pathtest、scenariotest 全靠瀏覽器端動態 import）。
+const FAKE_TEST_SRC = [
+  "import { makeCalendar } from '../js/market.js';",
+  "import { ok } from './tap.mjs';",
+  'const r = await page.evaluate(async () => {',
+  "  const db = await import('./js/db.js');",
+  "  const store = await import('./js/store.js');",
+  '});',
+  "// import('./js/註解裡的.js') 不算",
+].join('\n');
+const a17refs = moduleRefsOf(FAKE_TEST_SRC);
+ok(a17refs.includes('js/market.js'), `認得 Node 端的 '../js/market.js'：${a17refs.join(' ')}`);
+ok(a17refs.includes('js/db.js') && a17refs.includes('js/store.js'),
+  '也認得瀏覽器端 page.evaluate 裡的 ./js/*.js');
+noneOf(a17refs, (r) => r.includes('tap.mjs') || r.includes('註解'),
+  'scripts/ 之間的相依與註解裡的路徑都不算');
+
+// moduleClosure 要**遞移**展開。只展開一層的話，改 js/money.js 就挑不到任何東西——
+// 沒有任何測試直接 import 它，全是經由 settle.js／dividend.js 間接用到。
+const FAKE_FS = {
+  'scripts/faketest.mjs': "import { settle } from '../js/settle.js';",
+  'js/settle.js': "import { toMicro } from './money.js';\nimport { fmt } from './format.js';",
+  'js/money.js': '// 沒有 import',
+  'js/format.js': "import { x } from './money.js';",
+};
+const fakeRead = (rel) => {
+  if (!(rel in FAKE_FS)) throw new Error('沒這個檔：' + rel);
+  return FAKE_FS[rel];
+};
+const a17closure = moduleClosure('scripts/faketest.mjs', fakeRead).sort();
+eq(a17closure, ['js/format.js', 'js/money.js', 'js/settle.js'],
+  '遞移展開：直接 import settle.js，連帶把 money.js 與 format.js 都算進來');
+ok(!a17closure.includes('scripts/faketest.mjs'), '測試檔自己不算在模組清單裡');
+
+// 對照組：讀不到的檔案要跳過，不是整個爆掉
+const a17closure2 = moduleClosure('scripts/不存在.mjs', fakeRead);
+eq(a17closure2, [], '讀不到的測試檔回空陣列（不丟例外）');
+
+// 真資料抽查：挑選器接到真的突變清單時，至少要挑得出東西來。
+// 上面全是假資料 —— 少了這條，真實格式改了（例如 file 欄位改名）也不會有人發現。
+const realMutSrc = read('scripts/mutationtest.mjs');
+const realMuts = [...realMutSrc.matchAll(/name: '([^']+)',[\s\S]{0,400}?file: '([^']+)',[\s\S]{0,400}?test: '([^']+)',/g)]
+  .map((m) => ({ name: m[1], file: m[2], test: m[3] }));
+ok(realMuts.length > 100, `（前提）真的解析得出突變清單：${realMuts.length} 條`);
+const realPick = selectAffected(realMuts, ['js/twse.js'],
+  (t) => moduleClosure(`scripts/${t}.mjs`, (rel) => read(rel)));
+ok(realPick.length > 0 && realPick.length < realMuts.length,
+  `改 js/twse.js 從真清單挑出 ${realPick.length}/${realMuts.length} 條`);
+everyOf(realPick, (m) => m.file === 'js/twse.js' || moduleClosure(`scripts/${m.test}.mjs`, (rel) => read(rel)).includes('js/twse.js'),
+  '挑出來的每一條，不是檔案被改到就是測試碰得到那個檔');
 
 section('sw.js 不會快取外部請求');
 ok(/url\.origin !== self\.location\.origin/.test(swSource) &&

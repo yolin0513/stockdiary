@@ -1,6 +1,6 @@
 # StockDiary 專案狀態（docs/STATUS.md）
 
-> 最後更新：2026-09-11。**M0–M5 完成；M6 除 iPhone 實機驗收外已完成。**
+> 最後更新：2026-09-17。**M0–M6 全部完成**（iPhone 實機匯出一項待 Yolin 回報，見 `SPEC_全面優化.md` §4 B4）。
 > repo `yolin0513/stockdiary` 已建立並部署到 GitHub Pages。
 > 給下一個工作階段（Opus 5）快速接手用。規劃細節見 `PLAN.md`（唯一真相來源），實測見 `FEASIBILITY.md`。
 
@@ -14,7 +14,7 @@
 | M3 定期定額 | ✅ 完成 | `stockdiary-v0.4.0` |
 | M4 定期定額試算器 | ✅ 完成 | `stockdiary-v0.5.0` |
 | M5 新聞、Worker、今日觀察 | ✅ 完成 | `stockdiary-v0.6.2` |
-| M6 匯出／匯入、集中度、上線 | 🔄 進行中（匯出匯入 ✅、集中度 ✅、版面掃描 ✅；iPhone 實機驗收待使用者） | `stockdiary-v0.7.0` |
+| M6 匯出／匯入、集中度、上線 | ✅ 完成（匯出匯入 ✅、集中度 ✅、版面掃描 ✅；iPhone 實機**匯出備份檔**一項待 Yolin 回報） | `stockdiary-v0.7.15` |
 
 開發期的實測發現集中在 `FEASIBILITY.md` §10，其中三項推翻或補充了規劃階段的假設：
 
@@ -22,7 +22,8 @@
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：27 支測試＋突變套件，`npm run mutationtest` 用 **138 條突變**逐一證明關鍵斷言改壞會紅。
+測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **194 條突變**逐一證明關鍵斷言改壞會紅。
+（這兩個數字由 `npm run doctest` 從程式數出來核對 —— 文件漂移過一次：STATUS 與 README 都停在 138，實際已經 182。）
 突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
 （所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
 
@@ -50,6 +51,9 @@
 9. 每版流程：bump `sw.js` VERSION → `npm test` → commit/push → curl 確認線上 VERSION → `npm run sweep`（線上巡檢）→ 截圖放 `screenshots/features/`。
 10. 打真網路的測試（TWSE、RSS、Anthropic）**不進 `npm test`**，另開 `npm run livecheck`；TWSE 請求 ≥ 2 秒間隔，測試也一樣，**不要連打**（社群共識 3 次／5 秒會被封 IP）。
 11. 不動 `D:\Claude\App\TripQuest`、`D:\Claude\App\JLPT_App` 的任何檔案（可讀，用來抄慣例）。
+    · devDeps（`puppeteer`、`wrangler`）**釘死在確切版本**，不用 `^`。測試整套都靠瀏覽器行為，
+      puppeteer 小版本升級就可能讓某幾條版面斷言改變 —— **升版是要有人看著結果的決定**，
+      不是 `npm update` 順手做掉的事。要升就單獨一個 commit，跑完 `layouttest`／`uikittest`／`racetest` 再合。
 12. **測試自己也會有假斷言。** 這一輪抓到五次，每一次都是同一種形狀：
     母體是空的、母體是「有問題的那幾個」、等待條件在上一頁就已經成立、
     反例太弱被別條規則順便擋掉、掃描器把註解當程式碼。
@@ -82,15 +86,29 @@
 
 ```bash
 node scripts/<受影響的測試>.mjs
+
+# 突變：讓它自己從 git diff 算出受影響的是哪幾條（建議）
+node scripts/mutationtest.mjs --changed          # 相對 HEAD（含還沒 commit 的改動）
+node scripts/mutationtest.mjs --changed main     # 相對某個分支
+
+# 還是可以手動挑（除錯時比較快）
 node scripts/mutationtest.mjs --only <這次的突變關鍵字>
 ```
+
+`--changed` 的挑選規則（`scripts/affected.mjs`，純函式，`shelltest` 有斷言盯著）：
+突變要改的那個檔被改到、突變對應的測試檔被改到、或**那支測試碰得到的任何模組**被改到 ——
+三者有一個成立就挑。第三條最重要：沒有任何測試直接 `import` `js/money.js`，
+它全是經由 `settle.js`／`dividend.js` 間接用到，只看直接相依的話，改它會一條都挑不到。
+
+**人工挑會漏**（慣例 28 就是漏了一支 `pathtest`），所以預設用 `--changed`，
+手動 `--only` 留給除錯。兩者都**不是全綠**，輸出會自己把這句話印出來。
 
 **沒有放寬的那一條：新的斷言仍然必須經突變驗證會紅。** 少跑的是「跟這次無關的那些」，
 不是「這次該有的驗證」。一條沒有被突變證明過會紅的新斷言，跟沒有寫是一樣的。
 
 ### 全面檢測
 
-**只在使用者要求時**跑：完整 27 支 ＋ 全部突變（約 3.5 小時）＋ `sweep` ＋ `upgradecheck`。
+**只在使用者要求時**跑：完整 28 支 ＋ 全部突變（約 3.5 小時）＋ `sweep` ＋ `upgradecheck`。
 
 ### 怎麼判斷「受影響」
 
@@ -219,6 +237,22 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
     · 修法是**動手之前就把每一列驗完**（`validateImport` 逐列檢查 `db.keyPathOf(store)`），整份拒收，而不是寫到一半才發現。
     · 錯誤訊息要回答使用者當下最急的那件事：**「你現在的資料沒有被動到」**，再講是哪一個項目的第幾列少了什麼。
     · 通則：任何「清空 → 重寫」的流程，**驗證必須整段跑在 clear 之前**。只要有一列會失敗，就一列都不要動。
+34. **突變過期有第二種形狀：find 找得到、改得下去，但改的那一行已經沒人走了。**
+    `mutationtest` 只檢查 find 在檔案裡出現幾次 —— 出現一次就當作這條突變有效。
+    但「程式碼還在」不等於「那段程式碼還有作用」。實際抓到兩條：試算的「帶入」功能
+    在 v0.7.11 改成**每檔分別設定**之後，畫面欄位的值來自 `leg.*`（`legCard` 的
+    `value: leg[key]`），而那兩條突變還指著 `state.*`：`state.startValue` 只剩寫入、
+    沒有任何地方讀它；`state.growthRate` / `state.yieldRate` 根本不存在。
+    於是突變「成功套用」、測試「照樣全綠」，而對應的兩條斷言
+    （帶入的市值 323,100、成長率與配息率必須留白）從改版那天起就沒再被驗證過。
+    · 這種過期**比 find 找不到那種難發現得多**：find 找不到會直接失敗並講出「這條突變過期了」，
+      而這種只會靜靜地通過。
+    · 怎麼發現的：跑 `--changed` 時它們是唯二沒變紅的。**「突變沒讓測試變紅」要當成兩種可能來查** ——
+      斷言是假的，或**突變改錯地方了**。這次是後者，斷言一直是好的。
+    · 怎麼預防：重構資料流（把 `state.x` 改成 `leg.x` 這種）時，
+      `grep` 一遍 `mutationtest.mjs` 有沒有突變指著舊的那條路。
+    · 順帶記著：`js/views/calc.js` 的 `state.startValue`（第 194、228 行）是**只寫不讀的死碼**，
+      留給 A11 一起收（`SPEC_全面優化.md` §3 A11，批次 4）。
 
 ## 非同步畫面的守門（v0.5.2，實際發生過的 bug）
 
@@ -577,7 +611,7 @@ TWT49U 的日期參數無效（`FEASIBILITY.md` §10.8），只給得到「最�
 
 | # | 項目 | 怎麼做 |
 |---|---|---|
-| 1 | 全部測試綠 | `npm test`（25 支＋突變 110 條） |
+| 1 | 全部測試綠 | `npm test`（28 支＋突變 185 條；數字由 `doctest` 盯著） |
 | 2 | 版本三處一致 | `npm run bump -- stockdiary-vX.Y.Z` 會一次改完，`shelltest` 會驗 |
 | 3 | 線上巡檢 | `npm run sweep` —— 版本一致、七頁開得起來、SW 接手、離線正常、Worker 活著 |
 | 4 | Worker 稽核 | `npm run workertest`（要 wrangler；會碰一次上游，別連跑） |

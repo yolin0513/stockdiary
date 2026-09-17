@@ -21,6 +21,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done , note } from './tap.mjs';
+import { selectAffected, moduleClosure } from './affected.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -1390,18 +1391,20 @@ const MUTATIONS = [
   {
     name: '帶入時順便把成長率與配息率也填了',
     why: '那兩個是對未來的假設，不是他已經有的事實。填了就等於我們替他預測，'
-      + '而且他會把那個數字當成我們認為合理的值 —— 這是使用者從第一天就定的界線。',
+      + '而且他會把那個數字當成我們認為合理的值 —— 這是使用者從第一天就定的界線。'
+      + '（要塞 leg.* 不是 state.*：v0.7.11 改成每檔分別設定之後，畫面欄位的值來自 leg，'
+      + '塞 state 是塞在一條沒人走的路上 —— 突變會「成功」但測試不會紅。）',
     file: 'js/views/calc.js',
     find: '  if (pos?.close != null) {',
-    replace: '  state.growthRate = "5"; state.yieldRate = "4";\n  if (pos?.close != null) {',
+    replace: '  leg.growthRate = "5"; leg.yieldRate = "4";\n  if (pos?.close != null) {',
     test: 'calcviewtest',
   },
   {
     name: '帶入的市值算錯',
     why: '帶進去的數字是他自己的部位，錯了他不會發現 —— 因為那正是他懶得自己算才用帶入的。',
     file: 'js/views/calc.js',
-    find: '    state.startValue = String(pos.marketValue);',
-    replace: '    state.startValue = String(Math.round(pos.marketValue * 1.1));',
+    find: '    leg.startValue = String(pos.marketValue);',
+    replace: '    leg.startValue = String(Math.round(pos.marketValue * 1.1));',
     test: 'calcviewtest',
   },
   {
@@ -1601,6 +1604,102 @@ const MUTATIONS = [
     replace: "  if (badRows.length && false) {",
     test: 'backuptest',
   },
+  {
+    name: 'package.json 沒有 version 欄位',
+    why: 'package.json 的 version 是「這包是哪一版」的第一個判斷依據。它停在 0.1.0 而 App 已經 0.7.x 的時候，看 repo 的人會以為這個專案沒在動 —— 而且沒有任何程式會因此出錯，所以只能靠斷言盯著。',
+    file: 'package.json',
+    find: '  "version": "',
+    replace: '  "versionX": "',
+    test: 'shelltest',
+  },
+  {
+    name: '突變挑選器不看測試的相依',
+    why: 'mutationtest --changed 少挑幾條的樣子跟全綠一模一樣。不看相依的話，改 js/money.js 會一條都挑不到 —— 沒有任何測試直接 import 它，全是經由 settle.js／dividend.js 間接用到。',
+    file: 'scripts/affected.mjs',
+    find: '    for (const f of changed) if (deps(m.test).has(f)) return true;',
+    replace: '    // 不看相依',
+    test: 'shelltest',
+  },
+  {
+    name: 'moduleClosure 只展開一層，不遞移',
+    why: '只展開一層的話，測試碰得到的模組清單會少掉一大半（settletest 會只剩 settle.js，看不到 money.js），--changed 就會漏挑。',
+    file: 'scripts/affected.mjs',
+    find: "      if (next.startsWith('js/')) walk(next);",
+    replace: "      if (false) walk(next);",
+    test: 'shelltest',
+  },
+  {
+    name: 'npm test 鏈裡少一支，文件的數字沒跟上',
+    why: '文件漂移不會讓任何測試變紅。實際發生過：STATUS 與 README 一起寫「138 條突變」而實際 182、上線檢查清單寫「110 條／25 支」—— 三處數字三個版本，全部綠燈。從 test 鏈拿掉一支，文件寫的支數就該對不上，而且那一支還留在 README 表格裡（等於 README 列了一支沒人跑的測試）。',
+    file: 'package.json',
+    find: 'node scripts/roctest.mjs && ',
+    replace: '',
+    test: 'doctest',
+  },
+  {
+    name: 'README 的測試表格漏掉一支',
+    why: 'README 表格原本就漏了 scenariotest 與 pathtest —— 那兩支加起來 140+ 條斷言，看 README 的人根本不知道它們存在，也就不會在改動後想到要跑。',
+    file: 'README.md',
+    find: '| `npm run pathtest` |',
+    replace: '| `npm run pathtest-打錯字了` |',
+    test: 'doctest',
+  },
+  {
+    name: '把被禁用的 type="time" 用回去',
+    why: 'STATUS 元件慣例表明文禁止 <input type="time">（iOS 會拉滿整個卡片、空值時顯示當下時間）。uikittest 有掃，但要開瀏覽器；doctest 是純靜態的第二道，改壞了要立刻紅。',
+    file: 'js/ui.js',
+    find: 'export function timeSelect(',
+    replace: 'const _banned = { type: \'time\' };\nexport function timeSelect(',
+    test: 'doctest',
+  },
+  {
+    name: 'A14：holdingtest 的頁面文字抓成空的',
+    why: '「畫面上沒有報酬率數字」這條的母體是一個字串 —— 字串是空的時候它照樣通過。這條斷言踩過兩層坑（正則少了反斜線、母體抓成上一個情境的頁面），兩層都讓它變成永遠通過。前提斷言就是為了讓「母體是空的」這件事會紅。',
+    file: 'scripts/holdingtest.mjs',
+    find: '  const viewText = () => page.$eval(\'#view\', (el) => el.textContent.replace(/\\s+/g, \' \'));',
+    replace: '  const viewText = () => Promise.resolve(\'\');',
+    test: 'holdingtest',
+  },
+  {
+    name: 'A14：holdingtest 的不支援列一列都不種',
+    why: 'fixture 裡只要沒有上櫃代號，「所有標示不支援的列都沒有報價數字」就是拿空母體在講話。noneOf 本身會擋空母體，但「剛好 1 列」這個前提被破壞時也要有人講話。',
+    file: 'scripts/holdingtest.mjs',
+    find: '      { code: \'6488\', shares: 500, date: \'2026-01-05\' },',
+    replace: '',
+    test: 'holdingtest',
+  },
+  {
+    name: 'A14：pathtest 的持股頁文字抓成空的',
+    why: '「畫面上沒有 NaN／Infinity／undefined」的母體是一個字串。持股頁沒渲染時那句話等於沒說 —— 而「頁面根本沒畫出來」正是最該被抓到的失敗。',
+    file: 'scripts/pathtest.mjs',
+    find: '        holdingsText: view.textContent.replace(/\\s+/g, \' \'),',
+    replace: '        holdingsText: \'\',',
+    test: 'pathtest',
+  },
+  {
+    name: 'A14：uikittest 的總覽文字抓成空的',
+    why: '「總覽上沒有資料狀態那張卡」的母體是一個字串，總覽沒畫出來時它照樣通過。',
+    file: 'scripts/uikittest.mjs',
+    find: '    const homeText = document.querySelector(\'#view\').textContent.replace(/\\s+/g, \' \');',
+    replace: '    const homeText = \'\';',
+    test: 'uikittest',
+  },
+  {
+    name: 'A14：calcviewtest 的試算頁文字抓成空的',
+    why: '「沒填完不會生出結果」那一組（沒有結果區塊、沒有期末數字、沒有預設值）在畫面整個沒渲染時會一起通過 —— 三條都是在問「有沒有出現某個東西」。前提斷言負責先證明頁面還在。',
+    file: 'scripts/calcviewtest.mjs',
+    find: '  const pageText = await page.$eval(\'#view\', (el) => el.textContent.replace(/\\s+/g, \' \'));',
+    replace: '  const pageText = \'\';',
+    test: 'calcviewtest',
+  },
+  {
+    name: 'A14：calcviewtest 的 fixture 不種個股',
+    why: '「個股不在裡面」只有在 fixture 真的種了個股時才有意義。把 2330／2317 拿掉，那條會變成恆真而且沒人會發現 —— 前提斷言就是為了擋這個。',
+    file: 'scripts/calcviewtest.mjs',
+    find: '    for (const [c, sh] of [[\'0050\', 3000], [\'00878\', 8000], [\'2330\', 1000], [\'2317\', 500]]) {',
+    replace: '    for (const [c, sh] of [[\'0050\', 3000], [\'00878\', 8000]]) {',
+    test: 'calcviewtest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
@@ -1693,13 +1792,60 @@ const ONLY = (() => {
   const i = process.argv.indexOf('--only');
   return i >= 0 ? process.argv[i + 1] : null;
 })();
-const SELECTED = ONLY
-  ? MUTATIONS.filter((m) => m.name.includes(ONLY) || m.test.includes(ONLY) || m.file.includes(ONLY))
-  : MUTATIONS;
+// 只跑「這次改動影響到的」：node scripts/mutationtest.mjs --changed [base]
+//
+// base 預設 HEAD（工作目錄相對上一個 commit 的改動）；也可以給 main、HEAD~3 之類。
+// 挑選規則見 scripts/affected.mjs：突變要改的檔、突變對應的測試檔、
+// 那支測試碰得到的任何模組 —— 三者有一個被改到就挑。
+//
+// **這一樣是日常用的，不是驗收用的。** 全綠的定義仍然是不帶參數跑完全部。
+const CHANGED = (() => {
+  const i = process.argv.indexOf('--changed');
+  if (i < 0) return null;
+  const nextArg = process.argv[i + 1];
+  const base = nextArg && !nextArg.startsWith('--') ? nextArg : 'HEAD';
+  const run = (args) => {
+    try {
+      // core.quotepath=false：不然中文檔名會被跳脫成 å¨，比對不到
+      return execFileSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' });
+    } catch (e) {
+      console.error(`✗ git ${args.join(' ')} 失敗：${String(e.stderr || e.message).trim()}`);
+      process.exit(1);
+    }
+  };
+  // 已追蹤檔案的改動 ＋ 還沒 git add 的新檔（新增一支測試也算改動）
+  const diff = run(['diff', '--name-only', base]);
+  const untracked = run(['ls-files', '--others', '--exclude-standard']);
+  const files = [...diff.split('\n'), ...untracked.split('\n')].map((x) => x.trim()).filter(Boolean);
+  return { base, files: [...new Set(files)] };
+})();
+
+const readRel = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+
+const SELECTED = (() => {
+  if (ONLY) {
+    return MUTATIONS.filter((m) => m.name.includes(ONLY) || m.test.includes(ONLY) || m.file.includes(ONLY));
+  }
+  if (CHANGED) {
+    return selectAffected(MUTATIONS, CHANGED.files, (t) => moduleClosure(`scripts/${t}.mjs`, readRel));
+  }
+  return MUTATIONS;
+})();
 
 if (ONLY) {
   section(`只跑符合「${ONLY}」的突變`);
   ok(SELECTED.length > 0, `挑出 ${SELECTED.length} 條（全部 ${MUTATIONS.length} 條）`);
+  note(`**這不是全綠**：這次只驗了 ${SELECTED.length}/${MUTATIONS.length} 條，其餘沒有跑。`);
+}
+
+if (CHANGED) {
+  section(`只跑這次改動（相對 ${CHANGED.base}）影響到的突變`);
+  ok(CHANGED.files.length > 0,
+    `git 說改到了 ${CHANGED.files.length} 個檔：${CHANGED.files.slice(0, 6).join('、')}${CHANGED.files.length > 6 ? '…' : ''}`,
+    '沒有任何改動 —— --changed 沒東西可挑，要驗收請不帶參數跑全部');
+  ok(SELECTED.length > 0,
+    `挑出 ${SELECTED.length} 條（全部 ${MUTATIONS.length} 條），涵蓋 ${new Set(SELECTED.map((m) => m.test)).size} 支測試`,
+    '一條都沒挑到 —— 改到的檔案跟任何突變都沾不上邊，確認一下是不是漏了什麼');
   note(`**這不是全綠**：這次只驗了 ${SELECTED.length}/${MUTATIONS.length} 條，其餘沒有跑。`);
 }
 

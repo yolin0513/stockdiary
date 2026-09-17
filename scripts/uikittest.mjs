@@ -374,7 +374,11 @@ try {
   eq(daily.perHolding, null, '總覽上沒有「看每一檔的當日損益」按鈕（使用者明確決定移除）');
   // 對照：那條路其實一直都在 —— 底部分頁的「持股」
   ok(daily.tabs.some((t) => t.includes('持股')), `（對照）底部分頁還是到得了持股（${daily.tabs.join('、')}）`);
-  // 資料狀態也搬走了
+  // 資料狀態也搬走了。
+  // 母體是一個字串 —— 總覽沒渲染時 homeText 會是空的，這條就變成一句空話。
+  ok(daily.homeText.length > 50,
+    `（前提）總覽真的畫出來了，共 ${daily.homeText.length} 字`,
+    daily.homeText.slice(0, 200));
   noneOf([daily.homeText], (t) => t.includes('資料狀態'),
     '總覽上也沒有「資料狀態」那張卡（已併進設定頁的「資料來源與狀態」）');
   ok(daily.newsBtn?.href === '#/news' && daily.newsBtn.h >= 44,

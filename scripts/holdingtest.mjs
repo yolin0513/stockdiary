@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done, noneOf, everyOf, note } from './tap.mjs';
+import { ok, eq, section, done, noneOf, everyOf, note, detects } from './tap.mjs';
 import { listen } from './serve.mjs';
 import { makeCalendar, latestPublishedTradingDay } from '../js/market.js';
 import { isoToRocCompact } from '../js/roc.js';
@@ -174,7 +174,12 @@ try {
 
   const allUnsupportedNums = await page.evaluate(() =>
     [...document.querySelectorAll('#view .row-unsupported')].map((el) => el.querySelectorAll('.num').length));
-  noneOf(allUnsupportedNums, (n) => n > 0, '所有標示不支援的列都沒有報價數字');
+  // 「所有」這個字聽起來像掃了很多列，其實這個 fixture 只種了一檔上櫃（6488）——
+  // 母體是 1。把它講出來，看報告的人才知道涵蓋範圍到哪裡；
+  // 而且 fixture 哪天被改成一檔上櫃都不剩時，下面這條前提會先紅。
+  eq(allUnsupportedNums.length, 1,
+    '（前提）畫面上標成「不支援」的列剛好 1 列 —— 這個 fixture 只種了一檔上櫃（6488）');
+  noneOf(allUnsupportedNums, (n) => n > 0, '那一列（唯一的一列）沒有任何報價數字');
 
   // 對照組放在**個股明細頁**，因為報價數字是在那裡出現的
   // （持股列表頁兩種列都不顯示收盤價，在那裡做對照等於沒對照）。
@@ -214,11 +219,32 @@ try {
   noneOf(costCards.titles, (t) => t.includes('未實現'), '也沒有任何一張卡片的標題是未實現');
   eq(costCards.promptNums, 0, '取而代之的說明卡片裡一個數字都沒有');
   ok(costCards.prompt, '（對照）有一張卡片告訴使用者「填了平均成本之後會顯示什麼」');
-  // 這條原本是 /報酬率s*[+-—d]/ —— 反斜線整個掉了（`s*` 匹配零個字母 s，
-  // 接著要 [+-—d] 卻碰到空白），所以拿「報酬率 +145.00%」去測也不會命中。
-  // 它守的是「沒填成本就不准出現任何未實現數字」，是很重要的一條，卻從來沒檢查過。
-  noneOf([text1], (t) => /報酬率\s*[+-]?\d/.test(t),
+  // 這條踩過**兩層**坑，兩層都讓它變成「永遠通過」：
+  //
+  //   第一層（上一批修掉）：正則寫成 /報酬率s*[+-—d]/ —— 反斜線整個掉了，
+  //   `s*` 變成「零個字母 s」，拿「報酬率 +145.00%」去測也不會命中。
+  //
+  //   第二層（這一批才發現）：**母體抓錯頁面。** 它用的 text1 是上面
+  //   「上櫃那一列」那個情境在**持股清單頁**抓的文字，而這一節驗的是**總覽**
+  //   （第 201 行已經 location.hash = '#/' 回來了）。持股清單頁本來就不顯示
+  //   報酬率 —— 所以正則就算修好了，它驗的仍然是一個必定不含「報酬率」的字串。
+  //
+  // 上一批的突變（「沒填平均成本的也硬算未實現損益」）之所以看起來讓它變紅，
+  // 是因為**整支測試**紅了 —— 紅的是上面那條 unrealized 的 eq，不是這一條。
+  // 突變測試只看測試有沒有失敗，分不出是哪一條斷言失敗（慣例 32 的盲點）。
+  // 所以這裡改用「前提 ＋ 判準對照組」把兩件事分別釘住。
+  const costText = await viewText();
+  ok(costText.length > 50 && /當日損益|平均成本/.test(costText),
+    `（前提）抓到的是現在這一頁（總覽）的文字，共 ${costText.length} 字`,
+    costText.slice(0, 300));
+  noneOf([costText], (t) => /報酬率\s*[+-]?\d/.test(t),
     '畫面上沒有「報酬率」後面接著一個值');
+  // 判準的對照組：證明它認得出「真的有值」的樣子。
+  // 少了這條，正則再被改壞一次（少一個反斜線）也一樣全綠。
+  detects((t) => /報酬率\s*[+-]?\d/.test(t), {
+    shouldHit: ['報酬率 +145.00%', '報酬率 -3.2%', '報酬率+0.5', '報酬率 0'],
+    shouldMiss: ['報酬率 —', '報酬率：還沒填平均成本', '填了平均成本就會顯示報酬率', costText],
+  }, '「報酬率後面接著一個值」的判準認得出真的有值，也不會誤判「—」與說明文字');
 
   // ---------------------------------------------------------------
   section('情境 2：今日收盤尚未公布（端點回的是前一天）');
