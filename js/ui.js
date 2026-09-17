@@ -210,3 +210,34 @@ export function moneyNode(micro, { sign = true } = {}) {
   const cls = v == null ? 'v-none' : v > 0 ? 'v-up' : v < 0 ? 'v-down' : 'v-flat';
   return num(fmtMoney(v, { sign }), cls);
 }
+
+/**
+ * 「回補中 3/12：回補 0050 2026-08」那一行。
+ *
+ * PLAN §2.2 說長假回補時要顯示進度，但 `onProgress` 一直沒有人接 ——
+ * 使用者看到的是一個不動的畫面，分不出它在做事還是當掉了。
+ *
+ * **只在 total > 1 時顯示**：單一請求（最常見的情況）一閃而過，畫出來只會讓畫面抖一下。
+ *
+ * 訂閱會自己退掉。`render()` 是整個換掉 `#view`，沒有 cleanup 的鉤子，
+ * 所以這裡用「節點還在不在畫面上」當作存活判斷 —— 換過頁之後就不再重畫了。
+ * （mounted 這個旗標是必要的：第一次訂閱時節點還沒 mount，
+ * 少了它會在第一次回呼就把自己退掉。）
+ */
+export function progressLine(getProgress, subscribe) {
+  const line = h('p', { class: 'muted sm', dataset: { note: 'updateProgress' } }, '');
+  const paint = () => {
+    const pr = getProgress();
+    const show = !!pr && pr.total > 1 && pr.done < pr.total;
+    line.textContent = show ? `回補中 ${pr.done}/${pr.total}：${pr.label}` : '';
+    line.hidden = !show;
+  };
+  paint();
+  let mounted = false;
+  const off = subscribe(() => {
+    if (line.isConnected) mounted = true;
+    else if (mounted) { off(); return; }
+    paint();
+  });
+  return line;
+}

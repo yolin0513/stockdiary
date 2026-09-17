@@ -221,6 +221,73 @@ try {
     '存進 IndexedDB 的就只有 id／標題／連結／來源／時間');
   eq(stored.sources, SOURCES.map((s) => s.id).sort(), '六家的來源標記都在');
 
+  section('六家同時抓，不是一個等一個');
+  //
+  // 循序的時候最壞是 6 × 8 秒逾時 ＝ 48 秒：按下「看新聞」之後盯著空白將近一分鐘，
+  // 而且第一家掛掉就拖垮後面全部。並行之後最壞就是單一來源的逾時。
+  //
+  // 量的是**實際經過的毫秒數**。每家延遲 300ms：
+  //   並行 → 約 300ms；循序 → 6 × 300 ＝ 1,800ms。
+  // 門檻放在 1,000ms，兩者差得夠遠，不會因為機器忙一下就誤判。
+  const parallel = await run(async () => {
+    const news = await import('./js/news.js');
+    const db = await import('./js/db.js');
+    await db.clear('news');
+    const started = [];
+    const fake = async (url) => {
+      const id = news.SOURCES.find((s) => news.urlOf(s) === String(url))?.id;
+      started.push({ id, at: performance.now() });
+      await new Promise((r) => setTimeout(r, 300));
+      return new Response(window.__feeds[id], { status: 200 });
+    };
+    const t0 = performance.now();
+    const r = await news.refresh({ now: new Date('2026-09-11T12:00:00+08:00'), fetchImpl: fake });
+    const ms = performance.now() - t0;
+    return {
+      ms,
+      order: r.results.map((x) => x.source),
+      okCount: r.results.filter((x) => x.ok).length,
+      total: r.total,
+      // 六家的「開始時刻」應該擠在一起（並行）；循序的話會差 300ms 以上
+      startSpread: Math.max(...started.map((x) => x.at)) - Math.min(...started.map((x) => x.at)),
+      startedCount: started.length,
+    };
+  });
+
+  eq(parallel.startedCount, 6, '（前提）六家都真的發出去了');
+  eq(parallel.okCount, 6, '（前提）六家都抓成功');
+  ok(parallel.total > 100, `（前提）真的存下 ${parallel.total} 則 —— 不是因為沒抓到才很快`);
+  ok(parallel.ms < 1000,
+    `六家同時抓，總共 ${Math.round(parallel.ms)}ms（循序會是 1,800ms 以上）`);
+  ok(parallel.startSpread < 250,
+    `六家幾乎同時發出（開始時刻只差 ${Math.round(parallel.startSpread)}ms）`);
+
+  // **順序不能跟著「誰先回來」跑。** allSettled 之後回應先後是隨機的，
+  // 照那個順序合併的話，同一批新聞每次開啟的排序都不一樣 —— 看起來像資料在跳。
+  eq(parallel.order, SOURCES.map((s) => s.id),
+    '回報的順序仍然是 SOURCES 的固定順序，不是誰先回來誰先排');
+
+  section('一家很慢不會拖垮其他家');
+  // 並行真正的價值：最慢的那家決定總時間，而不是所有人的總和。
+  // 這條與上面那條是一組 —— 少了它，一個「其實還是循序、只是每家都很快」的版本也會過。
+  const slowOne = await run(async () => {
+    const news = await import('./js/news.js');
+    const db = await import('./js/db.js');
+    await db.clear('news');
+    const fake = async (url) => {
+      const id = news.SOURCES.find((s) => news.urlOf(s) === String(url))?.id;
+      // 第一家拖 800ms，其餘 100ms
+      await new Promise((r) => setTimeout(r, id === news.SOURCES[0].id ? 800 : 100));
+      return new Response(window.__feeds[id], { status: 200 });
+    };
+    const t0 = performance.now();
+    const r = await news.refresh({ now: new Date('2026-09-11T12:00:00+08:00'), fetchImpl: fake });
+    return { ms: performance.now() - t0, okCount: r.results.filter((x) => x.ok).length };
+  });
+  eq(slowOne.okCount, 6, '（前提）六家還是都成功了');
+  ok(slowOne.ms < 1200,
+    `最慢那家 800ms，總時間 ${Math.round(slowOne.ms)}ms —— 是「最慢的那一家」而不是總和（循序會是 1,300ms）`);
+
   section('30 分鐘內不重抓');
   const throttled = await run(async () => {
     const news = await import('./js/news.js');

@@ -48,7 +48,15 @@ export async function runUpdate({ client, calendar, now = new Date(), threshold,
 
   const expected = latestPublishedTradingDay(calendar, now, threshold);
   if (!expected) {
-    return { status: STATUS.NO_CALENDAR, settled: [], message: `開休市日只涵蓋 ${calendar.year} 年，今天不在範圍內` };
+    // 多年份日曆的 calendar.year 是 null，所以講涵蓋範圍而不是「某一年」。
+    // 而且要講**怎麼恢復** —— 只說「不在範圍內」的話，使用者不知道這是
+    // App 該更新了，會以為是自己的資料壞了。
+    const span = calendar.years.length ? calendar.years.join('、') : '（沒有任何年份）';
+    return {
+      status: STATUS.NO_CALENDAR,
+      settled: [],
+      message: `開休市日只涵蓋 ${span} 年，今天不在範圍內。更新 App 之後就會恢復。`,
+    };
   }
 
   const lastSettled = await lastSettledDate();

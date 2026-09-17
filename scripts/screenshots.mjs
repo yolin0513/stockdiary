@@ -23,6 +23,8 @@ fs.mkdirSync(OUT, { recursive: true });
 // ---- 示範用的假證交所回應 ----
 const calJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'calendar.json'), 'utf8'));
 const EXPECTED = latestPublishedTradingDay(makeCalendar(calJson), new Date(), DEFAULT_TODAY_THRESHOLD);
+// calendar.json 是多年格式，沒有頂層 tradingDays；makeCalendar 新舊格式都讀得懂。
+const ALL_TRADING_DAYS = makeCalendar(calJson).days;
 const CSV = [
   '日期,證券代號,證券名稱,成交股數,成交金額,開盤價,最高價,最低價,收盤價,漲跌價差,成交筆數',
   ...[
@@ -122,7 +124,7 @@ try {
         }
         return new Response(JSON.stringify({ stat: '很抱歉，沒有符合條件的資料!', total: 0 }), { status: 200 });
       };
-    }, CSV, TWT48U, TWT49U, calJson.tradingDays);
+    }, CSV, TWT48U, TWT49U, ALL_TRADING_DAYS);
   }
 
   await page.goto(base, { waitUntil: 'networkidle0' });

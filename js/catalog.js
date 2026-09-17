@@ -25,6 +25,39 @@ export function isLoaded() { return data != null; }
 export function generatedAt() { return data?.generatedAt ?? null; }
 export function industries() { return data?.industries ?? {}; }
 
+/**
+ * 代號表幾天算「可能過期」。
+ *
+ * 60 天：新上市與新 ETF 大約每一兩個月會有一批。超過這個天數還沒重跑 build-stocks，
+ * 使用者想加的新代號就會查不到 —— 而畫面上只會說「找不到代號」，
+ * 那句話會讓人以為自己打錯了。
+ *
+ * 這是 SPEC §4 B3 的決定：**不打 STOCK_DAY 試查**未在清單的代號
+ * （那會多出一種「未在清單」的持股，每一個畫面都要處理它），
+ * 改成過期時提醒更新 App。
+ */
+export const CATALOG_STALE_DAYS = 60;
+
+/**
+ * 代號表有多舊。比照 divrecord.staleness 的形狀。
+ *
+ * now 是參數而不是直接 new Date() —— 不然「59 天不提醒、61 天提醒」這種邊界
+ * 要等兩個月才測得到。
+ */
+export function staleness(now = new Date()) {
+  const iso = catalogDate();
+  if (!iso) return { known: false, stale: false, days: null, iso: null };
+  const days = Math.floor((now.getTime() - Date.parse(`${iso}T00:00:00`)) / 86400000);
+  return { known: true, stale: days > CATALOG_STALE_DAYS, days, iso };
+}
+
+/** 過期時要對使用者說的那一句。沒過期回 null —— 不要回空字串讓呼叫端去判斷。 */
+export function stalenessNote(now = new Date()) {
+  const st = staleness(now);
+  if (!st.known || !st.stale) return null;
+  return `代號表是 ${st.iso} 產生的（距今 ${st.days} 天），可能已經有新上市的代號沒收進來，請更新 App。`;
+}
+
 /** 這張表是哪一天產的（畫面上「找不到代號」時要一起說出來）。 */
 export function catalogDate() {
   const t = data?.generatedAt;

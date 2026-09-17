@@ -6,7 +6,7 @@
 //   · 不支援報價的持股那一列**不產生任何 .num 節點**（測試靠這個斷言）
 //   · 沒有任何一檔填平均成本時，「未實現損益」整個區塊不出現（不是顯示「—」）
 
-import { h, num, moneyNode, fmtMoneyMicro, fmtPct, fmtDate, NO_VALUE } from '../ui.js';
+import { h, num, moneyNode, fmtMoneyMicro, fmtPct, fmtDate, NO_VALUE, progressLine } from '../ui.js';
 import * as store from '../store.js';
 import * as holdings from '../holdings.js';
 import * as events from '../events.js';
@@ -46,7 +46,7 @@ export default async function home() {
 
   render([
     ...pendingBanners(pendingEvents, pendingChanges),
-    dayPLCard(settled, settleDate, upd),
+    dayPLCard(settled, settleDate, upd, store.calendarRunway()),
     marketValueCard(settled),
     unrealizedCard(unreal, held),
     dividendCard(divSummary),
@@ -152,7 +152,7 @@ function dividendCard(s) {
   );
 }
 
-function dayPLCard(settled, settleDate, upd) {
+function dayPLCard(settled, settleDate, upd, runway) {
   const pending = upd?.status === STATUS.TODAY_PENDING;
   const note = settled ? exclusionNote({
     excludedUnsupported: settled.excludedUnsupported ?? 0,
@@ -167,6 +167,9 @@ function dayPLCard(settled, settleDate, upd) {
       ? h('p', { class: 'muted sm' }, `結算日：${fmtDate(settleDate)}`)
       : h('p', { class: 'muted sm' }, '尚未結算過'),
     pending ? h('p', { class: 'sm warn' }, '今日收盤尚未公布') : null,
+    // 回補中的進度。長假之後可能要補十幾天 —— 沒有這一行的話，
+    // 使用者盯著一個不動的畫面，不知道它在做事還是當掉了。
+    progressLine(store.progress, store.subscribe),
     // 這一天有持股除權息 → 基準價用的是除權息參考價，要講出來，
     // 不然使用者會拿自己記的「昨天收盤」去對，怎麼算都對不上。
     // 而且要分得出參考價是證交所公布的、還是我們依公式推導的。
@@ -177,6 +180,14 @@ function dayPLCard(settled, settleDate, upd) {
         ' ', num(fmtMoneyMicro(settled.dividendMicro)), ' 元')
       : null,
     note ? h('p', { class: 'muted sm' }, note) : null,
+    // **日曆快用完了要先講。** 跨年當天才發現就來不及了 ——
+    // 那一天起每天都只剩一句「今天不在範圍內」，而且除權息同步與
+    // 定期定額待確認也會一起停掉。實測（2026-09-17）證交所的 holidaySchedule
+    // 目前只有 2026 年，所以這一行是目前唯一會提醒使用者的地方。
+    runway?.warn && runway.lastDay
+      ? h('p', { class: 'sm warn', dataset: { note: 'calendarWarn' } },
+        `開休市日只到 ${fmtDate(runway.lastDay)}（剩 ${runway.daysLeft} 天），之後會無法結算，請更新 App。`)
+      : null,
     // 這裡**刻意沒有**「看每一檔的當日損益」那顆按鈕。
     // 它是 v0.7.10 加的（總覽答不出「是哪一檔」），使用者在 v0.7.11 之後
     // 明確說不要 —— 底部的「持股」分頁本來就到得了。**不要再自動加回來。**

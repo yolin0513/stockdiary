@@ -176,6 +176,11 @@ section('捕捉「預告 → 結果」的配對樣本');
 section('data/calendar.json 與 TWSE 實際成交日一致');
 {
   const cal = JSON.parse(fs.readFileSync(`${ROOT}data/calendar.json`, 'utf8'));
+  // 多年格式沒有頂層 tradingDays。這裡不 import market.js（livecheck 是獨立腳本），
+  // 直接把各年份的交易日攤平 —— 舊格式也照樣讀得到。
+  const calDays = cal.years
+    ? Object.keys(cal.years).sort().flatMap((y) => cal.years[y].tradingDays ?? [])
+    : (cal.tradingDays ?? []);
   // 挑「已經完全過去」而且「平日休市最多」的兩個月來核對 —— 連假多的月份最容易算錯。
   // 不寫死月份：寫死的話明年跑這支會去查未來的日期，TWSE 回「查詢日期大於今日」。
   const today = new Date();
@@ -186,7 +191,7 @@ section('data/calendar.json 與 TWSE 實際成交日一致');
     const m = c.date.slice(0, 7);
     closedWeekdaysByMonth.set(m, (closedWeekdaysByMonth.get(m) || 0) + 1);
   }
-  const past = [...new Set(cal.tradingDays.map((d) => d.slice(0, 7)))]
+  const past = [...new Set(calDays.map((d) => d.slice(0, 7)))]
     .filter((m) => {
       const [y, mo] = m.split('-').map(Number);
       const monthEnd = new Date(y, mo, 0);           // 該月最後一天
@@ -205,7 +210,7 @@ section('data/calendar.json 與 TWSE 實際成交日一致');
       continue;
     }
     const actual = parsed.rows.map((r) => r.date);
-    const mine = cal.tradingDays.filter((d) => d.startsWith(month));
+    const mine = calDays.filter((d) => d.startsWith(month));
     eq(mine, actual, `${month} 的交易日與 TWSE 實際成交日完全一致（${actual.length} 天）`);
   }
 }

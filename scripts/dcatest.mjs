@@ -17,6 +17,9 @@ import { isoToRocCompact } from '../js/roc.js';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const calJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'calendar.json'), 'utf8'));
 const cal = makeCalendar(calJson);
+// calendar.json 是多年格式（{ years: { "2026": {...} } }），沒有頂層的 tradingDays。
+// makeCalendar 同時讀得懂新舊兩種格式，所以一律從它的 days 拿。
+const ALL_TRADING_DAYS = cal.days;
 
 const TODAY = latestPublishedTradingDay(cal, new Date(), DEFAULT_TODAY_THRESHOLD);
 section('測試前提');
@@ -24,17 +27,28 @@ ok(TODAY != null, `應公布的最新交易日：${TODAY}`, 'data/calendar.json 
 if (!TODAY) done('dcatest');
 
 // 找出 TODAY 之前、每月 16 號（順延後）的三個扣款日
-const days16 = calJson.tradingDays.filter((d) => d <= TODAY);
+const days16 = ALL_TRADING_DAYS.filter((d) => d <= TODAY);
 function due16(monthIso) {
   const scheduled = `${monthIso}-16`;
   return days16.find((d) => d >= scheduled) ?? null;
 }
 const months = [];
 {
+  // **取最近三個「扣款日已經發生」的月份**，不是寫死往前推 3、2、1 個月。
+  //
+  // 寫死的版本有一個只在每個月下半月才出現的 bug：計畫的建立日是 months[0]，
+  // App 會從那天一路展開到今天 —— 所以只要今天已經過了**當月**的扣款日，
+  // 就會多出第四筆，而測試硬編「三筆」。
+  // 實際發生過：2026-09-16 之後跑這支測試，七條斷言一起紅，
+  // 而程式一個字都沒改。症狀看起來像偶發，其實是日期漂移。
+  //
+  // 這種失敗**任何 diff 都挑不到**（`mutationtest --changed` 也挑不到），
+  // 因為它不是被誰改壞的 —— 是時間走過去了。
   const [y, m] = TODAY.split('-').map(Number);
-  for (let i = 3; i >= 1; i -= 1) {
+  for (let i = 0; months.length < 3 && i < 12; i += 1) {
     const d = new Date(Date.UTC(y, m - 1 - i, 1));
-    months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+    const iso = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (due16(iso)) months.unshift(iso);
   }
 }
 const dueDates = months.map(due16).filter(Boolean);
@@ -114,12 +128,19 @@ try {
   // =================================================================
   section('情境 1：跳過三個月再開 App');
   await reset();
-  // 三個扣款日的收盤價（3000 元、收盤 100 → 30 股；收盤 120 → 25 股；收盤 150 → 20 股）
-  await seedCloses([
-    { code: '0050', date: dueDates[0], close: 100, change: 0, exMark: false },
-    { code: '0050', date: dueDates[1], close: 120, change: 0, exMark: false },
-    { code: '0050', date: dueDates[2], close: 150, change: 0, exMark: false },
-  ]);
+  // 三個扣款日的收盤價。每期 3,000 元，所以股數 = floor(3000 ÷ 收盤價)。
+  //
+  // ⚠ 最後一個扣款日**有可能就是今天**（每個月 16 號之後跑就會是）。
+  // 今天那一筆的收盤價會被當日的 STOCK_DAY_ALL 覆蓋掉（CSV 裡的 109.15），
+  // 我們種的 150 不會生效 —— 所以預期股數要照**實際會被用到的**價格算，
+  // 不能寫死 [30, 25, 20]。寫死的版本在 2026-09-16 那天開始紅，
+  // 而程式一個字都沒改。
+  const SEEDED_CLOSE = [100, 120, 150];
+  const TODAY_CLOSE = 109.15;   // 與上面 CSV 裡的 0050 一致
+  await seedCloses(dueDates.map((d, i) => (
+    { code: '0050', date: d, close: SEEDED_CLOSE[i], change: 0, exMark: false })));
+  const effectiveClose = (d, i) => (d === TODAY ? TODAY_CLOSE : SEEDED_CLOSE[i]);
+  const expectShares = dueDates.map((d, i) => Math.floor(3000 / effectiveClose(d, i)));
   await page.evaluate(async (startDate) => {
     const plans = await import('./js/plans.js');
     await plans.save({
@@ -135,12 +156,19 @@ try {
 
   const ch1 = await changesOf('0050');
   const dca = ch1.filter((c) => c.kind === 'dca');
-  eq(dca.length, 3, '產生了三筆定期定額扣款');
+  // 筆數跟著 fixture 走。寫死 3 的話，fixture 一改（或日期一漂）就對不起來，
+  // 而那正是這支測試踩過的坑。
+  eq(dca.length, dueDates.length, `產生了 ${dueDates.length} 筆定期定額扣款`);
   eq(dca.map((c) => c.date), dueDates, `日期是 ${dueDates.join('、')}`);
-  everyOf(dca, (c) => c.status === 'pending', '三筆**都是待確認**，沒有任何一筆被自動確認');
+  everyOf(dca, (c) => c.status === 'pending',
+    `${dueDates.length} 筆**都是待確認**，沒有任何一筆被自動確認`);
   noneOf(dca, (c) => c.status === 'confirmed', '一筆都沒有自動確認');
   // 手算：3000 / 100 = 30 股；3000 / 120 = 25 股；3000 / 150 = 20 股
-  eq(dca.map((c) => c.deltaShares), [30, 25, 20], '估算股數 30、25、20');
+  eq(dca.map((c) => c.deltaShares), expectShares,
+    `估算股數 ${expectShares.join('、')}（3,000 元 ÷ ${dueDates.map((d, i) => effectiveClose(d, i)).join('、')}）`);
+  // 對照：這些股數真的是算出來的，不是巧合的固定值
+  ok(new Set(expectShares).size >= 2,
+    `（對照）三筆的股數不一樣（${expectShares.join('、')}）—— 證明它真的跟著收盤價走`);
 
   const h1 = await holdingOf('0050');
   eq(h1.shares, 0, '待確認的扣款不會讓股數增加（還是 0 股）');
@@ -148,15 +176,18 @@ try {
   section('重跑更新不會產生重複');
   await runUpdate();
   const ch1b = await changesOf('0050');
-  eq(ch1b.filter((c) => c.kind === 'dca').length, 3, '還是三筆，沒有變成六筆');
+  eq(ch1b.filter((c) => c.kind === 'dca').length, dueDates.length,
+    `還是 ${dueDates.length} 筆，沒有變成 ${dueDates.length * 2} 筆`);
 
   section('畫面上看得到三筆待確認');
   const plansText = await showView('plans', '#view [data-card="pendingChanges"]');
-  ok(plansText.includes('待確認扣款（3 筆）'), '定期定額頁列出三筆');
+  ok(plansText.includes(`待確認扣款（${dueDates.length} 筆）`),
+    `定期定額頁列出 ${dueDates.length} 筆`, plansText.slice(0, 200));
   const homeText = await showView('home', '#view .big-number');
   // v0.7.10 起提示列一種一條，文案從「3 筆扣款」變成「3 筆定期定額扣款」。
   // 這裡不要再比對整句 —— 改成驗**語意**：講得出筆數、而且那一條真的通往定期定額。
-  ok(/3 筆[^，。]*扣款/.test(homeText), `首頁提示列講得出筆數：「${homeText.slice(0, 44)}…」`);
+  ok(new RegExp(`${dueDates.length} 筆[^，。]*扣款`).test(homeText),
+    `首頁提示列講得出筆數（${dueDates.length}）：「${homeText.slice(0, 44)}…」`);
   const bannerHref = await page.evaluate(() => document.querySelector('#view [data-card="pendingBannerChanges"]')?.getAttribute('href') ?? null);
   eq(bannerHref, '#/plans', '而且那一條帶去定期定額頁（不是股利頁）');
 
@@ -211,8 +242,11 @@ try {
   // =================================================================
   section('情境 3：配息再投入只有計畫開啟時才產生');
   await reset();
-  const exDate = dueDates[2];
-  const nextDay = calJson.tradingDays.find((d) => d > exDate);
+  // 除息日要挑一個**今天之前**的扣款日。挑到今天那一筆的話，
+  // 「除息日之後第一個交易日」會落在未來，而 App 不會產生未來的變動 ——
+  // 於是這一節會整段拿到空陣列，看起來像功能壞了。
+  const exDate = dueDates.filter((d) => d < TODAY).pop() ?? dueDates[0];
+  const nextDay = ALL_TRADING_DAYS.find((d) => d > exDate);
   ok(nextDay != null, `除息日 ${exDate}，下一個交易日 ${nextDay}`);
   await seedCloses([{ code: '0050', date: nextDay, close: 100, change: 0, exMark: false }]);
 
@@ -313,7 +347,7 @@ try {
       return real(input, init);
     };
     void monthsWanted;
-  }, { days: calJson.tradingDays, monthsWanted: months });
+  }, { days: ALL_TRADING_DAYS, monthsWanted: months });
 
   await page.evaluate(async (start) => {
     const plans = await import('./js/plans.js');
@@ -326,8 +360,10 @@ try {
   const upd5 = await runUpdate();
   const fetched = await page.evaluate(() => window.__stockDayMonths);
   const dca5 = (await changesOf('0050')).filter((c) => c.kind === 'dca');
-  eq(dca5.length, 3, `自己回補之後還是產生三筆（${upd5.status}）`);
-  everyOf(dca5, (c) => c.deltaShares === 30, '三筆都估出 30 股（3,000 元 ÷ 100 元）');
+  eq(dca5.length, dueDates.length,
+    `自己回補之後還是產生 ${dueDates.length} 筆（${upd5.status}）`);
+  everyOf(dca5, (c) => c.deltaShares === 30,
+    `${dueDates.length} 筆都估出 30 股（3,000 元 ÷ 100 元）`);
   noneOf(dca5, (c) => c.deltaShares == null, '沒有任何一筆的股數是空的');
   everyOf(months, (m) => fetched.includes(m), `回補的月份涵蓋三個扣款月：要 ${months.join('、')}，實際抓了 ${[...new Set(fetched)].join('、')}`);
 

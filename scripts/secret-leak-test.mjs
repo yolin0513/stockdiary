@@ -187,6 +187,86 @@ try {
   ok(ui.text.includes('Delete') || ui.text.includes('後台'),
     '畫面有講「清除不等於停用，要到後台刪掉」');
 
+  section('本機上限改得動（A10）');
+  //
+  // 「下個月自動歸零，**或調高上限**」這句話以前是空頭支票：畫面上講了，
+  // 但沒有任何地方可以調，而 secrets.setCap 一直存在、從來沒有人呼叫過。
+  //
+  // 單位是這裡最容易出錯的地方：畫面收美金，存進去是**微美金**。
+  // 搞混會差一百萬倍，而且畫面上看起來完全正常。
+  const capUi = await page.evaluate(async () => {
+    const secrets = await import('./js/secrets.js');
+    const settings = await import('./js/views/settings.js');
+    const before = (await secrets.status()).capMicroUsd;
+
+    const field = () => document.querySelector('#view [data-field="aiCap"]');
+    const saveBtn = () => [...document.querySelectorAll('#view button')].find((b) => b.textContent === '儲存上限');
+    const msg = () => document.querySelector('#view [data-card="aiKeyConfigured"] .muted.sm:last-of-type')?.textContent ?? '';
+
+    const hasField = !!field();
+    const shownAtFirst = field()?.value ?? null;
+
+    // 改成 0.5 美金
+    field().value = '0.5';
+    saveBtn().click();
+    await new Promise((r) => setTimeout(r, 400));
+    const after05 = (await secrets.status()).capMicroUsd;
+
+    // 負數要被擋下來，而且**不可以默默存成 0**
+    //（0 的意思是「完全不准用」，跟「我填錯了」是兩件事）
+    await settings.default();
+    await new Promise((r) => setTimeout(r, 200));
+    field().value = '-3';
+    saveBtn().click();
+    await new Promise((r) => setTimeout(r, 300));
+    const afterNeg = (await secrets.status()).capMicroUsd;
+    const negMsg = document.querySelector('#view [data-card="aiKeyConfigured"]').textContent;
+
+    // 亂填也是
+    field().value = 'abc';
+    saveBtn().click();
+    await new Promise((r) => setTimeout(r, 300));
+    const afterJunk = (await secrets.status()).capMicroUsd;
+
+    // 三位小數（超過分位）也擋
+    field().value = '1.234';
+    saveBtn().click();
+    await new Promise((r) => setTimeout(r, 300));
+    const afterTooPrecise = (await secrets.status()).capMicroUsd;
+
+    return { before, hasField, shownAtFirst, after05, afterNeg, afterJunk, afterTooPrecise, negMsg };
+  });
+
+  ok(capUi.hasField, '設定頁上真的有「本機上限」這個欄位');
+  ok(capUi.before > 0, `（前提）原本有一個上限：${capUi.before} 微美金`);
+  ok(/^\d+\.\d{2}$/.test(String(capUi.shownAtFirst)),
+    `欄位裡顯示的是**美金**（${capUi.shownAtFirst}），不是微美金那一長串`);
+  eq(capUi.after05, 500000, '填 0.5 存進去是 500,000 微美金 —— 單位換算對得上（差一百萬倍的話這條會紅）');
+  eq(capUi.afterNeg, 500000, '填負數不會被存進去（上限還是剛剛那個 0.5）');
+  ok(/請填 0 或正數/.test(capUi.negMsg), `而且畫面講得出為什麼：「${/請填[^。]*。/.exec(capUi.negMsg)?.[0]}」`);
+  eq(capUi.afterJunk, 500000, '亂填字母也不會被存進去');
+  eq(capUi.afterTooPrecise, 500000, '超過兩位小數也擋下來（分以下沒有意義）');
+
+  section('改完上限之後，超過就真的不發請求');
+  // 上限改得動還不夠 —— 要證明改完之後**真的會照新的上限擋**。
+  // 少了這條，一個「存得進去但沒人讀」的版本也會讓上面每一條通過。
+  const capEffect = await page.evaluate(async () => {
+    const secrets = await import('./js/secrets.js');
+    const insight = await import('./js/insight.js');
+    // 上限設成 0.000001 美金（1 微美金），用量一定超過
+    await secrets.setCap(1);
+    const st = await secrets.status();
+    let calls = 0;
+    const counting = async () => { calls += 1; return new Response('{}', { status: 200 }); };
+    let err = null;
+    try {
+      await insight.generate({ items: [], holdings: [], fetchImpl: counting });
+    } catch (e) { err = String(e.message || e); }
+    return { cap: st.capMicroUsd, overCap: st.overCap, calls, err };
+  });
+  eq(capEffect.cap, 1, '（前提）上限真的被改成 1 微美金了');
+  eq(capEffect.calls, 0, '超過上限時**一次請求都沒發**（不是發了再丟掉）');
+
   section('錯誤訊息不會把金鑰帶出來');
   const errs = await page.evaluate(async (KEY) => {
     const secrets = await import('./js/secrets.js');

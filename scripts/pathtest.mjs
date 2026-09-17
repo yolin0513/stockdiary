@@ -27,12 +27,15 @@ import { isoToRocCompact, isoToRocSlash } from '../js/roc.js';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const calJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'calendar.json'), 'utf8'));
 const cal = makeCalendar(calJson);
+// calendar.json 是多年格式（{ years: { "2026": {...} } }），沒有頂層的 tradingDays。
+// makeCalendar 同時讀得懂新舊兩種格式，所以一律從它的 days 拿。
+const ALL_TRADING_DAYS = cal.days;
 
 const TODAY = latestPublishedTradingDay(cal, new Date(), DEFAULT_TODAY_THRESHOLD);
 section('測試前提');
 ok(TODAY != null, `應公布的最新交易日：${TODAY}`, 'data/calendar.json 可能過期了 → npm run build-calendar');
 if (!TODAY) done('pathtest');
-const DAYS = calJson.tradingDays.filter((d) => d <= TODAY);
+const DAYS = ALL_TRADING_DAYS.filter((d) => d <= TODAY);
 const PREV = DAYS.at(-2);
 ok(PREV != null, `前一個交易日：${PREV}`);
 
@@ -55,7 +58,7 @@ const dayAllCsv = (date, rows) => `${[CSV_HEADER, ...rows.map(([c, n, close, chg
 const SD_FIELDS = ['日期', '成交股數', '成交金額', '開盤價', '最高價', '最低價', '收盤價', '漲跌價差', '成交筆數', '註記'];
 /** 某一檔某一個月的 STOCK_DAY 回應。價格用 base + 交易日序號，每天都不一樣才看得出拿錯天。 */
 function stockDayJson(code, name, month, base) {
-  const days = calJson.tradingDays.filter((d) => d.startsWith(month) && d <= TODAY);
+  const days = ALL_TRADING_DAYS.filter((d) => d.startsWith(month) && d <= TODAY);
   return {
     stat: 'OK',
     title: `${month.slice(0, 4) - 1911}年${month.slice(5, 7)}月 ${code} ${name}  各日成交資訊`,
@@ -98,6 +101,10 @@ async function freshApp(plan = {}, { seed = null } = {}) {
     const json = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'content-type': 'application/json' } });
     window.fetch = async (input, init) => {
       const url = String(input && input.url ? input.url : input);
+      // 換掉交易日曆 —— 驗「日曆快用完」與「已經跨年」用的。
+      // 與其偽造 Date（會連動整個 App 的時間判斷），不如給一份真的快用完的日曆：
+      // 驗到的是同一件事，而且更接近真實的失敗樣子。
+      if (p.calendarJson && url.includes('data/calendar.json')) return json(p.calendarJson);
       if (!url.includes('twse.com.tw')) return real(input, init);
       window.__calls.push({ url, at: Date.now() });
       // 真的離線：改去打本機那個已經關掉的埠，讓瀏覽器丟出真正的網路錯誤。
@@ -351,8 +358,12 @@ try {
   // =========================================================================
   section('路徑 4：長假後連續多天回補');
   {
-    // 回到 10 個交易日前
-    const back = DAYS.at(-11) ?? DAYS[0];
+    // 回到 30 個交易日前 —— **要跨月**。
+    // 只回到 10 個交易日前的話多半還在同一個月，只有一個月份要補，
+    // 進度的 total 就是 1，而「total > 1 才顯示」是刻意的
+    //（單一請求一閃而過，畫出來只會讓畫面抖一下）。
+    // 真正的「長假之後回來」本來就會跨月，這樣才驗得到進度真的畫在畫面上。
+    const back = DAYS.at(-31) ?? DAYS[0];
     const missingCount = DAYS.filter((d) => d > back).length;
     const months = [...new Set(DAYS.filter((d) => d > back).map((d) => d.slice(0, 7)))];
     const page = await freshApp({
@@ -419,6 +430,85 @@ try {
     everyOf(prog.labels, (l) => l.length > 0, '每一次進度都帶得出在做什麼，不是空字串');
     ok(prog.labels.some((l) => l.includes('回補')), `進度講得出正在回補哪一檔哪個月：「${prog.labels[0]}」`);
     eq(prog.refilled, missingCount, '（對照）倒回起點再跑一次，補出來的天數一樣');
+
+    // ---- 進度要真的出現在**畫面上**（A9）----
+    //
+    // 上面那幾條驗的是 onProgress 這個函式有被呼叫 —— 但那份進度以前**沒有人接**：
+    // app.js 開機那次與設定頁的重新整理都沒傳 onProgress，所以算好的進度沒有任何
+    // 畫面看得到。這正是慣例 20 的形狀：契約的兩端只測了一端。
+    //
+    // 所以這裡在回補進行中**取樣畫面**（慣例 20：要在空窗中間取樣，不是事後看結果）。
+    const painted = await page.evaluate(async (args) => {
+      const db = await import('./js/db.js');
+      const store = await import('./js/store.js');
+      const home = await import('./js/views/home.js');
+
+      await db.clear('settle');
+      await db.put('settle', {
+        date: args.back, dayPL: '0', marketValue: null, dividend: null,
+        counted: 1, excludedUnsupported: 0, excludedMissing: 0,
+        byCode: [{ code: '2330', shares: 1000, close: 2400, basis: 2400, basisSource: 'prevClose', status: 'ok', pl: '0' }],
+        settledAt: new Date().toISOString(),
+      });
+
+      // 先把總覽畫出來，那一行才在畫面上（progressLine 靠訂閱自己更新文字）
+      location.hash = '#/';
+      await home.default();
+      await new Promise((r) => setTimeout(r, 100));
+      const el = () => document.querySelector('#view [data-note="updateProgress"]');
+      const beforeText = el()?.textContent ?? null;
+      const beforeHidden = el()?.hidden ?? null;
+
+      const seen = [];
+      const timer = setInterval(() => {
+        const n = el();
+        if (n && !n.hidden && n.textContent) seen.push(n.textContent);
+      }, 15);
+      await store.update({ force: true });
+      clearInterval(timer);
+      await new Promise((r) => setTimeout(r, 50));
+
+      return {
+        nodeExists: !!el(),
+        beforeText, beforeHidden,
+        seen: [...new Set(seen)],
+        afterText: el()?.textContent ?? null,
+        afterHidden: el()?.hidden ?? null,
+        progressAfter: store.progress(),
+      };
+    }, { back });
+
+    ok(painted.nodeExists, '總覽上有一個放回補進度的位置');
+    eq(painted.beforeText, '', '（前提）開始之前那一行是空的');
+    eq(painted.beforeHidden, true, '（前提）而且是藏起來的 —— 沒在回補時不佔版面');
+    ok(painted.seen.length > 0,
+      `回補進行中，畫面上真的出現過進度（取樣到 ${painted.seen.length} 種文字）`,
+      '一次都沒取樣到 —— onProgress 可能又沒有接上畫面');
+    ok(painted.seen.some((t) => /回補中 \d+\/\d+/.test(t)),
+      `而且是「回補中 N/M」的樣子：「${painted.seen[0]}」`);
+    ok(painted.seen.some((t) => /2330/.test(t)),
+      `講得出正在補哪一檔：「${painted.seen.find((t) => /2330/.test(t))}」`);
+    // 分母要對得上實際要補的月份數。
+    //
+    // 不驗「看到幾種文字」：最後一步 done === total，而顯示條件是 done < total，
+    // 所以「2/2」本來就不會出現；而中間狀態取樣抓不抓得到取決於機器快慢 ——
+    // 那種斷言在忙碌的機器上會偶發失敗，是假斷言的另一種形狀。
+    everyOf(painted.seen, (t) => new RegExp(`回補中 \\d+/${months.length}`).test(t),
+      `分母是實際要補的月份數 ${months.length}（看到：${painted.seen.join('、')}）`);
+    everyOf(painted.seen, (t) => {
+      const m = /回補中 (\d+)\/(\d+)/.exec(t);
+      return m && Number(m[1]) < Number(m[2]);
+    }, '顯示出來的每一筆進度都還沒做完（done < total）—— 做完就該收起來');
+    // 結束之後要收乾淨，不然畫面會一直掛著「回補中 12/12」，看起來像卡住
+    eq(painted.afterText, '', '跑完之後那一行清空了');
+    eq(painted.afterHidden, true, '也藏回去了 —— 不會一直掛著「回補中 12/12」');
+    // **這一條要單獨驗 store 的狀態。**
+    // 上面兩條看的是畫面，而畫面在「跑完」時本來就是空的：最後一筆進度是
+    // done === total，而顯示條件是 done < total。所以「進度沒被清掉」這件事
+    // 在畫面上看不出來 —— 兩種原因長得一模一樣。
+    // 不補這一條的話，「跑完不收起來」那條突變不會紅（實際驗過）。
+    eq(painted.progressAfter, null,
+      '跑完之後 store 裡的進度也清掉了（不是只有畫面看起來是空的）');
     await page.close();
   }
 
@@ -717,6 +807,118 @@ try {
     ok(/-500 股/.test(r.detail), `單檔詳情看得到賣出那兩筆：「${/持股變動[^新]{0,40}/.exec(r.detail)?.[0]}」`);
 
     await page.close();
+  }
+
+  section('路徑 9：交易日曆快用完了／已經跨年');
+  //
+  // 這是 A1 在守的東西。舊版的日曆只涵蓋一年，2027-01-01 當天：
+  //   covers() 對每一天都回 false → latestPublishedTradingDay 回 null
+  //   → runUpdate 直接回 NO_CALENDAR → **除權息同步與定期定額待確認也一起停**
+  // 而且在那之前的 12 月裡，畫面上完全沒有任何提示。
+  //
+  // 用注入日曆而不是偽造 Date：驗的是同一件事，但不會連動整個 App 的時間判斷。
+  {
+    const seed2330 = async () => {
+      const holdings = await import('./js/holdings.js');
+      await holdings.addOpening({ code: '2330', shares: 1000, avgCost: 500, date: '2026-01-05' });
+    };
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const plus = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+    const minus = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+    // 今天一定要在日曆裡，否則會走到 NO_CALENDAR 而不是「快用完」那條路
+    const soonDays = [minus(9), minus(7), minus(3), iso(new Date()), plus(3), plus(10)];
+
+    // ---- 9a：日曆只剩 10 天 → 總覽要先講 ----
+    const soonYears = {};
+    for (const d of soonDays) (soonYears[d.slice(0, 4)] ??= { tradingDays: [], closed: [] }).tradingDays.push(d);
+    const pageSoon = await freshApp({
+      dayAll: dayAllCsv(iso(new Date()), [['2330', '台積電', 2410, '-40.0000']]),
+      calendarJson: { generatedAt: new Date().toISOString(), years: soonYears },
+    }, { seed: seed2330 });
+
+    const soon = await pageSoon.evaluate(async () => {
+      const store = await import('./js/store.js');
+      const home = await import('./js/views/home.js');
+      location.hash = '#/';
+      await home.default();
+      await new Promise((r) => setTimeout(r, 300));
+      const el = document.querySelector('#view [data-note="calendarWarn"]');
+      return {
+        runway: store.calendarRunway(),
+        warnText: el?.textContent ?? null,
+        homeText: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
+      };
+    });
+
+    ok(soon.homeText.length > 50, `（前提）總覽真的畫出來了，共 ${soon.homeText.length} 字`);
+    eq(soon.runway.daysLeft, 10, '日曆只剩 10 天（注入的那份）');
+    eq(soon.runway.warn, true, '所以 runway 說該提醒了');
+    ok(soon.warnText != null, '總覽上出現了提醒', `實際 homeText：${soon.homeText.slice(0, 200)}`);
+    ok(/請更新 App/.test(soon.warnText ?? ''),
+      `而且講得出該做什麼：「${soon.warnText}」`);
+    ok((soon.warnText ?? '').includes('無法結算'), '也講了不更新會怎樣');
+    await pageSoon.close();
+
+    // ---- 9b：對照組 —— 日曆還很久才用完，不可以出現提醒 ----
+    // 少了這一條，一個「永遠顯示提醒」的版本也會讓 9a 通過。
+    const farDays = [...soonDays, plus(200), plus(300)];
+    const farYears = {};
+    for (const d of farDays) (farYears[d.slice(0, 4)] ??= { tradingDays: [], closed: [] }).tradingDays.push(d);
+    const pageFar = await freshApp({
+      dayAll: dayAllCsv(iso(new Date()), [['2330', '台積電', 2410, '-40.0000']]),
+      calendarJson: { generatedAt: new Date().toISOString(), years: farYears },
+    }, { seed: seed2330 });
+
+    const far = await pageFar.evaluate(async () => {
+      const store = await import('./js/store.js');
+      const home = await import('./js/views/home.js');
+      location.hash = '#/';
+      await home.default();
+      await new Promise((r) => setTimeout(r, 300));
+      return {
+        runway: store.calendarRunway(),
+        warnEl: !!document.querySelector('#view [data-note="calendarWarn"]'),
+        homeText: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
+      };
+    });
+    ok(far.homeText.length > 50, `（前提）對照組的總覽也畫出來了，共 ${far.homeText.length} 字`);
+    eq(far.runway.warn, false, `（對照）日曆還剩 ${far.runway.daysLeft} 天，不該提醒`);
+    eq(far.warnEl, false, '（對照）所以總覽上沒有那行提醒 —— 提醒不是一直都在');
+    await pageFar.close();
+
+    // ---- 9c：已經跨年（日曆完全不涵蓋今天）----
+    // 這是「沒有人在 12 月更新 App」的下場。訊息要講得出**怎麼恢復**，
+    // 只說「今天不在範圍內」的話，使用者會以為是自己的資料壞了。
+    const pageOver = await freshApp({
+      dayAll: dayAllCsv(iso(new Date()), [['2330', '台積電', 2410, '-40.0000']]),
+      calendarJson: {
+        generatedAt: new Date().toISOString(),
+        years: { 2020: { tradingDays: ['2020-01-02', '2020-01-03'], closed: [] } },
+      },
+    }, { seed: seed2330 });
+
+    const over = await pageOver.evaluate(async () => {
+      const store = await import('./js/store.js');
+      const home = await import('./js/views/home.js');
+      const r = await store.update({ force: true });
+      location.hash = '#/';
+      await home.default();
+      await new Promise((x) => setTimeout(x, 300));
+      return {
+        status: r.status, message: r.message,
+        settled: r.settled ?? [],
+        homeText: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
+      };
+    });
+
+    eq(over.status, 'noCalendar', `跨年之後狀態是 noCalendar（訊息：${over.message}）`);
+    eq(over.settled, [], '什麼都沒結算 —— 不會拿別年的日曆硬算');
+    ok(/更新 App 之後就會恢復/.test(over.message),
+      `訊息講得出怎麼恢復：「${over.message}」`);
+    ok(/2020/.test(over.message), '也講得出目前涵蓋到哪些年份');
+    noneOf([over.homeText], (t) => /當日損益\s*[+-]?[\d,]+\s*元/.test(t),
+      '畫面上沒有生出一個假的當日損益數字');
+    await pageOver.close();
   }
 
   eq(pageErrors.filter((e) => !/favicon/.test(e)), [], '整段沒有未攔截的例外');

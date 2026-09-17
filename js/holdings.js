@@ -68,8 +68,17 @@ export function checkCode(code) {
   if (!catalog.isLoaded()) return { error: '代號表尚未取得，請連上網路後再試' };
   const info = catalog.lookup(key);
   if (!info.found) {
+    // 代號表過期的時候，「找不到代號」這句話會讓人以為自己打錯了 ——
+    // 其實可能只是這個版本的代號表還沒收進那一檔新上市的。多講一句，
+    // 他才知道下一步是更新 App 而不是重打一次。
+    const note = catalog.stalenessNote();
     const d = catalog.catalogDate();
-    return { error: `找不到代號 ${key}${d ? `（代號表產生於 ${d}）` : ''}`, notFound: true, code: key };
+    return {
+      error: `找不到代號 ${key}${d ? `（代號表產生於 ${d}）` : ''}${note ? `\n${note}` : ''}`,
+      notFound: true,
+      code: key,
+      catalogStale: note != null,
+    };
   }
   return { info };
 }

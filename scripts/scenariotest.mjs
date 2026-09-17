@@ -35,12 +35,15 @@ const rocChars = (iso) => {
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const calJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'calendar.json'), 'utf8'));
 const cal = makeCalendar(calJson);
+// calendar.json 是多年格式（{ years: { "2026": {...} } }），沒有頂層的 tradingDays。
+// makeCalendar 同時讀得懂新舊兩種格式，所以一律從它的 days 拿。
+const ALL_TRADING_DAYS = cal.days;
 
 const TODAY = latestPublishedTradingDay(cal, new Date(), DEFAULT_TODAY_THRESHOLD);
 section('測試前提');
 ok(TODAY != null, `應公布的最新交易日：${TODAY}`, 'data/calendar.json 可能過期了 → npm run build-calendar');
 if (!TODAY) done('scenariotest');
-const PREV = calJson.tradingDays.filter((d) => d < TODAY).pop();
+const PREV = ALL_TRADING_DAYS.filter((d) => d < TODAY).pop();
 ok(PREV != null, `前一個交易日：${PREV}`);
 
 const CSV_HEADER = '日期,證券代號,證券名稱,成交股數,成交金額,開盤價,最高價,最低價,收盤價,漲跌價差,成交筆數';

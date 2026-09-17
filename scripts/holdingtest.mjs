@@ -20,11 +20,14 @@ import { DEFAULT_TODAY_THRESHOLD } from '../js/market.js';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const calJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'calendar.json'), 'utf8'));
 const cal = makeCalendar(calJson);
+// calendar.json 是多年格式（{ years: { "2026": {...} } }），沒有頂層的 tradingDays。
+// makeCalendar 同時讀得懂新舊兩種格式，所以一律從它的 days 拿。
+const ALL_TRADING_DAYS = cal.days;
 
 // 這一天是「現在這個時刻，收盤應該已公布的最新交易日」。
 // App 會拿它跟 STOCK_DAY_ALL 回應裡的日期比對，所以假資料要用同一天。
 const EXPECTED = latestPublishedTradingDay(cal, new Date(), DEFAULT_TODAY_THRESHOLD);
-const OLDER = calJson.tradingDays[calJson.tradingDays.indexOf(EXPECTED) - 1];
+const OLDER = ALL_TRADING_DAYS[ALL_TRADING_DAYS.indexOf(EXPECTED) - 1];
 
 section('測試前提');
 ok(EXPECTED != null,
@@ -322,6 +325,60 @@ try {
   eq(count(/TWT49U/), 1, '除權息結果表打一次');
   eq(count(/STOCK_DAY\?/), 0, '只缺一天時不需要逐檔抓當月逐日');
   eq(calls.length, 3, `總共 3 個請求（實際：${calls.length}）`);
+
+  section('代號表過期時，「找不到代號」要多講一句（B3）');
+  //
+  // 使用者想加一檔新上市的股票，代號表還沒收進去 —— 他看到的只有「找不到代號」，
+  // 而那句話會讓人以為自己打錯了，於是重打一次、再重打一次。
+  //
+  // SPEC §4 B3 的決定：**不打 STOCK_DAY 試查**未在清單的代號
+  //（那會多出一種「未在清單」的持股，每一個畫面都要處理它），
+  // 改成代號表超過 60 天時多講一句「可能已經有新上市的代號沒收進來」。
+  //
+  // 換掉代號表的 generatedAt，不必等 60 天過去。
+  const staleMsg = await page.evaluate(async () => {
+    const catalog = await import('./js/catalog.js');
+    const holdings = await import('./js/holdings.js');
+    const raw = await (await fetch('./data/stocks.json')).json();
+
+    // 先用真的代號表（沒過期）
+    const fresh = holdings.checkCode('9999');
+    const freshDays = catalog.staleness().days;
+
+    // 再換成一份「很久以前產的」
+    catalog.__setDataForTest({ ...raw, generatedAt: '2020-01-01T00:00:00.000Z' });
+    const stale = holdings.checkCode('9999');
+    const note = catalog.stalenessNote();
+    const staleDays = catalog.staleness().days;
+
+    // 還原，不要污染後面的情境
+    catalog.__setDataForTest(raw);
+    return {
+      freshError: fresh.error,
+      freshStale: fresh.catalogStale === true,
+      freshDays,
+      staleError: stale.error,
+      staleFlag: stale.catalogStale === true,
+      note,
+      staleDays,
+      restoredDays: catalog.staleness().days,
+    };
+  });
+
+  ok(/找不到代號 9999/.test(staleMsg.freshError),
+    `（前提）查一個不存在的代號會說找不到：「${staleMsg.freshError}」`);
+  ok(staleMsg.freshDays <= 60, `（前提）目前的代號表還沒過期（距今 ${staleMsg.freshDays} 天）`);
+  eq(staleMsg.freshStale, false, '代號表還很新的時候，就只說找不到 —— 不要無謂地叫人更新 App');
+  noneOf([staleMsg.freshError], (t) => /新上市/.test(t), '（對照）沒過期時不會出現那句話');
+
+  ok(staleMsg.staleDays > 60, `換成很舊的代號表之後，距今 ${staleMsg.staleDays} 天`);
+  eq(staleMsg.staleFlag, true, '過期時會標記出來，呼叫端才知道要不要多講');
+  ok(/找不到代號 9999/.test(staleMsg.staleError), '仍然先講「找不到代號」（那是使用者當下問的事）');
+  ok(/新上市/.test(staleMsg.staleError),
+    `然後多講一句為什麼可能找不到：「${(staleMsg.staleError.split('\n')[1] ?? '').slice(0, 60)}」`);
+  ok(/請更新 App/.test(staleMsg.staleError), '而且講得出下一步');
+  noneOf([staleMsg.staleError], (t) => /建議|應該|最好/.test(t), '訊息裡沒有任何判斷或建議的字');
+  ok(staleMsg.restoredDays <= 60, '（收尾）代號表已經還原，不會影響後面的情境');
 
   section('沒有頁面錯誤');
   eq(pageErrors.filter((t) => !/favicon|503|Failed to load resource/i.test(t)), [], '沒有未預期的錯誤');

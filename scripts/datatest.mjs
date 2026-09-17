@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, noneOf, everyOf, detects } from './tap.mjs';
 import { isTradingMarker, classifyHolidaySchedule, tradingDaysOfYear } from './build-calendar.mjs';
 import * as catalog from '../js/catalog.js';
-import { makeCalendar, isTradingDay } from '../js/market.js';
+import { makeCalendar, isTradingDay, covers } from '../js/market.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const readJson = (p) => JSON.parse(fs.readFileSync(ROOT + p, 'utf8'));
@@ -50,15 +50,55 @@ everyOf(cls.tradingMarkers, (m) => days.includes(m.date), '三個「照常交易
 // ---------- 產出的 calendar.json ----------
 section('data/calendar.json');
 const calJson = readJson('/data/calendar.json');
-eq(calJson.year, 2026, '年份');
-ok(calJson.tradingDays.length > 200, `交易日 ${calJson.tradingDays.length} 天`);
-everyOf(calJson.tradingDays, (d) => /^2026-\d{2}-\d{2}$/.test(d), '每一天都是 2026 年的 ISO 日期');
-eq([...new Set(calJson.tradingDays)].length, calJson.tradingDays.length, '沒有重複的日期');
-eq([...calJson.tradingDays].sort().join(), calJson.tradingDays.join(), '日期是排序好的');
+
+// **多年份格式**：{ years: { "2026": { tradingDays, closed }, ... } }
+// 改成多年是因為單年的日曆在 1/1 當天會讓整個更新流程停擺 —— covers() 對每一天
+// 都回 false，除權息同步與定期定額待確認也一起停，而且事前沒有任何提示。
+ok(calJson.years && typeof calJson.years === 'object' && !Array.isArray(calJson.years),
+  '是多年份格式（有 years 這個物件）');
+const calYears = Object.keys(calJson.years).sort();
+ok(calYears.length >= 1, `涵蓋 ${calYears.length} 個年份：${calYears.join('、')}`);
+everyOf(calYears, (y) => /^\d{4}$/.test(y), '每個年份都是四位數西元年');
+ok(calYears.includes('2026'), '2026 年在裡面');
+
+// 每一年自己的內容都要成立 —— 只驗合併後的總數的話，某一年整個是空的也看不出來
+for (const y of calYears) {
+  const one = calJson.years[y];
+  ok(Array.isArray(one.tradingDays) && one.tradingDays.length > 200,
+    `${y} 年有 ${one.tradingDays?.length} 個交易日`);
+  everyOf(one.tradingDays, (d) => d.startsWith(`${y}-`) && /^\d{4}-\d{2}-\d{2}$/.test(d),
+    `${y} 年的每一天都是那一年的 ISO 日期`);
+  eq([...new Set(one.tradingDays)].length, one.tradingDays.length, `${y} 年沒有重複的日期`);
+  eq([...one.tradingDays].sort().join(), one.tradingDays.join(), `${y} 年的日期是排序好的`);
+}
+
+// 舊格式（單一 year）也要讀得懂 —— 使用者手機上可能還存著舊的 calendar.json
+// （SW 快取），換版當下不能因為格式變了就整個壞掉。
+const legacyJson = {
+  year: 2026,
+  tradingDays: calJson.years['2026'].tradingDays,
+  closed: calJson.years['2026'].closed,
+};
+const legacyCal = makeCalendar(legacyJson);
+eq(legacyCal.years, ['2026'], '舊的單年格式讀進來也會有 years');
+eq(legacyCal.days.length, calJson.years['2026'].tradingDays.length, '而且交易日一天都不少');
+eq(isTradingDay(legacyCal, '2026-09-25'), false, '舊格式一樣判斷得出中秋節休市');
+eq(covers(legacyCal, '2027-01-04'), false, '舊格式涵蓋不到 2027（本來就不該涵蓋）');
+
+// 對照：格式壞掉的不能被當成「有日曆」
+eq(makeCalendar({}).days.length, 0, '（對照）空物件不會生出任何交易日');
+eq(makeCalendar({ years: {} }).years, [], '（對照）years 是空的就是沒有年份');
+eq(covers(makeCalendar({ years: {} }), '2026-03-02'), false,
+  '（對照）沒有年份的日曆什麼都涵蓋不到');
+
+// 合併後的整體
+const allDays = calYears.flatMap((y) => calJson.years[y].tradingDays);
+ok(allDays.length > 200, `合起來共 ${allDays.length} 個交易日`);
+const calJsonDays2026 = calJson.years['2026'].tradingDays;
 
 // 2026 年 2 月最難：農曆春節 + 和平紀念日補假。這一串是拿 2330 的 STOCK_DAY
 // 實際回應核對過的（npm run livecheck 會再對一次真網路）。
-eq(calJson.tradingDays.filter((d) => d.startsWith('2026-02')),
+eq(calJsonDays2026.filter((d) => d.startsWith('2026-02')),
   ['2026-02-02', '2026-02-03', '2026-02-04', '2026-02-05', '2026-02-06',
     '2026-02-09', '2026-02-10', '2026-02-11',
     '2026-02-23', '2026-02-24', '2026-02-25', '2026-02-26'],
@@ -141,6 +181,38 @@ ok(msg.includes('不會顯示價格'), '明講不會顯示價格');
 // 提示句裡唯一該出現的數字是代號本身。出現小數就是漏了價格進來。
 noneOf([msg], (t) => /\d+\.\d+/.test(t), '提示文字裡沒有任何小數（價格長那樣）');
 eq(catalog.unsupportedMessage({ found: false }), '找不到這個代號', '不存在的代號有自己的文案');
+
+section('代號表過期提醒（B3）');
+//
+// 使用者想加一檔新上市的股票，代號表還沒收進去 —— 畫面只會說「找不到代號」，
+// 而那句話會讓人以為自己打錯了。超過 60 天就多講一句，他才知道下一步是更新 App。
+//
+// SPEC §4 B3 的決定：**不打 STOCK_DAY 試查**未在清單的代號
+//（那會多出一種「未在清單」的持股，每一個畫面都要處理它），改成過期提醒。
+
+const catDay = catalog.catalogDate();
+ok(/^\d{4}-\d{2}-\d{2}$/.test(String(catDay)), `（前提）代號表有產生日期：${catDay}`);
+const at = (days) => new Date(Date.parse(`${catDay}T00:00:00`) + days * 86400000 + 36000000);
+
+// 門檻兩側。寫死日期的話明年跑這支就會漂掉，所以一律從代號表自己的日期往後推。
+eq(catalog.staleness(at(0)).days, 0, '產生當天是 0 天');
+eq(catalog.staleness(at(59)).days, 59, '59 天後是 59 天');
+eq(catalog.staleness(at(59)).stale, false, '59 天還不算過期');
+eq(catalog.staleness(at(60)).stale, false, '剛好 60 天也還不算（門檻是「超過」）');
+eq(catalog.staleness(at(61)).stale, true, '61 天就算過期了');
+eq(catalog.staleness(at(400)).stale, true, '很久以後當然也算');
+
+// 訊息：過期才有，沒過期是 null（不是空字串 —— 呼叫端才不必自己判斷）
+eq(catalog.stalenessNote(at(59)), null, '沒過期時沒有那句話');
+const note61 = catalog.stalenessNote(at(61));
+ok(note61 != null, `過期時講得出來：「${note61}」`);
+ok(note61.includes(catDay), '訊息裡有代號表的產生日期');
+ok(/61 天/.test(note61), '也講得出距今幾天');
+ok(/請更新 App/.test(note61), '而且講得出下一步該做什麼');
+noneOf([note61], (t) => /建議|應該|最好|風險/.test(t), '訊息裡沒有任何判斷或建議的字');
+
+// 門檻真的是 60 —— 寫死在常數裡，改了會被這條抓到
+eq(catalog.CATALOG_STALE_DAYS, 60, '門檻是 60 天');
 
 section('代號格式判斷');
 detects(catalog.looksLikeCode, {

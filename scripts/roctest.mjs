@@ -11,6 +11,7 @@ import {
 import {
   makeCalendar, isTradingDay, prevTradingDay, tradingDaysBetween,
   latestPublishedTradingDay, todayPending, missingTradingDays, hhmmToMinutes, covers,
+  calendarRunway,
 } from '../js/market.js';
 
 section('民國 → 西元');
@@ -122,5 +123,82 @@ eq(missingTradingDays(cal, null, '2026-09-11'), ['2026-09-11'],
 noneOf(missingTradingDays(cal, '2026-09-07', '2026-09-30'),
   (d) => d === '2026-09-25' || d === '2026-09-28' || isTradingDay(cal, d) !== true,
   '整個月的缺漏日裡沒有任何一天是休市日');
+
+section('多年份日曆：跨年不會整個停擺');
+//
+// 這是 A1 在守的東西：舊的單年日曆在 2027-01-01 當天會讓 covers() 對每一天都回 false，
+// 於是 latestPublishedTradingDay 回 null、runUpdate 直接回 NO_CALENDAR ——
+// **除權息同步與定期定額待確認也一起停**，而且 12 月裡完全沒有提示。
+
+const twoYear = makeCalendar({
+  years: {
+    2026: { tradingDays: ['2026-12-30', '2026-12-31'], closed: [] },
+    2027: { tradingDays: ['2027-01-04', '2027-01-05'], closed: [] },
+  },
+});
+eq(twoYear.years, ['2026', '2027'], '兩個年份都讀進來了');
+eq(twoYear.days, ['2026-12-30', '2026-12-31', '2027-01-04', '2027-01-05'],
+  '交易日合併成一串，而且是排序好的');
+eq(twoYear.year, null, '跨年份的日曆沒有單一「年份」—— 畫面要講範圍，不能講某一年');
+
+eq(covers(twoYear, '2026-12-31'), true, '涵蓋 2026');
+eq(covers(twoYear, '2027-01-04'), true, '也涵蓋 2027');
+eq(covers(twoYear, '2028-01-03'), false, '2028 不在裡面');
+eq(covers(twoYear, '2025-12-31'), false, '2025 也不在裡面');
+
+// **跨年那一步**：2027 的第一個交易日，前一個交易日在 2026 年。
+// 單年日曆在這裡只能回 null，整個回補鏈就斷在這裡。
+eq(prevTradingDay(twoYear, '2027-01-04'), '2026-12-31',
+  '2027 第一個交易日的前一個交易日是 2026-12-31（跨年接得起來）');
+eq(isTradingDay(twoYear, '2027-01-04'), true, '2027-01-04 是交易日');
+eq(isTradingDay(twoYear, '2027-01-01'), false, '2027-01-01 不是（元旦）');
+eq(tradingDaysBetween(twoYear, '2026-12-31', '2027-01-04'), ['2026-12-31', '2027-01-04'],
+  '跨年的區間也算得出來');
+eq(missingTradingDays(twoYear, '2026-12-30', '2027-01-05'),
+  ['2026-12-31', '2027-01-04', '2027-01-05'],
+  '跨年的缺漏日回補得出來（以前這裡會是空的）');
+
+// 對照：同一份資料只留 2026，跨年的每一件事都要回 null／false
+const oneYear = makeCalendar({ year: 2026, tradingDays: ['2026-12-30', '2026-12-31'] });
+eq(covers(oneYear, '2027-01-04'), false, '（對照）只有 2026 的日曆涵蓋不到 2027');
+eq(prevTradingDay(oneYear, '2027-01-04'), null, '（對照）所以跨年那一步只能回 null');
+eq(missingTradingDays(oneYear, '2026-12-30', '2027-01-05'), [],
+  '（對照）缺漏日也是空的 —— 這正是跨年停擺的樣子');
+
+section('日曆快用完了要提前講');
+//
+// 45 天：證交所通常第四季才公布隔年的休市日，11 月中開始提醒還來得及讓人更新 App。
+// 實測（2026-09-17）openapi 的 holidaySchedule 目前**只有民國 115 年（2026）**，
+// 一筆 116 年的都沒有 —— 所以這個提醒是目前唯一的防線。
+
+const endOf2026 = makeCalendar({ year: 2026, tradingDays: ['2026-06-01', '2026-12-31'] });
+const runwayAt = (iso) => calendarRunway(endOf2026, new Date(`${iso}T10:00:00`));
+
+eq(runwayAt('2026-12-31').daysLeft, 0, '最後一天當天剩 0 天');
+eq(runwayAt('2026-11-16').daysLeft, 45, '11/16 剩 45 天');
+eq(runwayAt('2026-11-17').daysLeft, 44, '11/17 剩 44 天');
+eq(runwayAt('2026-11-16').warn, true, '剛好 45 天就開始提醒');
+eq(runwayAt('2026-11-15').warn, false, '46 天的時候還不提醒');
+eq(runwayAt('2026-09-17').warn, false, '今天（9/17，剩 105 天）不提醒');
+eq(runwayAt('2027-01-05').daysLeft, -5, '已經過期就是負的');
+eq(runwayAt('2027-01-05').warn, true, '過期了當然要提醒');
+eq(runwayAt('2026-12-31').lastDay, '2026-12-31', '講得出涵蓋到哪一天');
+
+// 門檻可以調，而且**調了真的會改變結果**（不然上面每一條都可能是巧合）
+eq(calendarRunway(endOf2026, new Date('2026-09-17T10:00:00'), 200).warn, true,
+  '門檻放寬到 200 天，9/17 就會提醒了');
+eq(calendarRunway(endOf2026, new Date('2026-11-16T10:00:00'), 10).warn, false,
+  '門檻收緊到 10 天，11/16 就不提醒了');
+
+// 沒有日曆的時候不能假裝知道
+eq(calendarRunway(makeCalendar({}), new Date('2026-11-16T10:00:00')),
+  { lastDay: null, daysLeft: null, warn: false },
+  '沒有日曆就回 null，不要猜一個天數出來');
+
+// 多年份日曆看的是**最後一年**的最後一天
+eq(calendarRunway(twoYear, new Date('2026-11-16T10:00:00')).lastDay, '2027-01-05',
+  '有 2027 的話，看的是 2027 的最後一天');
+eq(calendarRunway(twoYear, new Date('2026-11-16T10:00:00')).warn, false,
+  '補上 2027 之後，11/16 就不必再提醒了');
 
 done('roctest');

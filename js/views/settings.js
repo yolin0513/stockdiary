@@ -1,6 +1,6 @@
 // 設定頁。M0：字級、今日資料公布門檻、資料來源與限制說明。
 
-import { h, toast, switchRow, timeSelect, confirmDialog, fmtDate } from '../ui.js';
+import { h, toast, switchRow, timeSelect, confirmDialog, fmtDate, progressLine } from '../ui.js';
 import * as prefs from '../prefs.js';
 import * as catalog from '../catalog.js';
 import * as store from '../store.js';
@@ -115,6 +115,42 @@ function configuredCard(st) {
     await settings();
   });
 
+  // **「或調高上限」這句話以前是空頭支票** —— 畫面上講了，但沒有任何地方可以調，
+  // 而 secrets.setCap 一直存在、從來沒有人呼叫。
+  //
+  // 單位：畫面收美金（整數或到小數兩位），存進去是**微美金**（整數）。
+  // 兩邊搞混的話會差一百萬倍，而且畫面上看起來完全正常。
+  const capField = h('input', {
+    class: 'field',
+    type: 'text',
+    inputmode: 'decimal',
+    value: (st.capMicroUsd / 1e6).toFixed(2),
+    dataset: { field: 'aiCap' },
+  });
+  const capMsg = h('p', { class: 'muted sm' }, '');
+  const capBtn = h('button', { class: 'btn' }, '儲存上限');
+  capBtn.addEventListener('click', async () => {
+    const raw = String(capField.value ?? '').trim();
+    // 空白、負數、非數字一律擋下來並講清楚 —— 不要默默存成 0
+    //（0 的意思是「完全不准用」，跟「我沒填」是兩件事）。
+    if (!/^\d+(\.\d{1,2})?$/.test(raw)) {
+      capMsg.textContent = '請填 0 或正數，最多兩位小數（例如 2 或 2.50）。';
+      return;
+    }
+    const micro = Math.round(Number(raw) * 1e6);
+    if (!Number.isInteger(micro) || micro < 0) {
+      capMsg.textContent = '這個數字存不進去，請換一個。';
+      return;
+    }
+    try {
+      await secrets.setCap(micro);
+      toast(`本機上限改成 ${secrets.fmtUsd(micro)}`);
+      await settings();
+    } catch (e) {
+      capMsg.textContent = String(e.message || e);
+    }
+  });
+
   const m = secrets.modelById(st.model);
   return h('section', { class: 'card', dataset: { card: 'aiKeyConfigured' } },
     h('h2', { class: 'card-title' }, 'AI 金鑰'),
@@ -131,6 +167,9 @@ function configuredCard(st) {
     st.overCap
       ? h('p', { class: 'warn' }, '已達本機上限，「今日觀察」暫停。下個月自動歸零，或調高上限。')
       : null,
+    h('label', { class: 'sm muted' }, '本機上限（美金）'),
+    h('div', { class: 'row-actions' }, capField, capBtn),
+    capMsg,
     h('p', { class: 'muted sm' },
       '這是估算：用回應裡的 token 數乘上公開費率累加，可能與帳單有出入。'
       + '真正會擋下花費的是 Anthropic 後台的 Billing 上限，建議去那裡也設一個。'),
@@ -216,6 +255,8 @@ function thresholdSection() {
  * 併在一起也比較合理：資料從哪來、抓到哪一天、有沒有漏，本來就是同一件事。
  */
 function dataSection() {
+  const runway = store.calendarRunway();
+  const catStale = catalog.staleness();
   const catDate = catalog.catalogDate();
   const cal = store.calendar();
   const upd = store.lastUpdate();
@@ -244,10 +285,28 @@ function dataSection() {
     h('h3', { class: 'sub-title' }, '目前狀態'),
     ...lines.map((t) => h('p', { class: 'muted sm' }, t)),
     h('p', { class: 'muted sm' }, lastSettled ? `最後結算：${fmtDate(lastSettled)}` : '尚未結算過'),
+    progressLine(store.progress, store.subscribe),
     btn,
     h('h3', { class: 'sub-title' }, '來源'),
-    h('p', { class: 'muted sm' }, `代號表：${catDate ? `${catDate} 產生` : '尚未取得'}`),
-    h('p', { class: 'muted sm' }, `開休市日：${cal?.year ? `${cal.year} 年，${cal.days.length} 個交易日` : '尚未取得'}`),
+    h('p', { class: 'muted sm' },
+      `代號表：${catDate ? `${catDate} 產生` : '尚未取得'}`
+      + (catStale.stale ? `（距今 ${catStale.days} 天）` : '')),
+    // 超過 60 天就講一句 —— 不然使用者加不進新上市的代號時，
+    // 只會看到「找不到代號」，會以為是自己打錯。
+    catStale.stale
+      ? h('p', { class: 'muted sm', dataset: { note: 'catalogStale' } },
+        '可能已經有新上市的代號沒收進來，請更新 App。')
+      : null,
+    // 多年份日曆的 cal.year 是 null，所以講 years 的範圍。
+    h('p', { class: 'muted sm' },
+      `開休市日：${cal?.years?.length
+        ? `${cal.years.join('、')} 年，共 ${cal.days.length} 個交易日`
+        : '尚未取得'}`),
+    // 用完之前先講。沒有這一行的話，跨年當天才會發現，而那時已經來不及了。
+    runway.warn && runway.lastDay
+      ? h('p', { class: 'muted sm', dataset: { note: 'calendarWarn' } },
+        `開休市日只到 ${fmtDate(runway.lastDay)}（剩 ${runway.daysLeft} 天），之後會無法結算，請更新 App。`)
+      : null,
     h('p', { class: 'muted sm' }, '收盤價來自臺灣證券交易所（www.twse.com.tw），只在開啟 App 時抓一次，沒有盤中即時報價。'),
   );
 }

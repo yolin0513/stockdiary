@@ -105,23 +105,45 @@ export async function prune({ now = new Date(), keepDays = KEEP_DAYS } = {}) {
 export async function refresh({ now = new Date(), force = false, fetchImpl = fetch } = {}) {
   const date = localISODate(now);
   const record = (await db.get('news', date)) ?? { date, items: [], fetchedAt: {} };
-  const results = [];
-
-  for (const source of SOURCES) {
+  // **六個來源同時抓**，不是一個等一個。
+  //
+  // 循序的時候最壞會是 6 × 8 秒逾時 ＝ 48 秒 —— 使用者按下「看新聞」之後
+  // 盯著一片空白將近一分鐘，而且第一家掛掉就會拖垮後面全部。
+  // 並行之後最壞就是單一來源的逾時（8 秒）。
+  //
+  // ⚠ **合併順序不能跟著「誰先回來」跑。** 用 allSettled 之後回應的先後是隨機的，
+  // 照那個順序合併的話，同一批新聞每次開啟的排序都不一樣 —— 看起來像資料在跳。
+  // 所以下面先等全部結束，再**照 SOURCES 的固定順序**合併。
+  const settled = await Promise.allSettled(SOURCES.map(async (source) => {
     const last = record.fetchedAt?.[source.id];
     const fresh = last && now.getTime() - Date.parse(last) < REFETCH_MS;
     if (fresh && !force) {
-      results.push({ source: source.id, ok: true, skipped: true, reason: '30 分鐘內抓過了' });
-      continue;
+      return { source: source.id, ok: true, skipped: true, reason: '30 分鐘內抓過了' };
     }
     const r = await fetchSource(source, { fetchImpl });
-    if (r.ok) {
+    return r.ok
+      ? { source: source.id, ok: true, count: r.items.length, items: r.items }
+      : { source: source.id, ok: false, error: r.error };
+  }));
+
+  // 照 SOURCES 的順序收，不是照回來的順序
+  const results = [];
+  for (let i = 0; i < SOURCES.length; i += 1) {
+    const source = SOURCES[i];
+    const outcome = settled[i];
+    if (outcome.status === 'rejected') {
+      // fetchSource 自己會把錯誤包成 { ok: false }，所以走到這裡代表它自己爆了。
+      // 一家爆掉不能讓整批沒有結果 —— 這正是並行要守住的事。
+      results.push({ source: source.id, ok: false, error: String(outcome.reason?.message ?? outcome.reason) });
+      continue;
+    }
+    const r = outcome.value;
+    if (r.ok && !r.skipped) {
       record.items = mergeItems(record.items, r.items);
       record.fetchedAt = { ...record.fetchedAt, [source.id]: now.toISOString() };
-      results.push({ source: source.id, ok: true, count: r.items.length });
-    } else {
-      results.push({ source: source.id, ok: false, error: r.error });
     }
+    const { items, ...rest } = r;
+    results.push(rest);
   }
 
   await db.put('news', record);
