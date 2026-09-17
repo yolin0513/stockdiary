@@ -974,6 +974,124 @@ try {
     await page.close();
   }
 
+  section('路徑 11：一個入口模組沒載到（沒有 SW 可退）—— 看門狗要補一張卡');
+  //
+  // 使用者回報：按下「更新」之後只剩最上面的標題列、下面整片空白、連轉圈圈都沒有。
+  // 頂列停在 index.html 寫死的「StockDiary」→ **JS 整張沒跑**：首頁的 ES module 圖二十幾個檔，
+  // 任何一個拿不到整張就不執行；畫錯誤畫面的程式碼也在那張圖裡，所以沒有任何東西會出來。
+  // 根因是更新流程 unregister 之後 reload，那一頁就沒有 SW 可退了（v0.7.21 已拿掉）。
+  //
+  // 這裡用**全新的瀏覽器 context**（沒有 SW）＋ 把 js/store.js 打成 404，真的重現那片空白，
+  // 再驗看門狗（普通 script，不在 module 圖裡）補卡；把檔案還回來按「重新載入」要回到可用。
+  {
+    const failing = new Set(['/js/store.js']);
+    const { srv: srv11, port: port11 } = await listen(0, { shouldFail: (pn) => failing.has(pn) });
+    const ctx = await browser.createBrowserContext();
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(90000);
+    await page.setViewport({ width: 390, height: 844 });
+    const errs11 = [];
+    page.on('pageerror', (e) => errs11.push(String(e.message)));
+
+    await page.goto(`http://localhost:${port11}/`, { waitUntil: 'networkidle0' });
+    await new Promise((r) => setTimeout(r, 800));
+    const blank = await page.evaluate(() => ({
+      title: document.getElementById('topTitle').textContent,
+      docTitle: document.title,
+      tabs: document.querySelectorAll('#tabbar .tab').length,
+      viewChildren: document.getElementById('view').children.length,
+      spinner: !!document.querySelector('#view .wait-box'),
+      booted: document.documentElement.getAttribute('data-booted'),
+      swControlled: !!navigator.serviceWorker?.controller,
+    }));
+    eq(blank.swControlled, false, '（前提）這一頁沒有 Service Worker 在管 —— 檔案只能走網路');
+    eq(blank.title, 'StockDiary', '（真的空白）頂列停在 HTML 寫死的預設標題');
+    eq(blank.tabs, 0, '（真的空白）沒有底部分頁');
+    eq(blank.spinner, false, '（真的空白）連轉圈圈都沒有 —— 畫轉圈圈的程式碼在那張 module 圖裡');
+    eq(blank.booted, null, '（真的空白）app.js 沒有標上 data-booted：module 圖整張沒跑');
+
+    // 看門狗：偵測到 script 載入失敗之後 1.5 秒內補卡（沒偵測到也會在 12 秒時補）
+    await page.waitForSelector('#view [data-card="bootGuard"]', { timeout: 15000 });
+    const guard = await page.evaluate(() => {
+      const card = document.querySelector('#view [data-card="bootGuard"]');
+      const text = card.textContent.replace(/\s+/g, ' ');
+      const btns = [...card.querySelectorAll('button')].map((b) => ({
+        t: b.textContent, h: b.getBoundingClientRect().height, action: b.dataset.action,
+      }));
+      return { text, btns, elapsed: Math.round(performance.now()) };
+    });
+    ok(/資料不會不見/.test(guard.text), `先講「你的資料不會不見」：「${guard.text.slice(0, 40)}」`);
+    ok(/沒有下載完成|沒有啟動/.test(guard.text), '講得出發生什麼事');
+    eq(guard.btns.map((b) => b.action), ['bootReload', 'bootClear'], '兩顆按鈕：重新載入、清快取再載入');
+    everyOf(guard.btns, (b) => b.h >= 44, `按鈕 ≥44px（${guard.btns.map((b) => `${b.t} ${Math.round(b.h)}px`).join('、')}）`);
+    ok(guard.elapsed < 12000, `偵測到載入失敗就提早補卡（${guard.elapsed}ms），不必等滿 12 秒`);
+    ok(/不會動到你的資料/.test(guard.text), '「清快取」那顆先講清楚不會動到資料');
+
+    // 檔案回來了 → 按「重新載入」→ 回到可用畫面
+    failing.clear();
+    await page.click('#view [data-action="bootReload"]');
+    await page.waitForSelector('#tabbar .tab', { timeout: 30000 });
+    await page.waitForSelector('#view .card', { timeout: 30000 });
+    const back = await page.evaluate(() => ({
+      tabs: document.querySelectorAll('#tabbar .tab').length,
+      cards: document.querySelectorAll('#view .card').length,
+      booted: document.documentElement.getAttribute('data-booted'),
+      guardStill: !!document.querySelector('#view [data-card="bootGuard"]'),
+      title: document.getElementById('topTitle').textContent,
+    }));
+    ok(back.tabs >= 4, `檔案回來按「重新載入」之後，分頁回來了（${back.tabs} 格）`);
+    ok(back.cards >= 1, `畫面也回來了（${back.cards} 張卡）`);
+    eq(back.booted, '1', 'app.js 標上了 data-booted');
+    eq(back.guardStill, false, '救援卡不會留在正常畫面上（畫面有東西時看門狗不出手）');
+    ok(back.title !== 'StockDiary' || back.cards >= 1, `頂列不再是空白狀態的樣子（${back.title}）`);
+
+    // 對照：正常開機時看門狗**不會**出手（等過 12 秒也不會）
+    await new Promise((r) => setTimeout(r, 12500));
+    const calm = await page.evaluate(() => !!document.querySelector('#view [data-card="bootGuard"]'));
+    eq(calm, false, '（對照）正常開機等滿 12 秒，看門狗一張卡都沒補 —— 它只在畫面空著時出手');
+
+    await page.close();
+    await ctx.close();
+    srv11.close();
+
+    // ---- 11b：模組**吊死**（連 header 都不回）—— 沒有 404、沒有 error 事件，只有 12 秒計時器救得了 ----
+    // 404 那條路走的是「聽到載入失敗提早補卡」；這條路什麼事件都不會有，
+    // 看門狗只能靠時間。少了這一節，計時器被改成 10 分鐘也沒有斷言會紅。
+    const hanging = new Set(['/js/store.js']);
+    const { srv: srv11b, port: port11b } = await listen(0, { shouldHang: (pn) => hanging.has(pn) });
+    const ctxB = await browser.createBrowserContext();
+    const pageB = await ctxB.newPage();
+    pageB.setDefaultTimeout(90000);
+    // **不能 await 這個 goto。** module script 是 deferred，DOMContentLoaded 要等整張 module 圖
+    // 執行完，而圖裡有一個檔永遠不回來 → DCL 永遠不觸發 → goto 永遠不 resolve（實測逾時 90 秒）。
+    // 這本身就是那片空白的真實樣子。HTML 早就 commit、解析完、看門狗（普通 script）也早就跑了，
+    // 所以直接對已經 commit 的文件做檢查；goto 的逾時最後吞掉。
+    const tB0 = Date.now();
+    const navB = pageB.goto(`http://localhost:${port11b}/`, { waitUntil: 'load', timeout: 40000 }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 800));
+    // 先確認 5 秒時還是空的（看門狗沒有提早出手）
+    await new Promise((r) => setTimeout(r, Math.max(0, 5000 - (Date.now() - tB0))));
+    const at5s = await pageB.evaluate(() => ({
+      guard: !!document.querySelector('#view [data-card="bootGuard"]'),
+      tabs: document.querySelectorAll('#tabbar .tab').length,
+      booted: document.documentElement.getAttribute('data-booted'),
+    }));
+    eq(at5s.guard, false, '（吊死）5 秒時看門狗還沒出手 —— 沒有 error 事件，它不該提早');
+    eq(at5s.tabs, 0, '（吊死）5 秒時仍然是空的：module 圖在等那個永遠不回來的檔');
+    eq(at5s.booted, null, '（吊死）app.js 沒跑');
+    await pageB.waitForSelector('#view [data-card="bootGuard"]', { timeout: 20000 });
+    const hangMs = Date.now() - tB0;
+    ok(hangMs >= 11000 && hangMs <= 16000,
+      `（吊死）看門狗在 12 秒計時器到了才補卡（${hangMs}ms）—— 不是提早、也不是永遠不來`);
+    const hangText = await pageB.evaluate(() => document.querySelector('#view [data-card="bootGuard"]').textContent.replace(/\s+/g, ' '));
+    ok(/還沒啟動/.test(hangText), `（吊死）講的是「等了 12 秒還沒啟動」而不是「檔沒下載完成」：「${hangText.slice(40, 90)}」`);
+    await pageB.close();
+    await ctxB.close();
+    srv11b.closeAllConnections?.();   // 斬掉那條永遠不回應的連線，close() 才不會等它
+    srv11b.close();
+    void navB;   // 逾時已經被 .catch 吞掉，這裡只是講明它不必等
+  }
+
   eq(pageErrors.filter((e) => !/favicon/.test(e)), [], '整段沒有未攔截的例外');
 } finally {
   await browser.close();

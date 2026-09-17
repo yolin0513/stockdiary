@@ -20,9 +20,20 @@ const TYPES = {
   '.csv': 'text/csv; charset=utf-8',
 };
 
-export function createServer() {
+/**
+ * shouldFail(pathname) 回 true 的請求回 404 —— 給測試模擬「某一個檔在網路不穩的那幾秒拿不到」。
+ * 沒傳就跟以前一模一樣。
+ */
+/** shouldHang(pathname) 回 true 的請求**永遠不回應** —— 沒有 404、沒有 error 事件，只有等。 */
+export function createServer({ shouldFail = null, shouldHang = null } = {}) {
   return http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    if (shouldHang && shouldHang(url.pathname)) return;   // 連 header 都不送
+    if (shouldFail && shouldFail(url.pathname)) {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+      res.end('not found (injected)');
+      return;
+    }
     let rel = decodeURIComponent(url.pathname);
     if (rel.endsWith('/')) rel += 'index.html';
     const full = path.resolve(ROOT, '.' + rel);
@@ -38,9 +49,9 @@ export function createServer() {
   });
 }
 
-export function listen(port = 0) {
+export function listen(port = 0, opts = {}) {
   return new Promise((resolve) => {
-    const srv = createServer();
+    const srv = createServer(opts);
     srv.listen(port, () => resolve({ srv, port: srv.address().port }));
   });
 }

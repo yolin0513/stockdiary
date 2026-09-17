@@ -166,6 +166,8 @@ const BOOT_DEADLINE_MS = 6000;
   prefs.applyFontScale();
   startRouter();
   renderTabs();
+  // 告訴看門狗（js/bootguard.js）：module 圖跑起來了，不必補救援卡
+  document.documentElement.setAttribute('data-booted', '1');
   void currentRoute;
 
   // 開頁自動更新一次。不 await —— 畫面先出來，資料回來再重畫。
@@ -239,15 +241,14 @@ function setupUpdates(reg) {
         const r = await navigator.serviceWorker.getRegistration();
         if (r && r.waiting) r.waiting.postMessage('SKIP_WAITING');
       } catch { /* noop */ }
-      setTimeout(async () => {
+      setTimeout(() => {
         if (reloading) return;
-        // 沒網路又解除註冊的話 App 會整個打不開，所以只在有網路時才走這條最後手段
-        if (navigator.onLine) {
-          try {
-            const r = await navigator.serviceWorker.getRegistration();
-            if (r) await r.unregister();
-          } catch { /* noop */ }
-        }
+        // **這裡不再 unregister。** 以前會：解除註冊之後這一頁就沒有 Service Worker 了，
+        // 重載時二十幾個檔只能走網路，任何一個在網路不穩的那幾秒拿不到，整張 module 圖就不執行，
+        // 也沒有快取可退 —— 畫面停在「只有 HTML 預設標題、沒有分頁、連轉圈圈都沒有」。
+        // navigator.onLine 擋不住：它只代表連上某個網路，不保證連得到伺服器。
+        // 只 reload：新 SW 準備好就換過去；還沒接手的話舊 SW 仍供得出整組舊版，畫面至少完整可用。
+        // unregister 只留在 forceUpdate()（「需要更新」那張卡）當逃生門。
         reload();
       }, 1500);
     }, 2500);

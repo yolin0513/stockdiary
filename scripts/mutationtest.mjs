@@ -1932,6 +1932,46 @@ const MUTATIONS = [
     replace: '',
     test: 'shelltest',
   },
+  {
+    name: '看門狗等 10 分鐘才出手',
+    why: '開機超過 12 秒還是空的就該補卡。等 10 分鐘等於沒有看門狗 —— 使用者早就把 App 滑掉了。',
+    file: 'js/bootguard.js',
+    find: '  var BOOT_GUARD_MS = 12000;',
+    replace: '  var BOOT_GUARD_MS = 600000;',
+    test: 'pathtest',
+  },
+  {
+    name: '看門狗聽到載入失敗也不提早補卡',
+    why: 'script／link 的載入失敗不會冒泡到 window.onerror，要用 capture 才接得到；接到之後 1.5 秒就該補卡。拿掉提早補卡的話只能等滿 12 秒 —— pathtest 路徑 11 驗的是「偵測到失敗就提早」。（第一版突變只翻 sawLoadError 旗標，那只影響文案不影響時機 —— 第 34 條那種改在死路上，實測沒紅。）',
+    file: 'js/bootguard.js',
+    find: '      setTimeout(function () { rescue(\'loadError\'); }, AFTER_ERROR_MS);',
+    replace: '      /* 不提早 */',
+    test: 'pathtest',
+  },
+  {
+    name: '看門狗在畫面已經有東西時也出手',
+    why: '看門狗只能在沒人畫得出來的時候補卡。畫面有東西還硬塞一張，正常開機每 12 秒就會多出一張救援卡。',
+    file: 'js/bootguard.js',
+    find: '    if (fired || booted() || !viewEmpty()) return;',
+    replace: '    if (fired) return;',
+    test: 'pathtest',
+  },
+  {
+    name: '更新流程又把 unregister 放回去',
+    why: 'unregister 之後這一頁就沒有 SW 了，重載時二十幾個檔只能走網路，任何一個拿不到整張 module 圖就不執行 —— 這正是「按更新之後只剩標題列」的根因（MealMate 同病，v0.27.0 驗證有效）。shelltest 靜態稽核 applyNow 裡不得有 unregister。',
+    file: 'js/app.js',
+    find: '        reload();\n      }, 1500);',
+    replace: '        navigator.serviceWorker.getRegistration().then((r) => r && r.unregister()).finally(reload);\n      }, 1500);',
+    test: 'shelltest',
+  },
+  {
+    name: 'app.js 不標 data-booted',
+    why: '看門狗靠這個旗標分辨「module 圖跑起來了」；不標的話它會在正常開機時等 12 秒後也去看 #view —— 目前靠 viewEmpty 撐著，但旗標是主判準。pathtest 路徑 11 驗重新載入後旗標為 1。',
+    file: 'js/app.js',
+    find: '  document.documentElement.setAttribute(\'data-booted\', \'1\');',
+    replace: '  // 不標',
+    test: 'pathtest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

@@ -487,6 +487,43 @@ section('無障礙與 PWA 的靜態稽核（A4、A7、A16）');
     '#app 同時有 100vh 與 100dvh（iOS Safari 的 100vh 含工具列；舊瀏覽器退回 vh）');
 }
 
+section('更新流程不 unregister；看門狗不 import 任何東西');
+{
+  const app = stripComments(read('js/app.js'));
+  // 把 applyNow 與 forceUpdate 兩個函式的本體各自切出來（從函式名到下一個頂層 function）
+  const fnBody = (name) => {
+    const i = app.indexOf(`function ${name}(`);
+    if (i < 0) return null;
+    const rest = app.slice(i + 1);
+    const j = rest.search(/\n(?:async )?function |\n\(async function|\nconst \w+ = |\nsetNotFound|\nsetViewError/);
+    return rest.slice(0, j < 0 ? undefined : j);
+  };
+  const applyNow = fnBody('applyNow');
+  const forceUpdate = fnBody('forceUpdate');
+  ok(applyNow && applyNow.length > 200, `（前提）切得出 applyNow 的本體（${applyNow?.length} 字）`);
+  ok(forceUpdate && forceUpdate.length > 100, `（前提）切得出 forceUpdate 的本體（${forceUpdate?.length} 字）`);
+  // 使用者回報「按更新之後只剩標題列」：unregister 之後這一頁沒有 SW 可退，
+  // 重載時二十幾個檔只能走網路，任何一個拿不到整張 module 圖就不執行。
+  // MealMate 同病（v0.27.0 驗證：拿掉 unregister、只 skipWaiting＋reload 就好）。
+  ok(!/unregister/.test(applyNow), 'applyNow（更新提示列與自動換版）裡沒有 unregister —— 只 skipWaiting＋reload');
+  ok(/SKIP_WAITING/.test(applyNow) && /reload\(\)/.test(applyNow), '（對照）applyNow 還是會 skipWaiting 並 reload，不是整段被拿掉');
+  // 逃生門要留：「需要更新」那張卡是使用者主動按的，可以接受最壞情況
+  ok(/unregister/.test(forceUpdate), '（對照）forceUpdate（「需要更新」卡片的逃生門）仍然保留 unregister');
+
+  // 看門狗**刻意**是普通 script：module 圖整張死掉時它還活著
+  const guard = stripComments(read('js/bootguard.js'));
+  ok(!/\bimport\b/.test(guard), 'bootguard.js 沒有任何 import');
+  ok(!/\bexport\b/.test(guard), '也沒有 export（不是模組）');
+  const html = read('index.html');
+  const guardTag = /<script[^>]*bootguard\.js[^>]*>/.exec(html)?.[0] ?? '';
+  ok(guardTag && !/type="module"/.test(guardTag), `index.html 用普通 <script> 載它（${guardTag}）`);
+  const moduleTagAt = html.search(/<script type="module" src="\.\/js\/app\.js/);
+  ok(moduleTagAt > 0 && html.indexOf('bootguard.js') < moduleTagAt,
+    '而且排在 <script type="module" src="./js/app.js"> 前面（<head> 的 modulepreload 不算，那只是預抓）');
+  ok(/data-card', 'bootGuard'|data-card["'], ["']bootGuard/.test(guard) || /'bootGuard'/.test(guard), '救援卡有 data-card="bootGuard" 可以被測試認出來');
+  ok(/資料不會不見/.test(read('js/bootguard.js')), '救援卡先講「你的資料不會不見」');
+}
+
 section('sw.js 不會快取外部請求');
 ok(/url\.origin !== self\.location\.origin/.test(swSource) &&
   /if \(url\.origin !== self\.location\.origin\) return;/.test(swSource),
