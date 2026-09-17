@@ -6,7 +6,7 @@
 // boot() 跑兩次、路由註冊兩次、TWSE 被打兩輪。view 要用的東西在 js/shell.js。
 // shelltest 有靜態稽核擋這件事。
 
-import { route, setNotFound, startRouter, navigate, currentRoute, setSlowIndicator, refresh } from './router.js';
+import { route, setNotFound, setViewError, startRouter, navigate, currentRoute, setSlowIndicator, refresh } from './router.js';
 import * as store from './store.js';
 import * as prefs from './prefs.js';
 import { h } from './ui.js';
@@ -39,6 +39,42 @@ route('/settings', async () => (await import(`./views/settings.js${V}`)).default
  */
 setNotFound(({ path }) => {
   showVersionMismatch(path);
+});
+
+/**
+ * 認得的網址、但那個 view 自己炸了。
+ *
+ * 使用者回報過的症狀：「底部的設定按了沒反應」。實際上是 settings() 丟了例外，
+ * 路由只印 console.error —— hash 換了、分頁亮了、#view 卻還是上一頁，
+ * 而 iPhone 沒有 console。**不管根因是什麼，畫面上都要講出來**，
+ * 而且要把例外訊息原樣放上去：使用者截圖回報，開發者才看得到根因。
+ *
+ * 跟 showVersionMismatch 一樣給「更新到最新版」—— view 炸掉最常見的原因
+ * 仍然是版本混搭（新 view 用了舊模組沒有的東西）。
+ */
+setViewError(({ path, error }) => {
+  const message = String(error?.message ?? error ?? '（沒有訊息）');
+  setTop({ title: '這一頁打不開', back: true });
+  const btn = h('button', { class: 'btn btn-primary' }, '更新到最新版');
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '更新中…';
+    forceUpdate();
+  });
+  render(
+    h('section', { class: 'card', dataset: { card: 'viewError' } },
+      h('h2', { class: 'card-title' }, '這一頁打不開'),
+      h('p', {}, `「${path}」畫到一半出了錯，所以沒有換頁。你的資料沒有被動到。`),
+      h('p', { class: 'muted sm' }, '錯誤訊息（回報時請把這段一起截圖）：'),
+      h('p', { class: 'mono sm', dataset: { field: 'viewErrorMessage' } }, message),
+      h('p', { class: 'muted sm' }, `目前執行的版本：${APP_VERSION}`),
+      btn,
+      h('a', { class: 'btn', href: '#/' }, '先回總覽'),
+      h('p', { class: 'muted sm' },
+        '按了更新還是一樣的話：把 App 完全關掉（iPhone 從多工畫面上滑掉）再開一次。'),
+    ),
+  );
 });
 
 function showVersionMismatch(rawPath) {

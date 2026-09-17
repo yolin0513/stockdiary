@@ -1828,6 +1828,22 @@ const MUTATIONS = [
     replace: '  sw.addEventListener(\'dblclick\', toggle);',
     test: 'uikittest',
   },
+  {
+    name: 'view 炸了只印 console，畫面不講',
+    why: '使用者回報「底部的設定按了沒反應」。view 丟例外時路由只 console.error：hash 換了、分頁亮了、#view 還是上一頁，而 iPhone 沒有 console。畫面上不講，使用者就沒有任何東西可以回報。',
+    file: 'js/router.js',
+    find: '      if (viewError) {',
+    replace: '      if (false) {',
+    test: 'shelltest',
+  },
+  {
+    name: 'view 炸了的錯誤卡片不放例外訊息',
+    why: '卡片上只寫「打不開」而不放 e.message 的話，使用者截圖回報也看不出根因 —— 等於沒講。',
+    file: 'js/app.js',
+    find: '      h(\'p\', { class: \'mono sm\', dataset: { field: \'viewErrorMessage\' } }, message),',
+    replace: '      h(\'p\', { class: \'mono sm\', dataset: { field: \'viewErrorMessage\' } }, \'（略）\'),',
+    test: 'shelltest',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

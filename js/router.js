@@ -25,6 +25,17 @@ export function route(pattern, handler) {
 }
 export function setNotFound(fn) { notFound = fn; }
 
+/**
+ * view 丟例外時要畫什麼。
+ *
+ * 以前這裡只有 console.error —— hash 換了、分頁亮了、#view 卻還是上一頁，
+ * 而 iPhone 上沒有 console。使用者回報過這個症狀：「底部的設定按了沒反應」。
+ * 不管 view 是為什麼炸的，畫面上都要講出來，而且要把例外訊息原樣放上去，
+ * 使用者才有東西可以截圖回報。
+ */
+let viewError = null;
+export function setViewError(fn) { viewError = fn; }
+
 /** 這個 App 註冊過的所有路由樣式（給稽核測試用）。 */
 export function routePatterns() { return routes.map((r) => r.pattern); }
 
@@ -124,7 +135,15 @@ async function renderOnce() {
     current = { path, params, query, pattern: r.pattern };
     if (restore == null) window.scrollTo(0, 0);
     try { await r.handler({ params, query, path, fresh: true }); }
-    catch (e) { console.error(e); }
+    catch (e) {
+      console.error(e);
+      // 這個 view 已經被更新的導覽取代了 → 不要畫；最新那一頁會由 runLatest 接手
+      if (my !== gen) return;
+      if (viewError) {
+        try { await viewError({ path, error: e }); }
+        catch (e2) { console.error('連錯誤畫面都畫不出來', e2); }
+      }
+    }
     if (my !== gen) return; // 畫到一半使用者就走了，捲動位置也不要動
     if (restore != null) {
       window.scrollTo(0, restore);

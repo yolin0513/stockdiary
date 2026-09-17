@@ -22,7 +22,7 @@
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **210 條突變**逐一證明關鍵斷言改壞會紅。
+測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **212 條突變**逐一證明關鍵斷言改壞會紅。
 （這兩個數字由 `npm run doctest` 從程式數出來核對 —— 文件漂移過一次：STATUS 與 README 都停在 138，實際已經 182。）
 突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
 （所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
@@ -307,6 +307,19 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
       所以 `progressLine` 用「這個節點還在不在畫面上」當存活判斷。
     · 批次 4 做 A11 的時候，`subscribe`／`notifyChanged`／`emit` 這一組要重新盤點，
       不能照 SPEC 原文直接刪。
+37. **路由把 view 的例外吞掉，畫面上什麼都不講 —— 使用者看到的是「按了沒反應」。**
+    v0.7.17 上線後 Yolin 回報「底部的設定按了沒反應」。`router.js` 的 `renderOnce()` 對 view 的例外
+    只做 `console.error`：hash 換了、分頁亮了、`#view` 卻還是上一頁，而 iPhone 沒有 console。
+    · 桌面／手機視口／有無金鑰／換版路徑／特大字級全部重現不出來 —— 重現不出來的原因就是
+      **失敗被吞掉了**：使用者拿不到任何可以回報的東西，開發者也就拿不到根因。
+    · v0.7.18 起：`router.setViewError()`，view 炸了就畫「這一頁打不開」的卡片，**例外訊息原樣放上去**
+      （`data-field="viewErrorMessage"`）、版本號、「更新到最新版」、「先回總覽」。`shelltest` 註冊一條必炸的
+      路由驗它，兩條突變（只印 console／卡片不放訊息）都會紅。
+    · 通則：**任何 catch 裡只有 console.error 的地方，都是一個使用者永遠報不出來的 bug。**
+      catch 要嘛畫出來、要嘛降級成一句講得出下一步的文案；只印 console 等於沒處理。
+    · 底下那個例外（settings 為什麼在他的手機上炸）**還沒找到**。這一版的目的是讓他下次能截圖。
+      能想到而且實測排除的：BigInt 混進 `capMicroUsd`／`usedMicroUsd`（會炸，但 `save()`／`addUsage` 一直存 Number）、
+      overlay／pointer-events、`renderIsStale` 卡死、更新提示列蓋住分頁。
 
 ## 非同步畫面的守門（v0.5.2，實際發生過的 bug）
 

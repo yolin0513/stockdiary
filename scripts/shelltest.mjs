@@ -603,6 +603,48 @@ try {
   ok(mismatch.hash !== '#/', `網址留在原地（${mismatch.hash}），更新之後才接得上`);
   ok(await page.$('#tabbar .tab') != null, '底部分頁還在，沒有把使用者困住');
 
+  section('認得的網址但 view 炸了：畫面要講出來，不能只印 console');
+  // 使用者回報過的症狀（v0.7.17）：「底部的設定按了沒反應」。
+  // 路由以前對 view 的例外只做 console.error —— hash 換了、分頁亮了、#view 還是上一頁，
+  // 而 iPhone 沒有 console。這一節註冊一條**一定會炸**的路由，證明畫面會講出來。
+  await page.evaluate(() => { location.hash = '#/'; });
+  await page.waitForFunction(
+    () => document.getElementById('topTitle')?.textContent === 'StockDiary 股息日記'
+      && document.querySelector('#view .card'),
+    { timeout: 60000 },
+  );
+  await new Promise((r) => setTimeout(r, 300));
+
+  await page.evaluate(async () => {
+    const router = await import('./js/router.js');
+    router.route('/__boom', async () => { throw new Error('測試用的例外：BOOM-4242'); });
+    location.hash = '#/__boom';
+  });
+  await page.waitForSelector('#view [data-card="viewError"]', { timeout: 60000 });
+  const boom = await page.evaluate(() => ({
+    hash: location.hash,
+    title: document.getElementById('topTitle').textContent,
+    text: document.querySelector('#view').textContent.replace(/\s+/g, ' '),
+    msg: document.querySelector('#view [data-field="viewErrorMessage"]')?.textContent ?? '',
+    hasUpdateButton: [...document.querySelectorAll('#view button')].some((b) => b.textContent.includes('更新到最新版')),
+    hasHomeLink: [...document.querySelectorAll('#view a')].some((a) => a.getAttribute('href') === '#/'),
+    tabs: document.querySelectorAll('#tabbar .tab').length,
+  }));
+  eq(boom.title, '這一頁打不開', '頂列標題換成「這一頁打不開」（不是留著上一頁的標題）');
+  ok(boom.text.includes('__boom'), '把打不開的那條路徑寫出來');
+  ok(boom.msg.includes('BOOM-4242'), `**例外訊息原樣放在畫面上**：「${boom.msg}」—— 使用者截圖就能回報根因`);
+  ok(boom.text.includes('資料沒有被動到'), '先安撫：資料沒事');
+  ok(boom.text.includes(APP_VERSION_IN_SRC), `寫出目前執行的版本 ${APP_VERSION_IN_SRC}`);
+  ok(boom.hasUpdateButton, '有「更新到最新版」的按鈕（view 炸掉最常見的原因仍是版本混搭）');
+  ok(boom.hasHomeLink, '也留了一條回總覽的路');
+  ok(boom.tabs >= 4, '底部分頁還在，沒有把使用者困住');
+  ok(boom.hash === '#/__boom', `網址留在原地（${boom.hash}）`);
+
+  // 對照：炸過一次之後，正常的路由要還走得動 —— 錯誤卡片不能把路由卡死
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  await page.waitForFunction(() => document.getElementById('topTitle')?.textContent === '設定', { timeout: 60000 });
+  ok(await page.$('#view [data-card="dataSource"]') != null, '（對照）炸過之後再點設定，設定頁照樣畫得出來');
+
   section('畫面上看得到版本號');
   // 以前版本號**只有錯誤卡片會寫**，正常畫面任何地方都看不到。
   // 結果是換版之後沒有人（包括使用者自己）講得出手機上跑的是哪一版，出問題時沒辦法對。

@@ -711,3 +711,12 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
 .time-select { display: flex; align-items: center; gap: 6px; }
 .field-inline { width: auto; min-width: 4.5em; }
 .time-colon { color: var(--muted); }
+
+/* 錯誤訊息原文（view 炸掉時的卡片）。等寬好辨認、一定要能換行 ——
+   例外訊息可能很長，撐出橫向捲動會讓使用者截不到整段。 */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
