@@ -75,7 +75,9 @@ export function renderTabs() {
       class: 'tab' + (on ? ' on' : ''),
       href: `#${t.path}`,
       'aria-current': on ? 'page' : null,
-    }, h('span', { class: 'tab-icon' }, t.icon), h('span', { class: 'tab-label' }, t.label));
+    // emoji 對讀屏是「圖形」不是字。藏起來，連結的名稱就只剩「總覽」「設定」——
+    // 實測過：沒藏的時候無障礙樹裡這條連結**沒有名字**。
+    }, h('span', { class: 'tab-icon', 'aria-hidden': 'true' }, t.icon), h('span', { class: 'tab-label' }, t.label));
   }));
 }
 

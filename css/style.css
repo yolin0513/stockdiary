@@ -37,6 +37,9 @@ body {
 
 #app {
   min-height: 100vh;
+  /* iOS Safari 的 100vh 把工具列也算進去，底部會多出一截捲得到的空白。
+     dvh 是「目前真的看得到的高度」；不認得 dvh 的瀏覽器會留在上一行的 vh。 */
+  min-height: 100dvh;
   padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
 }
 
@@ -719,4 +722,24 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* 鍵盤焦點（A5）。以前一筆 focus 樣式都沒有：自訂外觀的按鈕把瀏覽器預設的 outline
+   蓋掉了，在深色底上等於隱形 —— 用鍵盤或切換控制的人完全不知道自己走到哪。
+   只用 :focus-visible，不用 :focus：滑鼠點一下也亮框會很吵。 */
+.btn:focus-visible,
+.chip:focus-visible,
+.switch:focus-visible,
+.collapse-head:focus-visible,
+.tab:focus-visible,
+.icon-btn:focus-visible,
+.field:focus-visible,
+.row[href]:focus-visible,
+.news-row:focus-visible,
+.banner:focus-visible,
+.update-go:focus-visible,
+.update-later:focus-visible,
+.modal-x:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
 }

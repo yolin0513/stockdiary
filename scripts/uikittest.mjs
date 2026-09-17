@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done, noneOf, everyOf } from './tap.mjs';
+import { ok, eq, section, done, noneOf, everyOf, note } from './tap.mjs';
 import { listen } from './serve.mjs';
 import { stripComments } from './srcscan.mjs';
 
@@ -628,6 +628,135 @@ try {
     eq(r.capAfter, 3250000, `真的點「儲存上限」，設定真的存進去了（${r.capBefore} → ${r.capAfter} 微美金）`);
     eq(r.hashAfterTab, '#/', '從設定頁點底部的「總覽」分頁，真的走得出去');
     eq(pageErrors.length, errsBefore, '整段沒有新的頁面例外（例外會讓整頁事件失效，那正是「無法點擊」的一種成因）');
+  }
+
+  section('對話框：焦點關在裡面、關掉還回去、後面的頁面 inert（A3）');
+  //
+  // 鍵盤與讀屏使用者按 Tab 會跑到對話框後面那一頁，畫面上什麼都看不出來 ——
+  // 只有他們知道自己迷路了。四件事分開驗：焦點在卡片內、Tab 循環、#app inert、關閉後還原。
+  {
+    await page.evaluate(() => { location.hash = '#/settings'; });
+    await page.waitForFunction(() => document.getElementById('topTitle')?.textContent === '設定');
+    const opened = await page.evaluate(async () => {
+      const ui = await import('./js/ui.js');
+      // 自己放一顆觸發鈕並聚焦，才有「打開它的是誰」可以還原
+      const trigger = ui.h('button', { class: 'btn', id: '__trigger' }, '開對話框');
+      document.querySelector('#view').prepend(trigger);
+      trigger.focus();
+      window.__dlg = ui.modal({
+        title: '測試用對話框',
+        body: ui.h('p', {}, '內容'),
+        actions: [{ label: '取消', value: false }, { label: '確定', value: true, primary: true }],
+      });
+      await new Promise((r) => setTimeout(r, 120));
+      const card = document.querySelector('.modal-card');
+      return {
+        activeInCard: !!card && card.contains(document.activeElement),
+        appInert: document.getElementById('app').inert === true,
+        labelledby: card?.getAttribute('aria-labelledby') ?? null,
+        titleId: card?.querySelector('.modal-title')?.id ?? null,
+        focusables: card ? card.querySelectorAll('button, input, select, textarea, a[href]').length : 0,
+      };
+    });
+    ok(opened.activeInCard, '打開之後焦點在卡片裡');
+    eq(opened.appInert, true, '對話框開著時 #app 是 inert（後面的東西走不到、唸不到、點不到）');
+    ok(opened.labelledby && opened.labelledby === opened.titleId,
+      `aria-labelledby 指向標題（${opened.labelledby}）—— 讀屏開啟時會唸出這是什麼對話框`);
+    ok(opened.focusables >= 2, `（前提）卡片裡有 ${opened.focusables} 個可聚焦的東西，Tab 循環才有意義`);
+
+    // 連按 Tab 十次：每一次焦點都還在卡片內
+    const trail = [];
+    for (let i = 0; i < 10; i += 1) {
+      // puppeteer 不認 'Shift+Tab' 這種組合寫法，要自己按住 Shift
+      if (i % 3 === 2) {
+        await page.keyboard.down('Shift');
+        await page.keyboard.press('Tab');
+        await page.keyboard.up('Shift');
+      } else {
+        await page.keyboard.press('Tab');
+      }
+      trail.push(await page.evaluate(() => {
+        const card = document.querySelector('.modal-card');
+        return { inCard: !!card && card.contains(document.activeElement), tag: document.activeElement?.textContent?.trim().slice(0, 6) };
+      }));
+    }
+    everyOf(trail, (t) => t.inCard, `連按 Tab／Shift+Tab 十次，焦點都關在卡片裡（${trail.map((t) => t.tag).join('→')}）`);
+    ok(new Set(trail.map((t) => t.tag)).size >= 2, '（對照）焦點真的有在卡片內移動，不是卡在同一顆');
+
+    const closed = await page.evaluate(async () => {
+      [...document.querySelectorAll('.modal-card button')].find((b) => b.textContent === '取消').click();
+      const val = await window.__dlg;
+      await new Promise((r) => setTimeout(r, 60));
+      const out = {
+        value: val,
+        overlayGone: !document.querySelector('.modal-overlay'),
+        appInert: document.getElementById('app').inert === true,
+        focusBackOnTrigger: document.activeElement?.id === '__trigger',
+      };
+      document.getElementById('__trigger')?.remove();
+      return out;
+    });
+    eq(closed.overlayGone, true, '（前提）對話框關掉了');
+    eq(closed.appInert, false, '關掉之後 #app 不再 inert');
+    eq(closed.focusBackOnTrigger, true, '焦點回到打開它的那顆按鈕（讀屏不會掉回頁面頂端）');
+  }
+
+  section('讀屏：圖示不朗讀、分頁有名稱、開關不重複唸（A4）');
+  {
+    const a11y = await page.evaluate(() => ({
+      tabIcons: [...document.querySelectorAll('#tabbar .tab-icon')].map((e) => e.getAttribute('aria-hidden')),
+      tabLabels: [...document.querySelectorAll('#tabbar .tab .tab-label')].map((e) => e.textContent.trim()),
+      switchStates: [...document.querySelectorAll('#view .switch-state')].map((e) => e.getAttribute('aria-hidden')),
+      switchLabels: [...document.querySelectorAll('#view [role="switch"]')].map((e) => e.getAttribute('aria-label') || ''),
+      viewLive: document.getElementById('view').getAttribute('aria-live'),
+    }));
+    ok(a11y.tabIcons.length >= 4, `（前提）分頁列有 ${a11y.tabIcons.length} 個圖示`);
+    everyOf(a11y.tabIcons, (v) => v === 'true', '每個分頁圖示都 aria-hidden（emoji 對讀屏是「圖形」不是字）');
+    everyOf(a11y.tabLabels, (t) => t.length > 0, `每個分頁的名稱都是文字（${a11y.tabLabels.join('、')}）—— 以前無障礙樹裡這些連結沒有名字`);
+    ok(a11y.switchStates.length >= 1, `（前提）設定頁有 ${a11y.switchStates.length} 個開關的「開／關」字`);
+    everyOf(a11y.switchStates, (v) => v === 'true', '開關旁的「開／關」字 aria-hidden（aria-checked 已經表達了，再唸是重複）');
+    everyOf(a11y.switchLabels, (t) => t.length > 0, '（對照）每個開關仍然有 aria-label，讀屏唸得出是哪個設定');
+    eq(a11y.viewLive, null, '#view 不是 aria-live（不然每次換頁讀屏會把整頁唸一遍）');
+  }
+
+  section('鍵盤焦點看得見（A5）');
+  //
+  // 以前一筆 focus 樣式都沒有：自訂外觀把瀏覽器預設 outline 蓋掉，在深色底上等於隱形。
+  // 用鍵盤真的 Tab 過去（:focus-visible 只在鍵盤聚焦時亮），量 computed outline。
+  {
+    const samples = [];
+    for (const [hash, waitTitle] of [['#/settings', '設定'], ['#/holdings', '持股'], ['#/', 'StockDiary 股息日記']]) {
+      await page.evaluate((h) => { location.hash = h; }, hash);
+      await page.waitForFunction((t) => document.getElementById('topTitle')?.textContent === t, {}, waitTitle);
+      await page.evaluate(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); });
+      for (let i = 0; i < 4; i += 1) {
+        await page.keyboard.press('Tab');
+        const st = await page.evaluate(() => {
+          const el = document.activeElement;
+          if (!el || el === document.body) return null;
+          const cs = getComputedStyle(el);
+          return { tag: el.tagName, cls: el.className, text: (el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 10),
+            style: cs.outlineStyle, width: cs.outlineWidth, color: cs.outlineColor, matches: el.matches(':focus-visible') };
+        });
+        if (st) samples.push({ page: hash, ...st });
+      }
+    }
+    ok(samples.length >= 6, `（前提）三頁用鍵盤 Tab 取樣到 ${samples.length} 個聚焦元素`);
+    const visible = samples.filter((x) => x.matches);
+    ok(visible.length >= 6, `（前提）其中 ${visible.length} 個處於 :focus-visible（鍵盤聚焦）`);
+    everyOf(visible, (x) => x.style !== 'none' && parseFloat(x.width) >= 2,
+      `每一個鍵盤聚焦的元素都有 ≥2px 的 outline（${visible.map((x) => `${x.text || x.tag}:${x.width}`).join('、')}）`);
+    everyOf(visible, (x) => !/rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\)|transparent/.test(x.color),
+      'outline 的顏色不是透明');
+    // 對照：滑鼠點的不該亮（:focus-visible 語意）—— 用 click 聚焦一顆按鈕再量
+    const mouse = await page.evaluate(async () => {
+      const b = document.querySelector('#tabbar .tab');
+      b.click();
+      await new Promise((r) => setTimeout(r, 50));
+      const el = document.activeElement;
+      return { isTab: el === b, fv: el?.matches(':focus-visible') ?? null };
+    });
+    note(`（對照）滑鼠點分頁：聚焦=${mouse.isTab}，focus-visible=${mouse.fv}（滑鼠點不亮框是刻意的，但各瀏覽器判準不同，只記錄不斷言）`);
   }
 
   eq(pageErrors, [], '整段沒有未攔截的例外');

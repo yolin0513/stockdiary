@@ -46,14 +46,56 @@ export function toast(msg, ms = 2400) {
   }, ms);
 }
 
+let modalSeq = 0;
+
+/**
+ * 對話框的可及性（A3）：
+ *   · 開啟時記住是誰打開的，關閉後焦點回到那顆按鈕 —— 不然讀屏會掉回頁面頂端
+ *   · #app 加 inert：對話框開著的時候，後面的東西鍵盤走不到、讀屏唸不到、也點不到
+ *   · Tab／Shift+Tab 在卡片內循環（focus trap）
+ *   · aria-labelledby 指向標題，讀屏開啟時會唸出「這是什麼對話框」
+ * 沒有這四件事的話，鍵盤與讀屏使用者按 Tab 會跑到對話框後面那一頁，
+ * 而畫面上什麼都看不出來 —— 只有他們知道自己迷路了。
+ */
 export function modal({ title, body, actions, closeX = false }) {
   const root = document.getElementById('modalRoot');
+  const app = document.getElementById('app');
   return new Promise((resolve) => {
-    const close = (val) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(val); };
-    const onKey = (e) => { if (e.key === 'Escape') close(null); };
-    const card = h('div', { class: 'modal-card', role: 'dialog', 'aria-modal': 'true' },
+    const opener = document.activeElement;
+    const titleId = title ? `modalTitle${++modalSeq}` : null;
+    const close = (val) => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      if (app) app.inert = false;
+      // 焦點還原：打開對話框的那顆按鈕還在畫面上才還給它
+      if (opener && opener.isConnected && typeof opener.focus === 'function') {
+        try { opener.focus(); } catch { /* noop */ }
+      }
+      resolve(val);
+    };
+    const focusables = () => [...card.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )].filter((el) => el.offsetParent !== null || el === document.activeElement);
+    const onKey = (e) => {
+      if (e.key === 'Escape') { close(null); return; }
+      if (e.key !== 'Tab') return;
+      // focus trap：走到最後一個再按 Tab 回到第一個；Shift+Tab 反過來
+      const list = focusables();
+      if (!list.length) { e.preventDefault(); return; }
+      const first = list[0];
+      const last = list[list.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !card.contains(active))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (active === last || !card.contains(active))) { e.preventDefault(); first.focus(); }
+    };
+    const card = h('div', {
+      class: 'modal-card',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': titleId,
+    },
       closeX ? h('button', { class: 'modal-x', 'aria-label': '關閉', onclick: () => close(null) }, '✕') : null,
-      title ? h('h2', { class: 'modal-title' }, title) : null,
+      title ? h('h2', { class: 'modal-title', id: titleId }, title) : null,
       h('div', { class: 'modal-body' }, body),
       h('div', { class: 'modal-actions' },
         ...(actions || [{ label: '好', value: true, primary: true }]).map((a) =>
@@ -66,6 +108,7 @@ export function modal({ title, body, actions, closeX = false }) {
     );
     const overlay = h('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) close(null); } }, card);
     root.append(overlay);
+    if (app) app.inert = true;
     document.addEventListener('keydown', onKey);
     const focusable = card.querySelector('input, textarea, button.btn-primary, button');
     if (focusable) setTimeout(() => focusable.focus(), 30);
@@ -118,7 +161,8 @@ export function switchRow({ label, hint, checked, onChange, key = null }) {
     'aria-checked': checked ? 'true' : 'false',
     'aria-label': label,
     dataset: key ? { pref: key } : {},
-  }, track, h('span', { class: 'switch-state' }, checked ? '開' : '關'));
+  // 「開／關」這兩個字是給眼睛看的；讀屏靠 aria-checked，再唸一次是重複
+  }, track, h('span', { class: 'switch-state', 'aria-hidden': 'true' }, checked ? '開' : '關'));
 
   let busy = false;
   const toggle = async () => {

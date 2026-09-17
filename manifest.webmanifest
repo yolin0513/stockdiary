@@ -4,6 +4,7 @@
   "description": "記錄台股上市持股、每日結算當日損益、累積已領股利與除權息日曆。純前端、免註冊、離線可用。",
   "lang": "zh-Hant",
   "dir": "ltr",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

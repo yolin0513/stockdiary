@@ -124,7 +124,7 @@ function pendingBanners(evts, changes) {
 
 function bannerRow({ card, href, title, sub }) {
   return h('a', { class: 'banner', href, dataset: { card } },
-    h('span', { class: 'banner-icon' }, '💰'),
+    h('span', { class: 'banner-icon', 'aria-hidden': 'true' }, '💰'),
     h('span', { class: 'banner-body' },
       title,
       h('span', { class: 'muted sm banner-sub' }, sub),

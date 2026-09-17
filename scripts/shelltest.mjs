@@ -439,6 +439,54 @@ ok(realPick.length > 0 && realPick.length < realMuts.length,
 everyOf(realPick, (m) => m.file === 'js/twse.js' || moduleClosure(`scripts/${m.test}.mjs`, (rel) => read(rel)).includes('js/twse.js'),
   '挑出來的每一條，不是檔案被改到就是測試碰得到那個檔');
 
+section('無障礙與 PWA 的靜態稽核（A4、A7、A16）');
+{
+  const html = read('index.html');
+  // A4：整個 #view 是 aria-live 的話，每次換頁讀屏都會把整頁唸一遍
+  const mainTag = /<main[^>]*>/.exec(html)?.[0] ?? '';
+  ok(mainTag.includes('id="view"'), `（前提）找得到 <main id="view">：${mainTag}`);
+  ok(!/aria-live/.test(mainTag), '#view 沒有 aria-live（該朗讀的是 #toast）');
+  ok(/<div id="toast" role="status"/.test(html), '（對照）#toast 有 role="status"，通知還是會被唸');
+
+  // A16：manifest id ＋ color-scheme meta
+  const manifest = JSON.parse(read('manifest.webmanifest'));
+  eq(manifest.id, './', 'manifest 有 id（瀏覽器靠它認出「同一個 App」，換 start_url 也不會裝成第二個）');
+  ok(/<meta name="color-scheme" content="dark"/.test(html),
+    'index.html 有 color-scheme meta（表單控制項第一幀就是深色，不先閃白）');
+
+  // A7：所有開新分頁的外連都要 noopener（不然新分頁拿得到 window.opener）
+  // 母體是**全部** target: '_blank'（現在 2 處），不是「有問題的那幾個」。
+  const srcFiles = [...fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js')).map((f) => `js/${f}`),
+    ...fs.readdirSync(path.join(ROOT, 'js/views')).filter((f) => f.endsWith('.js')).map((f) => `js/views/${f}`)];
+  const blanks = [];
+  for (const rel of srcFiles) {
+    const src = stripComments(read(rel));
+    const rx = /target:\s*'_blank'/g;
+    let m;
+    while ((m = rx.exec(src))) {
+      // 同一個 h() 呼叫裡（往前後各 200 字）要看得到 rel: 'noopener…'
+      const around = src.slice(Math.max(0, m.index - 200), m.index + 200);
+      blanks.push({ rel, ok: /rel:\s*'noopener/.test(around) });
+    }
+  }
+  ok(blanks.length >= 2, `（前提）掃到 ${blanks.length} 處 target: '_blank'`);
+  everyOf(blanks, (b) => b.ok, "每一處 target: '_blank' 都帶 rel: 'noopener'");
+
+  // A5：focus-visible 規則存在，而且蓋到最常用的幾種控制項
+  const css = read('css/style.css');
+  const fvBlock = /([^{}]*:focus-visible[^{]*)\{([^}]*)\}/.exec(css);
+  ok(fvBlock != null, 'style.css 有 :focus-visible 的規則');
+  const selectors = fvBlock ? fvBlock[1] : '';
+  everyOf(['.btn', '.chip', '.switch', '.tab', '.icon-btn', '.field'], (sel) => selectors.includes(sel + ':focus-visible'),
+    'focus-visible 蓋到 .btn／.chip／.switch／.tab／.icon-btn／.field');
+  ok(/outline:\s*2px\s+solid/.test(fvBlock?.[2] ?? ''), '而且是 2px 實線（不是 0 或 none）');
+  ok(!/:focus\s*[,{]/.test(css.replace(/:focus-visible/g, '')), '只用 :focus-visible，沒有裸的 :focus（滑鼠點一下也亮框會很吵）');
+
+  // A6：100dvh 備援
+  ok(/min-height:\s*100dvh/.test(css) && /min-height:\s*100vh/.test(css),
+    '#app 同時有 100vh 與 100dvh（iOS Safari 的 100vh 含工具列；舊瀏覽器退回 vh）');
+}
+
 section('sw.js 不會快取外部請求');
 ok(/url\.origin !== self\.location\.origin/.test(swSource) &&
   /if \(url\.origin !== self\.location\.origin\) return;/.test(swSource),

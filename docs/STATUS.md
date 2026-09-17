@@ -22,7 +22,7 @@
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **214 條突變**逐一證明關鍵斷言改壞會紅。
+測試現況：28 支測試＋突變套件，`npm run mutationtest` 用 **223 條突變**逐一證明關鍵斷言改壞會紅。
 （這兩個數字由 `npm run doctest` 從程式數出來核對 —— 文件漂移過一次：STATUS 與 README 都停在 138，實際已經 182。）
 突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
 （所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
@@ -627,6 +627,21 @@ TWT49U 的日期參數無效（`FEASIBILITY.md` §10.8），只給得到「最�
 真的還是覺得有必要，要在報告裡講明「這是你上次拿掉的，我建議重新考慮，理由是⋯⋯」，
 由他決定 —— 不要默默加回去。
 
+## 無障礙與 PWA（批次 3，v0.7.20）
+
+`SPEC_全面優化.md` §3 A3～A7、A16。全部有 `uikittest`／`shelltest` 的斷言與突變守著。
+
+| 項目 | 做了什麼 | 為什麼 |
+|---|---|---|
+| A3 對話框 | `ui.modal()`：記住 `document.activeElement`、關閉後 `focus()` 回去；開啟時 `#app.inert = true`；Tab／Shift+Tab 在卡片內循環；`aria-labelledby` 指向標題 | 鍵盤與讀屏使用者按 Tab 會跑到對話框後面那一頁，畫面上看不出來 —— 只有他們知道自己迷路了 |
+| A4 朗讀 | `#view` 拿掉 `aria-live`；`.tab-icon`／`.banner-icon`／`.switch-state` 加 `aria-hidden` | 整個畫面是 live region 的話每次換頁讀屏會把整頁唸一遍；emoji 對讀屏是「圖形」不是字 —— **實測過：沒藏的時候無障礙樹裡分頁連結沒有名字**（`link href="#/settings"`），藏了之後名稱就是「設定」 |
+| A5 鍵盤焦點 | `:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px }` 套在 `.btn` `.chip` `.switch` `.collapse-head` `.tab` `.icon-btn` `.field` `.row[href]` `.news-row` `.banner` 與更新提示列 | 以前一筆 focus 樣式都沒有：自訂外觀把瀏覽器預設 outline 蓋掉，深色底上等於隱形。**只用 `:focus-visible` 不用 `:focus`**：滑鼠點一下也亮框會很吵，`shelltest` 有一條擋裸的 `:focus` |
+| A6 視窗高度 | `#app { min-height: 100vh; min-height: 100dvh; }` | iOS Safari 的 100vh 把工具列也算進去，底部多一截捲得到的空白；dvh 是「目前真的看得到的高度」，舊瀏覽器留在上一行的 vh。純樣式備援，不加瀏覽器斷言（`layouttest` 照掃），`shelltest` 靜態驗兩行都在 |
+| A7 外連 | `rel: 'noopener noreferrer'` —— 稽核時缺的那一處（`news.js:197`）在本批之前就已經補上了；本批加的是 `shelltest` 的靜態稽核：**每一處** `target: '_blank'` 都要帶 `noopener`（母體是全部，現在 2 處） | 沒有 noopener 的新分頁拿得到 `window.opener`，可以把這一頁導去別的網址 |
+| A16 PWA | `manifest.webmanifest` 加 `"id": "./"`；`index.html` 加 `<meta name="color-scheme" content="dark">` | 沒有 id 瀏覽器靠 start_url 認 App，一改就裝成第二個；CSS 載進來之前表單控制項會先用白底畫一幀 |
+
+測 `:focus-visible` 要用**真的鍵盤** `Tab`（puppeteer `keyboard.press`），滑鼠 `click()` 聚焦不會觸發它。
+puppeteer 不認 `'Shift+Tab'` 這種組合寫法，要 `keyboard.down('Shift')` → `press('Tab')` → `up('Shift')`（踩過）。
 ## 元件慣例（v0.7.4 收斂）
 
 使用者實機回報「開關按鈕很不直覺」「修改／停用樣式不一樣」「時間欄位跑版」，
