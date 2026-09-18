@@ -19,6 +19,8 @@
 新增 `docs/CONVENTIONS.md`（四個 App 共用慣例 v1 的副本，**不要在這裡改它**，主檔在統籌工作區），
 並在 `CLAUDE.md` 檔尾追加「共用慣例」一節（既有內容一行都沒動）。從此新 Session 第一則回覆的第一行要寫回執
 `已讀共用慣例 vN（日期）`。沒有 bump、沒有部署、沒有跑 `npm test`／`mutationtest`（只跑 `doctest`、`shelltest`）。
+同日副本已照工單 `docs/SPEC_共用慣例更新_v2.md` 更新到 **v2**（§0 回執、§2.1、§5.7、§6.1 三處措辭；`CLAUDE.md` 不必改）；
+之後新開場的回執是 `已讀共用慣例 v2（2026-09-19）`。
 
 ### 做到哪一步（2026-09-16 ～ 09-18 的版本）
 
@@ -164,6 +166,9 @@
 15. **範圍外的發現先記下來、不要順手改**，在回報裡列給 Yolin 決定（例：calcviewtest 的 NUL 分隔符、calc.js 的死碼 `state.startValue`，都是先回報、得到同意才動）。例外：已經在紅的測試擋住了本批的驗證時可以修，但要用 `git stash` 證明它在改動之前就是紅的（第 35 條的 dcatest 就是這樣處理）。
 16. **不接非官方或會被擋的資料來源**（例如 Goodinfo、Yahoo 財經）。資料只來自證交所官方端點（`www.twse.com.tw`、`openapi.twse.com.tw`）與 `FEASIBILITY.md` 評估過的新聞 RSS。
 17. **介面改動**一律跑 `layouttest`（7 頁 × 4 字級 × 3 寬度）與 `uikittest`；觸控區 ≥ 44px、特大字級不爆版。
+18. **commit 作者信箱用 GitHub noreply，不要改回真實信箱。**（2026-09-19 Yolin 裁示，原話：「照你的建議，請改noreply」）
+    本 repo 的 `.git/config` 設 `user.email = 43800182+yolin0513@users.noreply.github.com`（不是 `--global`；`user.name` 維持 `yolin0513`）。
+    只影響往後的 commit，**不重寫歷史**（舊 commit 的信箱維持原樣）。本 repo 是公開的，這條的目的是不讓真實信箱繼續出現在新 commit 裡。
 ## 開發流程慣例（常設，2026-09-14 起）
 
 1. **規劃階段**：由共用的 **Fable 5.1（effort high）統籌 Session** 理解 Yolin 的需求、拆解並寫成規格。規格檔放本 App 的 `docs/SPEC_<主題>.md`。
