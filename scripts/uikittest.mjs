@@ -225,7 +225,10 @@ try {
     const db = await import('./js/db.js');
     const holdings = await import('./js/holdings.js');
     for (const st of db.STORE_NAMES) await db.clear(st);
-    const iso = new Date().toLocaleDateString('sv');
+    // **結算日刻意不是今天。** 市值那行要驗的是「用的是結算那天的收盤價」——
+    // 如果 fixture 的結算日就是今天，那麼「顯示結算日」與「顯示今天」印出來一模一樣，
+    // 斷言分不出來，對應的突變也不會紅。
+    const iso = new Date(Date.now() - 86400000).toLocaleDateString('sv');
     await holdings.addOpening({ code: '2330', shares: 1000, avgCost: 890.5, date: '2026-01-05' });
     await db.put('settle', {
       date: iso, dayPL: '0', marketValue: '2410000000000', dividend: null, counted: 1,
@@ -238,13 +241,26 @@ try {
     await new Promise((r) => setTimeout(r, 400));
     const cost = document.querySelector('#view [data-note="costExcludesFee"]')?.textContent.replace(/\s+/g, ' ').trim() ?? '';
     const unrealCard = document.querySelector('#view [data-card="unrealized"]')?.textContent.replace(/\s+/g, ' ') ?? '';
+    // 「約略值」的標示：標在標題層，全 App 同一個詞。這裡把每一張卡的標題、
+    // 各卡片的全文、以及市值那張卡的日期行都抓回去，讓斷言能分別驗
+    // 「該標的標了」「不該標的沒標」「市值講得出是哪一天的收盤價」。
+    const cardTitles = [...document.querySelectorAll('#view .card-title')].map((e) => e.textContent.trim());
+    const unrealTitle = document.querySelector('#view [data-card="unrealized"] .card-title')?.textContent.trim() ?? '';
+    const mvCard = document.querySelector('#view [data-card="marketValue"]')?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+    const mvDate = document.querySelector('#view [data-note="marketValueDate"]')?.textContent.trim() ?? '';
+    const settleRow = await (await import('./js/db.js')).getAll('settle');
+    const homeText = document.querySelector('#view')?.textContent.replace(/\s+/g, ' ') ?? '';
 
     const sv = await import('./js/views/settings.js');
     await sv.default();
     await new Promise((r) => setTimeout(r, 400));
     const backup = document.querySelector('#view [data-card="backup"]')?.textContent.replace(/\s+/g, ' ').trim() ?? '';
     const split = document.querySelector('#view [data-note="storageSplit"]')?.textContent.trim() ?? '';
-    return { cost, unrealCard, backup, split };
+    return {
+      cost, unrealCard, backup, split,
+      cardTitles, unrealTitle, mvCard, mvDate, homeText,
+      settleDate: settleRow[0]?.date ?? null,
+    };
   });
 
   // ---- A2：成本不含手續費 ----
@@ -256,6 +272,59 @@ try {
   noneOf(['加權平均成本法', '成本基礎', 'cost basis'], (t) => disclose.cost.includes(t),
     '沒有丟術語');
   ok(disclose.unrealCard.includes('未實現損益'), '（對照）那張卡真的是未實現損益');
+
+  // ---- A4：新文字要講到三件事（驗語意，不貼整句 —— 文案會再調） ----
+  ok(/沒有算進手續費|沒有加手續費/.test(disclose.cost), '講出「成本沒有算進手續費」');
+  ok(/算法|計算方式/.test(disclose.cost) && /不一樣|不同/.test(disclose.cost),
+    '講出「各家券商的算法不一樣」（也就是差異的原因，不是叫他自己想）');
+  ok(/一模一樣|分毫不差/.test(disclose.cost) && /正常/.test(disclose.cost),
+    '講出「沒辦法一模一樣，差一點是正常的」');
+  ok(disclose.cost.includes('約略值'), '而且點名損益與報酬率是約略值');
+  // 「僅供參考」是沒講原因的免責套話 —— 使用者要的是知道為什麼
+  noneOf([disclose.cost], (t) => /僅供參考/.test(t), '沒有用「僅供參考」這種沒講原因的套話');
+  // 這段文字是新寫的，一樣要過禁用詞（跟 calcviewtest 用同一份清單）。
+  // 「建議」「值得」這種字放進損益的說明裡，就從「講清楚差在哪」變成投資建議了。
+  const COST_BANNED = ['預期', '保守', '樂觀', '建議', '歷史平均', '常見', '推薦', '目標價', '應該買', '值得'];
+  noneOf(COST_BANNED.map((w) => ({ w, hit: disclose.cost.includes(w) })), (x) => x.hit,
+    `成本說明沒有任何「建議」意味的字（檢查 ${COST_BANNED.length} 個）`);
+  ok(COST_BANNED.some((w) => `這裡的成本${w}拿來參考`.includes(w)),
+    '（對照）那份清單真的抓得到含禁用詞的句子');
+
+  section('約略值：標在標題、標一次，而且只標該標的');
+  //
+  // 由「使用者自己填的平均成本」推出來的數字才標（未實現損益、報酬率、成本）。
+  // 股數、收盤價、市值、配息金額都不標 —— 它們沒有估計成分。
+  // 到處加「約」會讓整個畫面看起來都不可信，那不是使用者要的意思。
+  const APPROX = '約略值';
+  // ---- A1／A2：該標的標了，而且全 App 同一個詞 ----
+  ok(disclose.cardTitles.length >= 3,
+    `（前提）首頁這個情境畫出了 ${disclose.cardTitles.length} 張卡：${disclose.cardTitles.join('、')}`);
+  ok(disclose.unrealTitle.includes(APPROX),
+    `未實現損益卡的標題帶著「${APPROX}」：「${disclose.unrealTitle}」`);
+  const approxTitles = disclose.cardTitles.filter((t) => t.includes(APPROX));
+  eq(approxTitles.length, 1, '整個首頁只有一張卡的標題帶這個詞（標一次，不是每個數字都加）');
+  // 全 App 只用這一個詞：不可以有人另外寫「約」「大約」「估計值」
+  noneOf([disclose.homeText], (t) => /大約|估計值|概略值/.test(t),
+    '沒有混用別的說法（大約／估計值／概略值）');
+
+  // ---- A3：不該標的沒被標 ----
+  const mustNotApprox = disclose.cardTitles.filter((t) => !t.includes('未實現損益'));
+  ok(mustNotApprox.length >= 2, `（母體）不該標的卡有 ${mustNotApprox.length} 張：${mustNotApprox.join('、')}`);
+  noneOf(mustNotApprox, (t) => t.includes(APPROX), '當日損益、持股市值這些卡的標題都沒有被標成約略值');
+  ok(!/持股市值[^。]*約略值/.test(disclose.mvCard), '市值那張卡沒有被標成約略值（它的問題是時點，不是估計）');
+
+  // ---- A5：市值要講出是哪一天的收盤價，而且是結算那天、不是今天 ----
+  const mvDay = disclose.settleDate ? Number(disclose.settleDate.slice(8, 10)) : null;
+  const mvMonth = disclose.settleDate ? Number(disclose.settleDate.slice(5, 7)) : null;
+  const today = new Date().toLocaleDateString('sv');
+  ok(disclose.settleDate != null && disclose.settleDate !== today,
+    `（前提）fixture 的結算日 ${disclose.settleDate} 不是今天 ${today} —— 不然「用結算日」與「用今天」印出來一樣，這條就分不出來`);
+  ok(disclose.mvDate.length > 0, `市值卡有一行說明日期：「${disclose.mvDate}」`);
+  ok(disclose.mvDate.includes(`${mvMonth}/${mvDay}`),
+    `而且那個日期是結算日 ${mvMonth}/${mvDay}`);
+  const todayStr = `${new Date().getMonth() + 1}/${new Date().getDate()}`;
+  ok(!disclose.mvDate.includes(todayStr) || `${mvMonth}/${mvDay}` === todayStr,
+    `（對照）它不是直接印今天 ${todayStr}`);
 
   // ---- A1：主畫面 App 與 Safari 不共用 ----
   ok(disclose.split.length > 10, '備份區塊有「只存在這台手機」的說明');

@@ -47,7 +47,7 @@ export default async function home() {
   render([
     ...pendingBanners(pendingEvents, pendingChanges),
     dayPLCard(settled, settleDate, upd, store.calendarRunway()),
-    marketValueCard(settled),
+    marketValueCard(settled, settleDate),
     unrealizedCard(unreal, held),
     dividendCard(divSummary),
     newsCard(),
@@ -221,12 +221,19 @@ function exAdjustmentNotes(settled) {
   return out;
 }
 
-function marketValueCard(settled) {
-  return h('section', { class: 'card' },
+function marketValueCard(settled, settleDate) {
+  // **市值要講出是哪一天的收盤價。** 市值＝收盤價 × 股數，沒有任何估計成分，
+  // 所以它不標「約略值」；它跟券商對不起來的原因是**時點**——券商多半是即時價。
+  // 日期擺出來，使用者自己就對得起來（不然只會以為某一邊算錯）。
+  return h('section', { class: 'card', dataset: { card: 'marketValue' } },
     h('h2', { class: 'card-title' }, '持股市值'),
     h('p', { class: 'mid-number' },
       num(settled?.marketValueMicro != null ? fmtMoneyMicro(settled.marketValueMicro) : NO_VALUE,
         settled?.marketValueMicro == null ? 'v-none' : '')),
+    settleDate
+      ? h('p', { class: 'muted sm', dataset: { note: 'marketValueDate' } },
+        `用 ${fmtDate(settleDate)} 的收盤價計算`)
+      : h('p', { class: 'muted sm', dataset: { note: 'marketValueDate' } }, '尚未結算過'),
   );
 }
 
@@ -243,7 +250,10 @@ function unrealizedCard(u, held) {
   }
   const note = partialCostNote(u);
   return h('section', { class: 'card', dataset: { card: 'unrealized' } },
-    h('h2', { class: 'card-title' }, '未實現損益'),
+    // 「約略值」只標在**由使用者填的平均成本推出來的數字**上，而且只標一次、標在標題。
+    // 每個數字前面都加「約」會讓整個畫面看起來都不可信 —— 那不是使用者要的意思
+    // （股數、收盤價、市值、配息金額都不標：它們沒有估計成分）。
+    h('h2', { class: 'card-title' }, '未實現損益（約略值）'),
     h('p', { class: 'mid-number' }, moneyNode(u.unrealizedMicro)),
     h('p', { class: 'muted sm' },
       '報酬率 ', num(fmtPct(u.returnRate, { sign: true })),
@@ -254,8 +264,10 @@ function unrealizedCard(u, held) {
     // PLAN 第 23 行也把手續費列為「不做的指標」）。券商庫存頁的成本慣例含買進手續費。
     // 不講的話，他每次對帳都會重新懷疑一次是不是算錯了。
     h('p', { class: 'muted sm', dataset: { note: 'costExcludesFee' } },
-      '這裡的成本是你填的成交價乘上股數，沒有加手續費。'
-      + '券商 App 的成本通常把買進手續費算進去，所以會比這裡高一點點，報酬率也會低一點點。'),
+      '這裡的成本是你填的平均成本乘上股數，沒有算進手續費。'
+      + '各家券商手續費的算法、折扣和優惠都不一樣，券商 App 的成本通常會比這裡高一點、報酬率低一點，'
+      + '這裡沒辦法算得跟券商 App 一模一樣，差一點是正常的。'
+      + '損益和報酬率是用這個成本算的，請當成約略值。'),
   );
 }
 

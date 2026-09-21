@@ -1518,11 +1518,46 @@ const MUTATIONS = [
   },
   {
     name: '拿掉「成本不含手續費」的說明',
-    why: '使用者拿國泰 App 對帳，成本差 252 元（約 2 折的買進手續費）。'
-      + '那是定義不同不是算錯，但不講的話他每次對帳都會重新懷疑一次。',
+    why: '使用者拿國泰 App 對帳，成本差約 250 元（五年多的定期定額手續費，'
+      + '加上部分個股走一般下單）。那是定義不同不是算錯，但不講的話他每次對帳都會重新懷疑一次。',
     file: 'js/views/home.js',
     find: "    h('p', { class: 'muted sm', dataset: { note: 'costExcludesFee' } },",
     replace: "    h('p', { class: 'muted sm', dataset: { note: 'gone' } },",
+    test: 'uikittest',
+  },
+  {
+    name: '未實現損益的標題不標「約略值」',
+    why: '成本是使用者自己填的、不含手續費，推出來的損益與報酬率跟券商一定對不起來。'
+      + '標題不標的話，使用者會以為這是可以跟券商分毫對帳的數字。',
+    file: 'js/views/home.js',
+    find: "    h('h2', { class: 'card-title' }, '未實現損益（約略值）'),",
+    replace: "    h('h2', { class: 'card-title' }, '未實現損益'),",
+    test: 'uikittest',
+  },
+  {
+    name: '把「約略值」也標到市值上',
+    why: '市值＝收盤價 × 股數，沒有任何估計成分；跟券商差是因為**時點**不同。'
+      + '到處標約略值，使用者會覺得整個畫面的數字都不可信。',
+    file: 'js/views/home.js',
+    find: "    h('h2', { class: 'card-title' }, '持股市值'),",
+    replace: "    h('h2', { class: 'card-title' }, '持股市值（約略值）'),",
+    test: 'uikittest',
+  },
+  {
+    name: '市值改講今天的日期，不是結算那天',
+    why: '市值用的是最後一次結算那天的收盤價。印今天的日期等於宣稱這是今天的數字 ——'
+      + '使用者拿去跟券商對，會以為是券商錯了。',
+    file: 'js/views/home.js',
+    find: "        `用 ${fmtDate(settleDate)} 的收盤價計算`)",
+    replace: "        `用 ${fmtDate(new Date().toLocaleDateString('sv'))} 的收盤價計算`)",
+    test: 'uikittest',
+  },
+  {
+    name: '新的成本說明裡放一個禁用詞',
+    why: '「建議」這種字放進損益的說明，就從「講清楚差在哪」變成投資建議了。',
+    file: 'js/views/home.js',
+    find: "      + '損益和報酬率是用這個成本算的，請當成約略值。'),",
+    replace: "      + '損益和報酬率是用這個成本算的，建議當成約略值。'),",
     test: 'uikittest',
   },
   {
