@@ -74,6 +74,7 @@ echo "推送閘門驗法：假遠端 ＝ 暫存目錄裡的 bare repo，閘門�
 # 被執行的那一份閘門的內容雜湊（§5.11 第三層）：驗「改壞的閘門」時，拿它跟改壞的那一份比，
 # 確認跑的真的是改壞的那一版，不是複本、分支或路徑弄錯而跑到好的那一版
 echo "被執行的閘門檔案雜湊：$(git hash-object scripts/gatepush.sh)"
+echo "被執行的四類自查雜湊：$(git hash-object scripts/precheck.mjs)"
 
 # 1. 自查命中：HEAD 帶一個合成 token（拆開拼，這支檔自己才不會被自查抓到）
 TOK="gh""p_A1b2C3d4E5f6G7h8I9j0KLMN"
@@ -136,6 +137,16 @@ if git --git-dir="$T/remote.git" merge-base --is-ancestor "$HIT6" main 2> /dev/n
 else
   echo "    · 帶命中的 commit 不在假遠端上"
 fi
+reset_to_remote
+
+# 7. 命中只出現在 commit 訊息（沒有任何新增行）—— 2026-09-24 以前自查只掃新增行，這種會放行（v8 §2.5「自查的範圍」）
+git commit -q --allow-empty -m "gatetest：合成 token 只放在訊息裡 $TOK" || die "commit 失敗（情境 7）"
+run "7. 命中只出現在 commit 訊息" 1 沒動 "[commit 訊息／作者] +gatetest：合成 token 只放在訊息裡"
+reset_to_remote
+# 7b. 命中只出現在作者信箱（真實信箱樣式、不是 noreply）；信箱拆開拼，這支檔自己才不會被自查抓到
+FAKE_MAIL="someone""@""example.com"
+git -c user.email="$FAKE_MAIL" commit -q --allow-empty -m "gatetest：作者信箱不是 noreply" || die "commit 失敗（情境 7b）"
+run "7b. 命中只出現在作者信箱" 1 沒動 "[commit 訊息／作者] +作者："
 reset_to_remote
 
 # 5. 全部正常

@@ -26,7 +26,18 @@ const raw = execFileSync('git', rev.includes('..')
   encoding: 'utf8',
   maxBuffer: 64 * 1024 * 1024,
 });
-const added = raw.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
+const addedLines = raw.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
+
+// commit 訊息、作者與提交者的名字與信箱也會公開（共用慣例 v8 §2.5「自查的範圍」）。
+// 2026-09-24 以前只掃新增行：一個把合成 token 放在 commit 訊息裡的 commit，自查回傳 0（實測）。
+// 每一行前面加「+」，跟新增行走同一套搜尋式；另外記住它是哪一種，命中時講得出來源。
+const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn <%ce>';
+const metaRaw = execFileSync('git', rev.includes('..')
+  ? ['-C', ROOT, 'log', `--format=${META_FMT}`, rev]
+  : ['-C', ROOT, 'log', '-1', `--format=${META_FMT}`, rev], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+const metaLines = metaRaw.split('\n').filter((l) => l.trim() !== '').map((l) => '+' + l);
+const SOURCE = new Map([...addedLines.map((l) => [l, '新增行']), ...metaLines.map((l) => [l, 'commit 訊息／作者'])]);
+const added = [...addedLines, ...metaLines];
 
 const USER = process.env.USERNAME || process.env.USER || '';
 if (!USER) {
@@ -60,14 +71,14 @@ const rows = [
 ];
 
 let bad = 0;
-console.log(`四類自查：${rev}，新增行 ${added.length} 行`);
+console.log(`四類自查：${rev}，新增行 ${addedLines.length} 行＋commit 訊息與作者 ${metaLines.length} 行`);
 for (const [name, ctrl, hits] of rows) {
   const ctrlOk = ctrl > 0;
   if (!ctrlOk || hits.length > 0) bad += 1;
   console.log(`${name}：對照組命中 ${ctrl}${ctrlOk ? ' ✔' : ' ✘（搜尋式壞了）'}｜目標命中 ${hits.length}${hits.length === 0 ? ' ✔' : ' ✘'}`);
   // (c) 類命中時不印內容（會把使用者名稱印出來）
   if (name.startsWith('(c)')) continue;
-  for (const h of hits.slice(0, 5)) console.log('    ' + h.slice(0, 120));
+  for (const h of hits.slice(0, 5)) console.log(`    [${SOURCE.get(h) ?? '新增行'}] ${h.slice(0, 120)}`);
 }
 const falsePos = hitsIn(PATHS_MISS, PATHS);
 if (falsePos.length) { bad += 1; console.log(`(d) 反例被誤抓：${falsePos.join('、')}`); }
