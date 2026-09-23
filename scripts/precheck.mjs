@@ -18,15 +18,46 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const rev = process.argv[2] || 'HEAD';
 
-// 單一 commit（`HEAD`）用 git show；一段範圍（`<遠端>..HEAD`，閘門給的）用 git log -p，
-// **逐個 commit** 取新增行 —— 用 git diff 比兩端的話，中間某個 commit 加了又刪掉的行會漏掉，但它照樣會被推上去。
-const raw = execFileSync('git', rev.includes('..')
-  ? ['-C', ROOT, 'log', '-p', '--format=', '--unified=0', rev]
-  : ['-C', ROOT, 'show', rev, '--format=', '--unified=0'], {
+// 單一 commit（`HEAD`）或一段範圍（`<遠端>..HEAD`，閘門給的），都用 git log **逐個 commit** 取新增行 ——
+// 用 git diff 比兩端的話，中間某個 commit 加了又刪掉的行會漏掉，但它照樣會被推上去。
+// 兩種數法（-p 與 --numstat）用同一組範圍與同一組 diff 選項，行數才對得起來。
+const SCOPE = rev.includes('..') ? [rev] : ['-1', rev];
+const DIFF_OPTS = ['--no-renames', '--no-ext-diff', '--no-color'];
+const raw = execFileSync('git', ['-C', ROOT, 'log', '-p', '--format=', '--unified=0', ...DIFF_OPTS, ...SCOPE], {
   encoding: 'utf8',
   maxBuffer: 64 * 1024 * 1024,
 });
-const addedLines = raw.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
+
+// **照 diff 的結構抽新增行**：只有 `@@` 之後、以 `+` 開頭的行才是內容；`diff --git` 開始新的檔頭。
+// 2026-09-24 以前是「以 + 開頭、但不是 +++」：內容本身以 `++` 開頭的行，加上 diff 前面的 `+` 就變成 `+++…`，
+// 被當成檔頭默默丟掉——實測一行 `++ ` 開頭、帶合成 token 的新增行，自查回傳 0。
+function extractAdded(text) {
+  const out = [];
+  let inHunk = false;
+  for (const l of text.split('\n')) {
+    if (l.startsWith('diff --git ')) { inHunk = false; continue; }
+    if (l.startsWith('@@')) { inHunk = true; continue; }
+    if (inHunk && l.startsWith('+')) out.push(l);
+  }
+  return out;
+}
+const addedLines = extractAdded(raw);
+
+// **核對**：抽出來的行數必須等於 git 自己算的新增行數（--numstat，獨立的來源；二進位檔記成 `-`，不算）。
+// 對不上就停：抽取寫錯、換了環境（git 版本、設定）讓抽取變少，都會在這裡被接住——
+// 包括「抽出 0 行」這種故障（以前 0 行照樣放行）。只刪不增的正常推送兩邊都是 0，不會被擋。
+const numstat = execFileSync('git', ['-C', ROOT, 'log', '--numstat', '--format=', ...DIFF_OPTS, ...SCOPE], {
+  encoding: 'utf8',
+  maxBuffer: 16 * 1024 * 1024,
+});
+const gitAdded = numstat.split('\n').reduce((sum, l) => {
+  const m = /^(\d+)\t/.exec(l);
+  return m ? sum + Number(m[1]) : sum;
+}, 0);
+if (addedLines.length !== gitAdded) {
+  console.log(`四類自查：${rev}，抽出 ${addedLines.length} 行、git 算 ${gitAdded} 行（抽取壞了）—— 擋下`);
+  process.exit(1);
+}
 
 // commit 訊息、作者與提交者的名字與信箱也會公開（共用慣例 v8 §2.5「自查的範圍」）。
 // 2026-09-24 以前只掃新增行：一個把合成 token 放在 commit 訊息裡的 commit，自查回傳 0（實測）。

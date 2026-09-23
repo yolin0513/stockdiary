@@ -149,6 +149,24 @@ git -c user.email="$FAKE_MAIL" commit -q --allow-empty -m "gatetest：作者信�
 run "7b. 命中只出現在作者信箱" 1 沒動 "[commit 訊息／作者] +作者："
 reset_to_remote
 
+# 8. 內容以 `++` 開頭的命中行，而且先加、下一個 commit 又刪掉（2026-09-24）
+# 以前抽新增行用「以 + 開頭、但不是 +++」：`++` 開頭的內容加上 diff 的 `+` 變成 `+++…`，被當成檔頭丟掉。
+# 先加再刪：兩端比起來什麼都沒變，只有逐個 commit 掃新增行才抓得到。
+printf '++ const k = "%s";\n' "$TOK" > gatetest-pp.txt; git add gatetest-pp.txt
+git commit -q -m "gatetest：++ 開頭的命中行" || die "commit 失敗（情境 8 加）"
+git rm -q gatetest-pp.txt; git commit -q -m "gatetest：又刪掉" || die "commit 失敗（情境 8 刪）"
+run "8. ++ 開頭的命中行（先加再刪）" 1 沒動 "[新增行] +++ const k ="
+reset_to_remote
+# 9. 只刪不增的正常推送要放行（兩種數法都是 0 行；不能把「抽出 0 行」一律當失敗）
+LAST="$(git ls-files | grep -m1 -E '^docs/.*\.md$')"
+[ -n "$LAST" ] || die "情境 9：找不到可以刪的檔"
+git rm -q "$LAST"; git commit -q -m "gatetest：只刪不增" || die "commit 失敗（情境 9）"
+# 前置不接管線：git show 失敗時 awk 照樣印 0，前置就會默默通過
+git show --numstat --format= HEAD > "$T/ns9.txt" || die "情境 9：讀不到 numstat"
+[ -s "$T/ns9.txt" ] && [ "$(awk '{s+=$1} END {print s+0}' "$T/ns9.txt")" = "0" ] || die "情境 9：這個 commit 不是只刪不增，前提沒造成"
+run "9. 只刪不增的正常推送" 0 等於本機 "新增行 0 行"
+reset_to_remote
+
 # 5. 全部正常
 clean_commit "全部正常"
 run "5. 全部正常" 0 等於本機 "【放行】三關都過"
