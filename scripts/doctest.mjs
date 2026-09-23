@@ -67,26 +67,49 @@ const MUTS = (mutSrc.match(/^\s+find:/gm) || []).length;
 ok(MUTS > 100, `（前提）mutationtest.mjs 裡數得出 ${MUTS} 條突變`);
 ok(SUITES > 20, `（前提）npm test 鏈裡有 ${SUITES} 支測試（不含 mutationtest）`);
 
-// 文件裡每一個「N 條突變」都要等於實際條數。
+// 文件裡每一處寫「現在的總數」的地方都要等於實際數字。
 // 母體是**全部**出現過的地方 —— 只挑一處比對的話，另外兩處可以繼續錯下去
 // （實際發生過：STATUS 與 README 一起停在 138，上線清單停在 110）。
-const mutCountRx = /(\d+)\s*條突變/g;
+//
+// **寫法的約定（2026-09-23，SPEC_測試可信度 D1）**：
+//   · 現在的總數寫成「N 支＋M 條突變」「N 支測試」「M 條突變」—— 這裡認得的就是這幾種。
+//   · 「突變 M 條」也認得：以前只認前一種，上線清單那一行就是寫成這樣、漂到 185 沒人發現。
+//   · **歷史紀錄前面加「當時」**（「當時 28 支」「當時 234 條」），這裡會跳過它 —— 不加的話，
+//     它要嘛被當成現在的總數而紅，要嘛就得寫成認不得的樣子，下一個人不知道哪個才是現在的。
+//   · 不是總數的數字不要寫成上面那幾種形狀（「14 個測試檔」「突變達 25 條」這種都不會被認成總數）。
+function declaredCounts(text) {
+  const notHistory = (m) => !/當時\s*\**\s*$/.test(text.slice(Math.max(0, m.index - 6), m.index));
+  const pick = (rx) => [...text.matchAll(rx)].filter(notHistory).map((m) => Number(m.slice(1).find((x) => x != null)));
+  return {
+    muts: pick(/(\d+)\s*條突變|突變\s*(\d+)\s*條/g),
+    suites: pick(/(\d+)\s*支測試|完整\s*(\d+)\s*支|`npm test`（(\d+)\s*支|(\d+)\s*支\s*[＋+]|全套\s*(\d+)\s*支/g),
+  };
+}
+const inStatus = declaredCounts(status);
+const inReadme = declaredCounts(readme);
+
+// 對照組：認得兩種寫法、跳過「當時」、不把別的數字當成總數
+eq(declaredCounts('共 12 條突變；另一處寫突變 12 條。').muts, [12, 12], '（對照）「N 條突變」與「突變 N 條」兩種寫法都認得');
+eq(declaredCounts('當時 234 條突變、當時 **28 支＋**。').muts.length + declaredCounts('當時 **28 支＋**').suites.length, 0,
+  '（對照）前面有「當時」的是歷史紀錄，跳過');
+eq(declaredCounts('其餘 14 個測試檔；改過的突變達 **25 條**；新增 5 條').muts.length
+  + declaredCounts('其餘 14 個測試檔').suites.length, 0,
+  '（對照）「14 個測試檔」「突變達 25 條」這種不是總數，不會被認成總數');
+eq(declaredCounts('測試：29 支＋247 條突變；全套 29 支；完整 29 支；29 支測試').suites, [29, 29, 29, 29],
+  '（對照）「N 支＋」「全套 N 支」「完整 N 支」「N 支測試」都認得');
+
 const declaredMutCounts = [
-  ...[...status.matchAll(mutCountRx)].map((m) => ({ where: 'STATUS', n: Number(m[1]) })),
-  ...[...readme.matchAll(mutCountRx)].map((m) => ({ where: 'README', n: Number(m[1]) })),
+  ...inStatus.muts.map((n) => ({ where: 'STATUS', n })),
+  ...inReadme.muts.map((n) => ({ where: 'README', n })),
 ];
 ok(declaredMutCounts.length > 0,
-  `（前提）文件裡找得到 ${declaredMutCounts.length} 處「N 條突變」的寫法`);
+  `（前提）文件裡找得到 ${declaredMutCounts.length} 處寫突變總數的地方`);
 noneOf(declaredMutCounts, (d) => d.n !== MUTS,
   `文件裡每一處寫的突變條數都等於實際的 ${MUTS} 條`);
 
-// 「N 支」也一樣
-const suiteCountRx = /(\d+)\s*支測試|完整\s*(\d+)\s*支|`npm test`（(\d+)\s*支/g;
-const declaredSuites = [
-  ...[...status.matchAll(suiteCountRx)],
-  ...[...readme.matchAll(suiteCountRx)],
-].map((m) => Number(m[1] || m[2] || m[3]));
-ok(declaredSuites.length > 0, `（前提）文件裡找得到 ${declaredSuites.length} 處「N 支」的寫法`);
+// 「N 支」也一樣。口徑：package.json 的 test 鏈扣掉 mutationtest（以前一處寫 27、一處寫 28，就是沒有口徑）
+const declaredSuites = [...inStatus.suites, ...inReadme.suites];
+ok(declaredSuites.length > 0, `（前提）文件裡找得到 ${declaredSuites.length} 處寫測試支數的地方`);
 noneOf(declaredSuites, (n) => n !== SUITES,
   `文件裡每一處寫的測試支數都等於實際的 ${SUITES} 支`);
 

@@ -37,7 +37,7 @@
 |---|---|---|
 | SW SHELL 資產 | 46 個檔，**771 KB**（JS 353 KB、`data/` 361 KB、CSS 22 KB） | `data/stocks.json` 247 KB 佔三分之一；所有 `js/` 檔都在 SHELL 清單裡，沒有漏 |
 | 快速 Node 測試（10 支） | 全綠，691 項通過（roc 54、fmt 31、parse 79、settle 101、changes 36、dividend 126、plan 92、calc 94、throttle 21、data 57） | 基線是綠的 |
-| `npm test` 鏈 | 27 支 ＋ `mutationtest` | 與 README 的 27 支一致（**這是 2026-09-17 盤點當下的數字**；2026-09-21 起是 **28 支**，口徑＝`package.json` 的 `test` 鏈扣掉 `mutationtest`，由 `doctest` 從程式數出來盯著。STATUS 與 README 一律寫 28） |
+| `npm test` 鏈 | 27 支 ＋ `mutationtest` | 與 README 的 27 支一致（**這是 2026-09-17 盤點當下的數字**；之後的數字以 `package.json` 的 `test` 鏈扣掉 `mutationtest` 為準，由 `doctest` 從程式數出來盯著，這裡不寫死） |
 | 突變條數 | **182 條**（`mutationtest.mjs` 裡有 `find:` 的項目） | STATUS 寫 138、README 寫 138、上線檢查清單寫 **110 條／25 支** → 文件漂移 |
 | `assertaudit` 母體 ≤ 2 的斷言 | uikittest 11、pathtest 7、calcviewtest 5、holdingtest 4，其餘 ≤ 3 | 慣例 12 要複查的候選 |
 | 靜態資料日期 | `stocks.json` 2026-09-11（2,768 檔、ETF 360）；`calendar.json` **只有 2026 年**（243 個交易日）；`dividends.json` 2026-09-11 | 三份都不會自己更新；日曆跨年就失效（§3 A1） |
@@ -141,7 +141,7 @@
 **只有測試在用的 83 個匯出保留**（純函式給測試用是這個專案的設計）。
 
 ### A12 文件對齊 ＋ `doctest`
-1. 修 STATUS：標頭日期、進度表（M6 ✅、之後 v0.7.x 各批）、`138` → 從程式數、上線檢查清單第 1 列改「27 支＋N 條」（**當時是 27 支，現在 28 支**——實際數字由 `doctest` 從 `package.json` 的鏈數出來，不要照抄這一行）；README 同步；`實機驗收_v0.7.9.md` 改名 `實機驗收.md` 並加「適用版本」欄，或在 STATUS 標明它是歷史文件。
+1. 修 STATUS：標頭日期、進度表（M6 ✅、之後 v0.7.x 各批）、`138` → 從程式數、上線檢查清單第 1 列改「27 支＋N 條」（**當時是 27 支**——現在的數字由 `doctest` 從 `package.json` 的鏈數出來，不要照抄這一行）；README 同步；`實機驗收_v0.7.9.md` 改名 `實機驗收.md` 並加「適用版本」欄，或在 STATUS 標明它是歷史文件。
 2. 新增 `scripts/doctest.mjs`（照 MealMate 的形狀）進 `npm test`：`package.json test` 鏈裡的每一支都在 README 表格裡、反之亦然；STATUS／README 提到的突變條數 ＝ `mutationtest.mjs` 實際條數（**寫成「從程式數」的斷言，不是硬編**）；`APP_VERSION`／`sw.js VERSION`／`index.html ?v=` 三處一致（`shelltest` 已有，這裡引用）；STATUS 說有的每一支 `scripts/*.mjs` 都存在；STATUS「元件慣例」表裡禁用的東西（`type="time"`、`link-btn`）程式裡真的沒有。每條附突變（把文件數字改錯 → 紅）。
 
 ### A13 版本與相依

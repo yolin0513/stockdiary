@@ -2149,6 +2149,33 @@ const MUTATIONS = [
     test: 'checkmutations',
     expect: '過期檢查抓得到 find 不存在、出現兩次',
   },
+  {
+    name: 'D1：STATUS 用「突變 N 條」的寫法寫錯總數',
+    why: '以前 doctest 只認「N 條突變」，上線清單那一行寫成另一種寫法，就漂到 185 條沒人發現。',
+    file: 'docs/STATUS.md',
+    find: '每次要交給使用者日常使用之前，從頭跑一遍。',
+    replace: '每次要交給使用者日常使用之前，從頭跑一遍（突變 1 條）。',
+    test: 'doctest',
+    expect: '文件裡每一處寫的突變條數都等於實際的',
+  },
+  {
+    name: 'D1：STATUS 用「N 支＋」的寫法寫錯支數',
+    why: '「一處 27 支、一處 28 支」就是這樣來的：有些寫法 doctest 認不得，數字錯了也不會紅。',
+    file: 'docs/STATUS.md',
+    find: '每次要交給使用者日常使用之前，從頭跑一遍。',
+    replace: '每次要交給使用者日常使用之前，從頭跑一遍（1 支＋）。',
+    test: 'doctest',
+    expect: '文件裡每一處寫的測試支數都等於實際的',
+  },
+  {
+    name: 'D1：「當時」不再被當成歷史紀錄跳過',
+    why: '歷史紀錄（當時 28 支）會被當成現在的總數而紅；為了讓它不紅，下一個人就只好改寫成認不得的樣子 —— 又回到漂移。',
+    file: 'scripts/doctest.mjs',
+    find: '  const notHistory = (m) => !/當時\\s*\\**\\s*$/.test(text.slice(Math.max(0, m.index - 6), m.index));',
+    replace: '  const notHistory = () => true;',
+    test: 'doctest',
+    expect: '前面有「當時」的是歷史紀錄，跳過',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
