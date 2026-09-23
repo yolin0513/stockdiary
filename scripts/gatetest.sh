@@ -37,6 +37,17 @@ clean_commit() { printf '%s\n' "$1" >> gatetest-note.md; git add gatetest-note.m
 
 OK=0
 BAD=0
+# 比對「輸出裡有沒有這一句」—— 每一種情境都靠它判斷是誰擋的，所以它自己也要有對照組（§5.11 第二層）：
+# 它若抓空，「比對是誰擋的」就默默退化成只剩回傳值。
+has() { grep -qF -- "$2" "$1"; }
+printf '%s\n' '(a) 金鑰／token：對照組命中 1 ✔｜目標命中 1 ✘' '【第一關擋下】公開前自查沒過（四類 precheck=1、第五類 piiscan=0），不推' > "$T/ctrl.txt"
+if has "$T/ctrl.txt" "(a) 金鑰／token：對照組命中 1 ✔｜目標命中 1" && has "$T/ctrl.txt" "【第一關擋下】" \
+   && ! has "$T/ctrl.txt" "【第三關擋下】" && ! has "$T/ctrl.txt" "找不到黑名單檔"; then
+  echo "  ✓ （對照）比對擋下原因的那段程式：已知的輸出抓得到該抓的兩句，也不會把沒出現的句子當成有"
+else
+  echo "  ✗ （對照）比對擋下原因的那段程式壞了 —— 後面每一種情境的「是誰擋的」都不可信"; exit 1
+fi
+
 run() {
   # run <情境> <預期回傳值> <假遠端應該：沒動|等於本機> <輸出裡必須出現的字（證明是「對的那一關、對的那一支」擋下）> [環境變數…]
   # 只看回傳值不夠：第一版情境 1 回傳了 1，但擋下它的是第五類、不是該抓 token 的四類自查。
@@ -52,7 +63,7 @@ run() {
   [ "$code" -ne "$want" ] && good=0
   if [ "$remote_should" = "沒動" ] && [ "$before" != "$after" ]; then good=0; fi
   if [ "$remote_should" = "等於本機" ] && [ "$after" != "$(git rev-parse HEAD)" ]; then good=0; fi
-  grep -qF -- "$must" "$T/out.txt" || good=0
+  has "$T/out.txt" "$must" || good=0
   local verdict
   verdict="$(grep -E '^【' "$T/out.txt")"
   if [ "$good" -eq 1 ]; then OK=$((OK + 1)); echo "  ✓ $name：回傳 $code（預期 $want），假遠端$moved｜$verdict"
@@ -60,6 +71,9 @@ run() {
 }
 
 echo "推送閘門驗法：假遠端 ＝ 暫存目錄裡的 bare repo，閘門＝ $(git log --oneline -1 -- scripts/gatepush.sh)"
+# 被執行的那一份閘門的內容雜湊（§5.11 第三層）：驗「改壞的閘門」時，拿它跟改壞的那一份比，
+# 確認跑的真的是改壞的那一版，不是複本、分支或路徑弄錯而跑到好的那一版
+echo "被執行的閘門檔案雜湊：$(git hash-object scripts/gatepush.sh)"
 
 # 1. 自查命中：HEAD 帶一個合成 token（拆開拼，這支檔自己才不會被自查抓到）
 TOK="gh""p_A1b2C3d4E5f6G7h8I9j0KLMN"
@@ -99,6 +113,29 @@ chmod +x "$T/remote.git/hooks/post-receive"
 clean_commit "推了卻沒更新"
 run "4. 推了卻沒更新（post-receive 退回舊值）" 3 沒動 "【第三關擋下】"
 rm -f "$T/remote.git/hooks/post-receive"
+reset_to_remote
+
+# 6. 本機以為已經推上去、遠端其實沒有（共用慣例 v8 §2.5「自查的範圍要照遠端的實際狀態算」）
+# 因果：第三關攔到「推了沒更新」之後，本機的追蹤分支與 FETCH_HEAD 都已經指著那個 commit；
+# 自查範圍若照本機的認定算，那個 commit 落在範圍外，下一次推送就不經檢查被帶出去。
+# 本閘門用推送前當場 fetch 的 FETCH_HEAD 算範圍，只撥本機追蹤分支造不出前提，所以照工單的造法：
+# 帶命中的 commit 繞過閘門直接推上假遠端、抓回來，再把假遠端倒退。
+BASE="$(remote_sha)"
+printf 'const k = "%s";\n' "$TOK" > gatetest-fake6.js; git add gatetest-fake6.js
+git commit -q -m "gatetest：合成 token（本機以為已推上去）" || die "commit 失敗（情境 6 的合成 token）"
+HIT6="$(git rev-parse HEAD)"
+git push -q origin main || die "情境 6：繞過閘門推上假遠端失敗"
+git fetch -q origin main || die "情境 6：抓回來失敗"
+git --git-dir="$T/remote.git" update-ref refs/heads/main "$BASE" || die "情境 6：把假遠端倒退失敗"
+[ "$(remote_sha)" = "$BASE" ] || die "情境 6：假遠端沒有退回 BASE"
+[ "$(git rev-parse FETCH_HEAD)" = "$HIT6" ] || die "情境 6：本機的 FETCH_HEAD 沒有指著帶命中的 commit，前提沒造成"
+clean_commit "本機以為已推上去，再疊一個乾淨的"
+run "6. 本機以為已推上去、遠端其實沒有（帶命中的在前、HEAD 乾淨）" 1 沒動 "(a) 金鑰／token：對照組命中 1 ✔｜目標命中 1"
+if git --git-dir="$T/remote.git" merge-base --is-ancestor "$HIT6" main 2> /dev/null; then
+  echo "    · 帶命中的 commit 已經在假遠端上（閘門放行了它）"
+else
+  echo "    · 帶命中的 commit 不在假遠端上"
+fi
 reset_to_remote
 
 # 5. 全部正常
