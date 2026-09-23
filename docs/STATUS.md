@@ -42,6 +42,8 @@
 **同日再照 `docs/SPEC_共用慣例更新_v6.md` 更新到 v6**（§2.4 改寫＋新增附錄 A「個資怎麼判定」；§5.3 對照組一定要有合成樣本、跑同一個檢查；§5.7 整套的證據進 repo、完整 log 寫到被 gitignore 的 `.logs/`——本 App 的做法；新增 §5.9 突變的 `expect`、§5.10 加資料前先查畫面上依筆數寫死的上限）。
 本檔跟著改兩處：「全面檢測」做法裡 `.logs/` 那條常設規則句尾標「已進共用慣例 v6 §5.7」；「公開前自查：五類」表的 (d) 類對照組改成**當場組出來的合成路徑**（原本只寫「搜 `CLAUDE.md` 與本檔」，那是真實檔案、不能單獨當對照組，而且 `CLAUDE.md` 在 v5 之後已經是 0 處）。`CLAUDE.md` 零改動。docs-only。
 **之後新開場的回執是 `已讀共用慣例 v6（2026-09-23）`。**
+**同日再照 `docs/SPEC_共用慣例更新_v7.md` 更新到 v7**（新增 §2.5「推送的閘門：每一關都要真的擋得下」並列入不得放寬；新增 §0.5「不適用的條文要寫明」；附錄 A 補「地點的組合」；§5.3 補兩個實例）。本 App 跟著做：閘門補第三關、回傳值分成 1／2／3、自查改掃全部要推的 commit、驗法 `scripts/gatetest.sh` 進 repo；「工作慣例」第 9 條（每版流程）改成用閘門推、回傳 0 才往下。**§0.5：本 App 目前沒有不適用的條文**（§5.9 有 `checkmutations`；§5.10 加資料時照做）。`CLAUDE.md` 零改動。
+**之後新開場的回執是 `已讀共用慣例 v7（2026-09-23）`。**
 
 **2026-09-21 全面檢測（Yolin 指定）**：跑完了，結果與三項發現在「測試範圍 → 全面檢測」那一節。
 **2026-09-21 對帳結案**：Yolin 決定不再追查差異，改做「約等於」的顯示與說明。凍結區維持（理由見「對帳調查」那一節）。
@@ -194,7 +196,7 @@
 6. **不得出現任何投資建議、目標價、買賣建議**——AI 輸出、UI 文案、試算器預設值、說明文字全部適用。
 7. **不規劃也不實作任何券商帳密、下單、轉帳功能。**
 8. 沿用 JLPT_App／TripQuest 技術路線：原生 JS ES Modules ＋ IndexedDB ＋ Service Worker，無框架、無打包；`h()` 全 textNode、URL 屬性白名單；CSP `script-src 'self'`；外部請求一律 `AbortSignal.timeout` ＋ 降級。
-9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變＋**`npm run checkmutations`（每版必跑，不到一秒：突變有沒有過期、`expect` 找不找得到）**（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit/push → `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。
+9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變＋**`npm run checkmutations`（每版必跑，不到一秒：突變有沒有過期、`expect` 找不找得到）**（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit → **`bash scripts/gatepush.sh`**（推送閘門，見「推送閘門」那一節；**回傳 0 才往下**，1／2／3 都停下來查，不要接著等線上換版或跑 `sweep`——推送沒成功的話，那是對著舊版在驗，看起來還是綠的）→ `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。（2026-09-23 共用慣例 v7 §2.5：以前這裡寫的是直接 push。）
    （2026-09-18 更新：以前寫「bump sw.js VERSION → npm test」，那是 v0.7.10 測試範圍政策之前的做法。）
 10. 打真網路的測試（TWSE、RSS、Anthropic）**不進 `npm test`**，另開 `npm run livecheck`；TWSE 請求 ≥ 2 秒間隔，測試也一樣，**不要連打**（社群共識 3 次／5 秒會被封 IP）。
 11. 不動 `../TripQuest`、`../JLPT_App`、`../MealMate` 的任何檔案（可讀，用來抄慣例與對照同一種 bug）。
@@ -1228,8 +1230,16 @@ email 類原本拿 git 歷史的作者信箱當對照組，改用 noreply 之後
 
 ### 推送閘門：自查沒過，推送指令就不能執行（2026-09-23）
 
-**推送一律走閘門**：`bash scripts/gatepush.sh git push -q origin main`。它先跑四類自查（`scripts/precheck.mjs`）與第五類掃描（`scripts/piiscan.mjs`），
-**輸出寫到檔案、不接任何管線**，兩支的回傳值各自存下來；任何一支非 0（有命中，**或對照組沒命中＝檢查器壞了**）就印【擋下】、回傳 1、不執行後面的推送指令。
+**推送一律走閘門**：`bash scripts/gatepush.sh`（預設推 `origin main`；也可以 `bash scripts/gatepush.sh <遠端> <分支>`）。**三關**（共用慣例 v7 §2.5），**每一步的輸出都寫到 `.logs/`、不接任何管線**，回傳值分得出是哪一關：
+- **回傳 1｜第一關・自查**：四類（`scripts/precheck.mjs`）與第五類（`scripts/piiscan.mjs`）。有命中、**對照組沒命中（檢查器壞了）**、黑名單檔不見，或取不到遠端狀態（算不出要掃哪些 commit）都擋。**掃的是「遠端分支..本機」的全部 commit**，逐個 commit 取新增行（2026-09-23 以前只掃 HEAD：一次推好幾個 commit 時，前面的沒被掃到）。
+- **回傳 2｜第二關・推送本身**：`git push` 失敗（被拒、連不上）就停。
+- **回傳 3｜第三關・推送後**：推送回報成功，但 `git ls-remote` 讀到的遠端分支≠本機，也停——堵住「推了但沒成功」（TripQuest 被咬過：推送失敗被吞掉，後面的線上確認對著舊版驗，看起來還是綠的）。
+- **回傳 0**：三關都過，遠端＝本機。**只有這時候才往下做線上確認與 `sweep`。**
+
+**驗法在 repo 裡：`bash scripts/gatetest.sh`**。本機 bare repo 當假遠端（`pre-receive` 回 1＝推送被拒、`post-receive` 把 main 退回舊值＝推了卻沒更新），**完全不碰 GitHub**；它複製的是本 repo **已 commit 的內容**，所以改過閘門要先在本機 commit、再跑它。8 種情境（自查命中在 HEAD／在較早的 commit、四類對照組壞掉、第五類對照組壞掉、黑名單檔不見、推送被拒、推了卻沒更新、全部正常）各自比對三件事：回傳值、假遠端有沒有被動到、**是不是對的那一關、對的那一支擋下的**。
+· 最後一件是實際踩到才加的：驗法的第一版只看回傳值，情境 1 回傳了 1，但擋下它的是第五類、不是該抓 token 的四類——複本沒有作者設定、合成 token 的 commit 根本沒做成，而驗法用的合成黑名單字面原樣寫在驗法自己的原始碼裡、被第五類掃到。只看回傳值的驗法，就是 §5.2 的假斷言。
+· **驗法自己的對照組**（2026-09-23 實測）：拿掉第三關的閘門 → 情境 4 被抓到（回 0，預期 3）；推送後接管線的閘門 → 情境 3 被抓到（回 3，預期 2——第三關照樣攔住，只是回傳值錯了，跟統籌者看到的一樣）。還原後 8 種全部符合。
+· **改過 `gatepush.sh`、`precheck.mjs`、`piiscan.mjs` 就重跑 `gatetest.sh`**（§2.5）。
 
 **為什麼**：2026-09-23 以前這裡的寫法是 `node precheck.mjs HEAD | tail -1 && git push …`。
 **管線的回傳值是最後一個指令（`tail`）的，自查的失敗被吞掉** —— 擋的是人眼，不是程式；不報錯、沒有任何徵兆，只會在真的該擋的那一次默默放行。
