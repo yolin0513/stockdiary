@@ -22,6 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done , note } from './tap.mjs';
 import { selectAffected, moduleClosure } from './affected.mjs';
+import { judge, countOf, applyMutation } from './mutjudge.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -1518,12 +1519,13 @@ const MUTATIONS = [
   },
   {
     name: '拿掉「成本不含手續費」的說明',
-    why: '使用者拿國泰 App 對帳，成本差約 250 元（五年多的定期定額手續費，'
+    why: '使用者拿券商 App 對帳，成本會有一點差（多年累積的手續費，'
       + '加上部分個股走一般下單）。那是定義不同不是算錯，但不講的話他每次對帳都會重新懷疑一次。',
     file: 'js/views/home.js',
     find: "    h('p', { class: 'muted sm', dataset: { note: 'costExcludesFee' } },",
     replace: "    h('p', { class: 'muted sm', dataset: { note: 'gone' } },",
     test: 'uikittest',
+    expect: '未實現損益卡片上有說明',
   },
   {
     name: '未實現損益的標題不標「約略值」',
@@ -1533,6 +1535,7 @@ const MUTATIONS = [
     find: "    h('h2', { class: 'card-title' }, '未實現損益（約略值）'),",
     replace: "    h('h2', { class: 'card-title' }, '未實現損益'),",
     test: 'uikittest',
+    expect: '未實現損益卡的標題帶著',
   },
   {
     name: '把「約略值」也標到市值上',
@@ -1542,6 +1545,7 @@ const MUTATIONS = [
     find: "    h('h2', { class: 'card-title' }, '持股市值'),",
     replace: "    h('h2', { class: 'card-title' }, '持股市值（約略值）'),",
     test: 'uikittest',
+    expect: '當日損益、持股市值這些卡的標題都沒有被標成約略值',
   },
   {
     name: '市值改講今天的日期，不是結算那天',
@@ -1551,6 +1555,7 @@ const MUTATIONS = [
     find: "        `用 ${fmtDate(settleDate)} 的收盤價計算`)",
     replace: "        `用 ${fmtDate(new Date().toLocaleDateString('sv'))} 的收盤價計算`)",
     test: 'uikittest',
+    expect: '而且那個日期是結算日',
   },
   {
     name: '新的成本說明裡放一個禁用詞',
@@ -1559,6 +1564,7 @@ const MUTATIONS = [
     find: "      + '損益和報酬率是用這個成本算的，請當成約略值。'),",
     replace: "      + '損益和報酬率是用這個成本算的，建議當成約略值。'),",
     test: 'uikittest',
+    expect: '成本說明沒有任何「建議」意味的字',
   },
   {
     name: '拿掉「主畫面 App 與 Safari 不共用」的警告',
@@ -2055,6 +2061,55 @@ const MUTATIONS = [
     replace: 'const NAV_TIMEOUT_MS = 0;',
     test: 'pathtest',
   },
+  // ──── EXPECT_REQUIRED_BELOW ────
+  // 從這一行以下（2026-09-23，SPEC_測試可信度 A）新增的突變**一律要帶 expect**：
+  // 失敗輸出裡要有一條 ✗ 含這段字，才算紅在對的那一條斷言。checkmutations 會擋沒帶的。
+  // 新突變請一律加在這一段的最後面。
+  {
+    name: 'A：判定忽略 expect，紅了就算',
+    why: '這就是 A 項要修的洞：改壞之後「某處」紅了，就被當成證明了它想守的那一條有效。',
+    file: 'scripts/mutjudge.mjs',
+    find: "  return { verdict: failed.some((f) => f.includes(expect)) ? 'red' : 'wrong-place', failed };",
+    replace: "  return { verdict: 'red', failed };",
+    test: 'checkmutations',
+    expect: '對照：紅了，但 expect 只出現在細節行、不在任何 ✗ 行',
+  },
+  {
+    name: 'A：細節行也被當成失敗的斷言',
+    why: '細節行（實際值、例子）常常剛好含 expect 那幾個字；算進去的話，紅在別條也會被判成紅在對的那一條。',
+    file: 'scripts/mutjudge.mjs',
+    find: '    const m = /^ {2}✗ (.+)$/.exec(line.replace(/\\r$/, \'\'));',
+    replace: '    const m = /^\\s+(?:✗ )?(.+)$/.exec(line.replace(/\\r$/, \'\'));',
+    test: 'checkmutations',
+    expect: '從輸出取出失敗的斷言訊息',
+  },
+  {
+    name: 'A2：expect 打錯字也放行',
+    why: '打錯字的 expect 永遠不會命中，那條突變每次都會判成「紅錯地方」—— 而且要等整套才看得到。',
+    file: 'scripts/mutjudge.mjs',
+    find: '  return testSrc.includes(mut.expect) ? [] : [',
+    replace: '  return true ? [] : [',
+    test: 'checkmutations',
+    expect: 'expect 檢查抓得到打錯字',
+  },
+  {
+    name: 'A：新突變不帶 expect 也放行',
+    why: '「從這一份起，新增的突變一律要帶 expect」如果沒有東西擋，下一條沒帶的突變就會悄悄進來。',
+    file: 'scripts/mutjudge.mjs',
+    find: "  return (src.slice(src.indexOf('const MUTATIONS = ['), at).match(/^\\s+find:/gm) || []).length;",
+    replace: "  return (src.match(/^\\s+find:/gm) || []).length;",
+    test: 'checkmutations',
+    expect: '對照：標記在第 2 條之後',
+  },
+  {
+    name: '套用突變改回 String.replace(字串, 字串)',
+    why: '替換字串裡的 $$、$&、$\' 會被當成特殊序列，突變實際寫進去的程式碼跟條目寫的不一樣（接手者第 40 條）。',
+    file: 'scripts/mutjudge.mjs',
+    find: 'export const applyMutation = (body, find, replace) => body.split(find).join(replace);',
+    replace: 'export const applyMutation = (body, find, replace) => body.replace(find, replace);',
+    test: 'checkmutations',
+    expect: '原樣寫進去（String.replace(字串, 字串) 會把它們當特殊序列）',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
@@ -2225,7 +2280,7 @@ for (const mut of SELECTED) {
   const abs = path.join(ROOT, mut.file);
   const original = fs.readFileSync(abs, 'utf8');
 
-  const occurrences = original.split(mut.find).length - 1;
+  const occurrences = countOf(original, mut.find);
   if (occurrences !== 1) {
     ok(false, `${mut.name}`,
       `要改的程式碼在 ${mut.file} 裡出現 ${occurrences} 次（需要剛好 1 次）—— 這條突變過期了，` +
@@ -2235,7 +2290,7 @@ for (const mut of SELECTED) {
 
   backups.set(mut.file, original);
   writePending(mut.file, original);          // 被硬殺掉也還原得回來
-  fs.writeFileSync(abs, original.replace(mut.find, mut.replace), 'utf8');
+  fs.writeFileSync(abs, applyMutation(original, mut.find, mut.replace), 'utf8');
   const r = runTest(mut.test);
   fs.writeFileSync(abs, original, 'utf8');
   backups.delete(mut.file);
@@ -2247,11 +2302,18 @@ for (const mut of SELECTED) {
     continue;
   }
 
-  ok(r.code !== 0, `${mut.name} → ${mut.test} 變紅`,
-    r.code === 0
-      ? `改壞了 ${mut.file} 但 ${mut.test} 還是綠的。原因：${mut.why}\n      ` +
+  // 判定：沒帶 expect 只看 exit code；帶了的，還要紅在含 expect 的那一條（mutjudge.mjs）
+  const { verdict, failed } = judge(r, mut.expect);
+  const label = mut.expect ? `${mut.name} → ${mut.test} 紅在「${mut.expect}」` : `${mut.name} → ${mut.test} 變紅`;
+  ok(verdict === 'red', label,
+    verdict === 'not-red'
+      ? `【沒紅】改壞了 ${mut.file} 但 ${mut.test} 還是綠的。原因：${mut.why}\n      ` +
         '→ 這代表對應的斷言沒有真的在檢查這件事。'
-      : '');
+      : verdict === 'wrong-place'
+        ? `【紅錯地方】${mut.test} 紅了，但沒有任何一條失敗的斷言含「${mut.expect}」。` +
+          `實際紅的是：${failed.length ? failed.slice(0, 3).join('／') : '（沒有 ✗ 行 —— 測試直接崩了）'}\n      ` +
+          '→ 這只證明改壞之後「某處」會紅，不能證明它想守的那一條有效。'
+        : '');
 }
 
 section('突變清單本身');
