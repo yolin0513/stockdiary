@@ -2272,6 +2272,15 @@ const MUTATIONS = [
     test: 'doctest',
     expect: '禁用詞清單只有一份',
   },
+  {
+    name: 'divrecordtest：「下一次除息」的 fixture 落在今天之前',
+    why: '這就是 2026-09-22 起必紅的原因（fixture 寫死 09-21，日子一過就變成過去）。情境沒了要紅在前置，而不是讓「看不到下一次除息」看起來像功能壞了。',
+    file: 'scripts/divrecordtest.mjs',
+    find: '  const UPCOMING_IN_DAYS = 14;',
+    replace: '  const UPCOMING_IN_DAYS = -14;',
+    test: 'divrecordtest',
+    expect: '（前提）fixture 的除息日',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

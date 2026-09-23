@@ -160,15 +160,22 @@ try {
   section('持股直接列成按鈕 —— 使用者不必先知道哪一檔查得到');
   // 這是這次修正的重點：使用者的三檔全是 ETF，原本的設計（自己打代號 → 查歷史配息）
   // 對他一檔都查不到。現在一進來就看得到自己的持股。
-  const chipsProbe = await page.evaluate(async () => {
+  // 「下一次除息」的日期**相對於頁面上的今天**算出來（今天＋14 天）。
+  // 以前寫死 2026-09-21：畫面用真實的今天判斷「還沒到」，日子一過它就變成過去，
+  // 這一段從 2026-09-22 起必紅 4 條（接手者第 43 條）。
+  const UPCOMING_IN_DAYS = 14;
+  const chipsProbe = await page.evaluate(async (inDays) => {
     const db = await import('./js/db.js');
     const holdings = await import('./js/holdings.js');
+    const localIso = (d) => d.toLocaleDateString('sv');
+    const pageToday = localIso(new Date());
+    const upcomingDate = localIso(new Date(Date.now() + inDays * 86400000));
     for (const s of db.EXPORTABLE_STORES) await db.clear(s);
     await db.clear('events');
     await holdings.addOpening({ code: '0050', shares: 1000, date: '2026-01-05' });
     await holdings.addOpening({ code: '00878', shares: 3000, date: '2026-01-05' });
     // 一筆已公告的下次除息、一筆已確認領過的
-    await db.put('events', { id: '00878-2026-09-21', code: '00878', exDate: '2026-09-21', cashPerShare: 0.55, status: 'upcoming' });
+    await db.put('events', { id: `00878-${upcomingDate}`, code: '00878', exDate: upcomingDate, cashPerShare: 0.55, status: 'upcoming' });
     await db.put('events', { id: '0050-2026-07-18', code: '0050', exDate: '2026-07-18', cashPerShare: 0.9, status: 'confirmed', amountActual: '900000000' });
 
     location.hash = '#/';
@@ -198,13 +205,18 @@ try {
     document.querySelector('#view [data-lookup="0050"]').click();
     await new Promise((r) => setTimeout(r, 700));
     const etfWithReceived = read();
-    return { codes, heights, etfWithUpcoming, etfWithReceived };
-  });
+    return { codes, heights, etfWithUpcoming, etfWithReceived, pageToday, upcomingDate };
+  }, UPCOMING_IN_DAYS);
+
+  // 前置（共用慣例 §5.8）：情境是「有一筆還沒到的除息」—— 用畫面判斷時用的**同一個時鐘**確認它真的還沒到。
+  // 不成立的話，下面「看得到下一次除權息」那幾條紅的原因是情境沒了，不是功能壞了。
+  ok(chipsProbe.upcomingDate > chipsProbe.pageToday,
+    `（前提）fixture 的除息日 ${chipsProbe.upcomingDate} 在頁面上的今天 ${chipsProbe.pageToday} 之後`);
 
   eq(chipsProbe.codes.sort(), ['0050', '00878'], '持股直接列成按鈕，不必打字');
   everyOf(chipsProbe.heights, (hh) => hh >= 44, `按鈕夠大（${chipsProbe.heights.join('、')}px）`);
 
-  ok(chipsProbe.etfWithUpcoming.upcoming.includes('2026-09-21'),
+  ok(chipsProbe.etfWithUpcoming.upcoming.includes(chipsProbe.upcomingDate),
     `ETF 看得到下一次除權息：「${chipsProbe.etfWithUpcoming.upcoming}」`);
   ok(chipsProbe.etfWithUpcoming.upcoming.includes('0.55'), '而且有已公告的每股金額');
   ok(chipsProbe.etfWithUpcoming.text.includes('已經公告的數字'), '標明那是公告值');
