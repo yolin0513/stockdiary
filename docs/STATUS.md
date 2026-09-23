@@ -197,7 +197,7 @@
 9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變＋**`npm run checkmutations`（每版必跑，不到一秒：突變有沒有過期、`expect` 找不找得到）**（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit/push → `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。
    （2026-09-18 更新：以前寫「bump sw.js VERSION → npm test」，那是 v0.7.10 測試範圍政策之前的做法。）
 10. 打真網路的測試（TWSE、RSS、Anthropic）**不進 `npm test`**，另開 `npm run livecheck`；TWSE 請求 ≥ 2 秒間隔，測試也一樣，**不要連打**（社群共識 3 次／5 秒會被封 IP）。
-11. 不動 `D:\Claude\App\TripQuest`、`D:\Claude\App\JLPT_App`、`D:\Claude\App\MealMate` 的任何檔案（可讀，用來抄慣例與對照同一種 bug）。
+11. 不動 `../TripQuest`、`../JLPT_App`、`../MealMate` 的任何檔案（可讀，用來抄慣例與對照同一種 bug）。
     MealMate 跟本專案用同一套開機與換版程式碼：「按更新之後空白」就是兩邊同病、MealMate 先找到根因（第 39 條）。
     · devDeps（`puppeteer`、`wrangler`）**釘死在確切版本**，不用 `^`。測試整套都靠瀏覽器行為，
       puppeteer 小版本升級就可能讓某幾條版面斷言改變 —— **升版是要有人看著結果的決定**，
@@ -1052,7 +1052,7 @@ Yolin 原本把兩邊的市值講成「損益」—— **那兩個數字是市�
 
 ## 環境與工具陷阱（2026-09-16～18 踩到的）
 
-- **Windows 上 node 的 `/tmp` 是 `D:\tmp`**，不是 Git Bash 的 `/tmp`。bash 寫到 `/tmp/x`、node 讀 `/tmp/x` 會讀不到。暫存檔一律放 Session 的 scratchpad，用絕對路徑。
+- **Windows 上 node 的 `/tmp` 是「目前磁碟機根目錄底下的 `tmp`」**，不是 Git Bash 的 `/tmp`。bash 寫到 `/tmp/x`、node 讀 `/tmp/x` 會讀不到。暫存檔一律放 Session 的 scratchpad，用絕對路徑。
 - **`SP=... node a.js && node b.js`** 的環境變數只給第一個指令；要跨 `&&` 用 `export SP=...`。
 - **Bash 工具擋掉「`sleep N` 接著別的指令」**。等線上換版用 `until curl ... | grep -q vX; do sleep 5; done`。
 - **背景指令接 `| tail -N` 的話，輸出要等整個跑完才寫出**，中途看 output 檔是空的 —— 不是當掉。
