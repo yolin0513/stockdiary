@@ -10,9 +10,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ok, eq, section, done, detects, everyOf, note } from './tap.mjs';
+import { ok, eq, section, done, detects, everyOf, noneOf, note } from './tap.mjs';
 import {
-  failedAssertions, judge, applyMutation, loadMutations, expectProblems, legacyCount, EXPECT_MARKER,
+  failedAssertions, judge, applyMutation, loadMutations, expectProblems, findProblems, legacyCount, EXPECT_MARKER,
 } from './mutjudge.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -45,6 +45,30 @@ eq(judge({ code: 1, out: OUT_ELSEWHERE }).verdict, 'red', '沒帶 expect 的照�
 section('套用突變不會偷改替換字串（接手者第 40 條）');
 eq(applyMutation('a X b', 'X', "$$ $& $'"), "a $$ $& $' b",
   '替換字串裡的 $$、$&、$\' 原樣寫進去（String.replace(字串, 字串) 會把它們當特殊序列）');
+
+// ---------------------------------------------------------------------------
+section('每一條突變都還有效：find 在目標檔裡剛好出現一次（C）');
+
+const t0 = Date.now();
+const stale = MUTATIONS.map((m) => ({ name: m.name, probs: findProblems(m, read) })).filter((x) => x.probs.length);
+noneOf(MUTATIONS.map((m) => ({ name: m.name, probs: findProblems(m, read) })), (x) => x.probs.length > 0,
+  `全部 ${MUTATIONS.length} 條突變都還有效（find 剛好一次、改了有差、測試檔存在）`
+  + (stale.length ? `；過期的：${stale.map((x) => `${x.name}（${x.probs.join('；')}）`).join('／')}` : ''));
+// 對照組：用這支檔案自己當目標，造幾條假突變
+const SELF = 'scripts/checkmutations.mjs';
+// 「剛好出現一次」的樣本要拆開拼：直接寫成字面的話，這一行自己就是第二次出現
+const ONCE = 'const SE' + 'LF = ';
+detects((m) => findProblems(m, read).length > 0, {
+  shouldHit: [
+    { name: '假：find 不存在', file: SELF, find: ONCE + '（不存在的一段）', replace: 'x', test: 'checkmutations' },
+    { name: '假：find 出現兩次', file: SELF, find: 'findProblems(m, read)', replace: 'x', test: 'checkmutations' },
+    { name: '假：改了等於沒改', file: SELF, find: ONCE, replace: ONCE, test: 'checkmutations' },
+    { name: '假：目標檔不存在', file: 'js/no-such-file.js', find: 'a', replace: 'b', test: 'checkmutations' },
+    { name: '假：測試不存在', file: SELF, find: ONCE, replace: 'x', test: 'no-such-test' },
+  ],
+  shouldMiss: [{ name: '假：正常', file: SELF, find: ONCE, replace: 'x', test: 'checkmutations' }],
+}, '過期檢查抓得到 find 不存在、出現兩次、改了等於沒改、檔案或測試不存在，也不會誤殺正常的');
+note(`檢查 ${MUTATIONS.length} 條花了 ${Date.now() - t0} 毫秒`);
 
 // ---------------------------------------------------------------------------
 section('每一條 expect 都找得到（A2）');

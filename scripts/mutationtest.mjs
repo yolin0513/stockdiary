@@ -957,9 +957,12 @@ const MUTATIONS = [
     name: '條狀圖的寬度不夾在 0–100%',
     why: '超過 100% 的填色會撐爆容器，在窄螢幕或特大字級下把旁邊的文字擠出畫面。',
     file: 'js/views/holdings.js',
-    find: String.raw`      h('div', { class: 'bar-fill', style: ` + '`width: ${Math.max(0, Math.min(100, pct))}%`' + String.raw` })),`,
-    replace: String.raw`      h('div', { class: 'bar-fill', style: ` + '`width: ${pct * 3}%`' + String.raw` })),`,
+    // v0.7.22（A8）把寬度改成 CSS 變數 --w，這條的 find 沒跟上，從那一版起過期（2026-09-21 全面檢測才發現）。
+    // 2026-09-23 跟上現在的寫法；照 SPEC_測試可信度 C 補 expect，確認紅的是「超出畫面寬度」那一條。
+    find: String.raw`      h('div', { class: 'bar-fill', style: { '--w': ` + '`${Math.max(0, Math.min(100, pct))}%`' + String.raw` } })),`,
+    replace: String.raw`      h('div', { class: 'bar-fill', style: { '--w': ` + '`${pct * 3}%`' + String.raw` } })),`,
     test: 'layouttest',
+    expect: '沒有任何元素超出畫面寬度',
   },
   // ---- v0.7.2：今日觀察的失敗路徑 ----
   {
@@ -2136,6 +2139,15 @@ const MUTATIONS = [
     replace: "const PICKED = process.argv[2] ? { rev: process.argv[2], manual: true } : { rev: 'HEAD~1', version: '?', skipped: 0 };",
     test: 'upgradecheck',
     expect: '確實不同版',
+  },
+  {
+    name: 'C：過期檢查永遠放行（find 出現幾次都算有效）',
+    why: '條狀圖那條從 v0.7.22 過期到 2026-09-21 才被發現，因為只有整套跑到它時才會檢查。秒級檢查失效的話，又回到要等整套。',
+    file: 'scripts/mutjudge.mjs',
+    find: '    if (n !== 1) probs.push(`find 在 ${mut.file} 出現 ${n} 次（需要剛好 1 次）`);',
+    replace: '    if (false) probs.push(`find 在 ${mut.file} 出現 ${n} 次（需要剛好 1 次）`);',
+    test: 'checkmutations',
+    expect: '過期檢查抓得到 find 不存在、出現兩次',
   },
 ];
 

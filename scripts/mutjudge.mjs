@@ -73,6 +73,24 @@ export function expectProblems(mut, read) {
   return testSrc.includes(mut.expect) ? [] : [`expect「${mut.expect}」在 scripts/${mut.test}.mjs 裡找不到`];
 }
 
+/**
+ * 一條突變還有沒有效（不跑任何測試）：find 在目標檔裡**剛好出現一次**、改了真的有差、測試檔存在。
+ * mutationtest 本來就會在 find 找不到時判過期 —— 但那要等到跑到那一條（整套一個半小時）才看得到。
+ * 實例：條狀圖寬度那條從 v0.7.22 起過期，直到 2026-09-21 全面檢測才被發現。
+ */
+export function findProblems(mut, read) {
+  const probs = [];
+  const body = read(mut.file);
+  if (body == null) probs.push(`要改的檔 ${mut.file} 不存在`);
+  else {
+    const n = countOf(body, mut.find);
+    if (n !== 1) probs.push(`find 在 ${mut.file} 出現 ${n} 次（需要剛好 1 次）`);
+  }
+  if (mut.find === mut.replace) probs.push('find 與 replace 一模一樣，改了等於沒改');
+  if (read(`scripts/${mut.test}.mjs`) == null) probs.push(`指定的測試 scripts/${mut.test}.mjs 不存在`);
+  return probs;
+}
+
 /** 原始碼裡標記「以下新增的一律要帶 expect」的那一行；它之前有幾條突變。 */
 export const EXPECT_MARKER = '// ──── EXPECT_REQUIRED_BELOW ────';
 export function legacyCount(src) {

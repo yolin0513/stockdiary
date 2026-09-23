@@ -73,7 +73,7 @@ C 修那條過期的突變＋加一個秒級的「每條 `find` 剛好出現一�
 | v0.7.21 | 修復（真正的根因）：更新流程不再 `unregister`；`js/bootguard.js` 開機看門狗 | ✅ 線上；**沒有逐項的實機確認**。2026-09-18 Yolin 整體回覆「使用上沒有太大問題」（見下方待回覆表的註記），不等於已確認修好 |
 | v0.7.22 | 批次 4：A8 CSP 拿掉 `unsafe-inline`、A11 死碼、A15 收重複、B2 SW 導覽 3 秒逾時 | ✅ 線上；內建瀏覽器實機驗過長條圖／逐年圖／對話框 |
 
-測試：29 支＋246 條突變。**2026-09-21 跑過一次全面檢測**（當時 234 條，233 條變紅、1 條過期）；
+測試：29 支＋247 條突變。**2026-09-21 跑過一次全面檢測**（當時 234 條，233 條變紅、1 條過期）；
 v0.7.23 新增／改寫的 5 條已各自用 `--only` 驗過會紅。
 
 ### 下一步該做什麼（照建議順序）
@@ -90,7 +90,7 @@ v0.7.23 新增／改寫的 5 條已各自用 `--only` 驗過會紅。
    要嘛併進下一次 bump 一起上線，要嘛單獨一個不 bump 的 commit（只有註解，線上行為零變化，
    已裝的使用者要到下次 bump 才會重抓）。**建議併進 `SPEC_測試可信度.md` 那一輪**：它本來就要動 `scripts/`。
 4. **2026-11-16 起**總覽會出現「開休市日只到 12/31」的警示 —— 那是預期中的，不是 bug。證交所公布 2027 年休市日之後照「交易日曆」那一節的步驟產檔、發版。
-5. Yolin 叫「全面檢測」時：全套 29 支＋全部 246 條突變＋`sweep`＋`upgradecheck`＋`workertest`，**實測約 1 小時 52 分**。
+5. Yolin 叫「全面檢測」時：全套 29 支＋全部 247 條突變＋`sweep`＋`upgradecheck`＋`workertest`，**實測約 1 小時 52 分**。
    **2026-09-21 已經跑過一次**（Yolin 指定），結果與三項發現見「測試範圍 → 全面檢測」那一節；上限也在那裡。
 
 ### 在等 Yolin 回覆的事
@@ -136,7 +136,7 @@ v0.7.23 新增／改寫的 5 條已各自用 `--only` 驗過會紅。
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：29 支測試＋突變套件，`npm run mutationtest` 用 **246 條突變**逐一證明關鍵斷言改壞會紅。
+測試現況：29 支測試＋突變套件，`npm run mutationtest` 用 **247 條突變**逐一證明關鍵斷言改壞會紅。
 （這兩個數字由 `npm run doctest` 從程式數出來核對 —— 文件漂移過一次：STATUS 與 README 都停在 138，實際已經 182。）
 突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
 （所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
@@ -195,7 +195,7 @@ v0.7.23 新增／改寫的 5 條已各自用 `--only` 驗過會紅。
 6. **不得出現任何投資建議、目標價、買賣建議**——AI 輸出、UI 文案、試算器預設值、說明文字全部適用。
 7. **不規劃也不實作任何券商帳密、下單、轉帳功能。**
 8. 沿用 JLPT_App／TripQuest 技術路線：原生 JS ES Modules ＋ IndexedDB ＋ Service Worker，無框架、無打包；`h()` 全 textNode、URL 屬性白名單；CSP `script-src 'self'`；外部請求一律 `AbortSignal.timeout` ＋ 降級。
-9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit/push → `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。
+9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變＋**`npm run checkmutations`（每版必跑，不到一秒：突變有沒有過期、`expect` 找不找得到）**（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit/push → `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。
    （2026-09-18 更新：以前寫「bump sw.js VERSION → npm test」，那是 v0.7.10 測試範圍政策之前的做法。）
 10. 打真網路的測試（TWSE、RSS、Anthropic）**不進 `npm test`**，另開 `npm run livecheck`；TWSE 請求 ≥ 2 秒間隔，測試也一樣，**不要連打**（社群共識 3 次／5 秒會被封 IP）。
 11. 不動 `D:\Claude\App\TripQuest`、`D:\Claude\App\JLPT_App`、`D:\Claude\App\MealMate` 的任何檔案（可讀，用來抄慣例與對照同一種 bug）。
@@ -277,7 +277,7 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
 
 **只在使用者要求時**跑：完整 29 支 ＋ 全部突變 ＋ `sweep` ＋ `upgradecheck` ＋ `workertest`。
 
-**整套指的是什麼、要多久**：整套 ＝ `npm test` 的 29 支 ＋ `mutationtest` 全部 246 條突變（每條都要改寫原始碼、跑一次完整的對應測試再還原，不能平行）。
+**整套指的是什麼、要多久**：整套 ＝ `npm test` 的 29 支 ＋ `mutationtest` 全部 247 條突變（每條都要改寫原始碼、跑一次完整的對應測試再還原，不能平行）。
 耗時**實測 6,730 秒 ≈ 1 小時 52 分**（2026-09-21 全面檢測，見下面「上次全面檢測」那一列的分段）。
 以前寫的「約 3.5–4 小時」是文件記載值、從來沒有人量過 —— **實際只有一半**。
 
@@ -576,6 +576,15 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
       兩處都是純註解、都不在凍結清單（凍結的是 `js/calc.js` 的 `simulate`／`compareMulti`／`displayTotals`，
       不是 `js/views/calc.js`），但**改 `js/` 就不再是 docs-only、會動到線上資產**，所以那一輪沒有順手改，
       列在「下一步該做什麼」等一起處理。
+42. **突變過期了，要等整套跑到它才看得到 —— 對應的斷言在那之間一直沒被驗證。**
+    實例：「條狀圖的寬度不夾在 0–100%」。v0.7.22（A8，CSP 拿掉 `unsafe-inline`）把長條寬度從字串型 `style` 改成 CSS 變數 `--w`，
+    突變的 `find` 沒跟上，從那一版起在 `js/views/holdings.js` 出現 0 次。平常只跑受影響的突變（`--changed`／`--only`），
+    它沒被挑到；直到 **2026-09-21 全面檢測**跑到它才判過期 —— 那條版面斷言**從 v0.7.22 到那天都沒有被突變驗證過**。
+    · 執行器本來就會把「find 找不到」判成失敗，**不是靜默**（慣例第 34 條的第一種形狀）；問題在於**要等到整套**。
+    · 2026-09-23 起 `npm run checkmutations` 每版都跑，不到一秒把全部突變的 `find` 數一遍（剛好一次、改了有差、檔案與測試都在）。
+      修正前的清單餵給它，會紅並點名這一條；修好之後綠。
+    · 那條已跟上現在的寫法，補了 `expect`，驗過紅在 `layouttest` 的「沒有任何元素超出畫面寬度」。
+    · 通則：**改了程式的寫法（不是行為）時，也要跑一次 `checkmutations`** —— 重構最容易讓突變悄悄過期。
 
 ## 非同步畫面的守門（v0.5.2，實際發生過的 bug）
 
@@ -1104,7 +1113,7 @@ puppeteer 不認 `'Shift+Tab'` 這種組合寫法，要 `keyboard.down('Shift')`
 
 | # | 項目 | 怎麼做 |
 |---|---|---|
-| 1 | 全部測試綠 | `npm test`（29 支＋246 條突變；數字由 `doctest` 盯著 —— 要寫成「N 條突變」，寫成「突變 N 條」它認不得，這一行就是這樣漂到 185 沒人發現） |
+| 1 | 全部測試綠 | `npm test`（29 支＋247 條突變；數字由 `doctest` 盯著 —— 要寫成「N 條突變」，寫成「突變 N 條」它認不得，這一行就是這樣漂到 185 沒人發現） |
 | 2 | 版本四處一致 | `npm run bump -- stockdiary-vX.Y.Z` 會一次改完（`js/version.js`、`sw.js`、`index.html`、`package.json`），`shelltest` 會驗 |
 | 3 | 線上巡檢 | `npm run sweep` —— 版本一致、七頁開得起來、SW 接手、離線正常、Worker 活著 |
 | 4 | Worker 稽核 | `npm run workertest`（要 wrangler；會碰一次上游，別連跑） |
