@@ -11,8 +11,8 @@
 import puppeteer from 'puppeteer';
 import { ok, eq, section, done, noneOf, everyOf, detects, note } from './tap.mjs';
 import { listen } from './serve.mjs';
-
-const BANNED = ['預期', '保守', '樂觀', '建議', '歷史平均', '常見', '推薦', '目標價', '應該買', '值得'];
+// 禁用詞清單跟 calctest、uikittest 共用同一份（2026-09-23，以前三處各抄一份）
+import { BANNED } from './banned.mjs';
 
 const { srv, port } = await listen(0);
 const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });

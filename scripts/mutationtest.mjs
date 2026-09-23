@@ -2195,6 +2195,83 @@ const MUTATIONS = [
     test: 'pathtest',
     expect: '（前提）首頁真的畫出來了：有當日損益那張卡',
   },
+  // ---- v0.7.23 驗收時統籌者列的測試缺口（2026-09-23 併進 SPEC_測試可信度 這一輪） ----
+  {
+    name: '缺口 1（A7）：凍結檔整檔加一行過期註解',
+    why: '凍結區連過期註解也不改。以前每一版靠人工 git diff 代驗，現在 doctest 每次都比快照。',
+    file: 'js/money.js',
+    find: '// 金額運算。**全部用 BigInt 微元（1 微元 = 0.000001 元）做整數運算。**',
+    replace: '// （過期註解）\n// 金額運算。**全部用 BigInt 微元（1 微元 = 0.000001 元）做整數運算。**',
+    test: 'doctest',
+    expect: '凍結區裡沒有任何一個檔案或函式被改過',
+  },
+  {
+    name: '缺口 1（A7）：凍結函式裡加一行註解',
+    why: '函式層級的凍結（§0 逐函式列的那些）一樣要抓得到，而且只抓那個函式。',
+    file: 'js/plans.js',
+    find: '  const amt = toMicro(amount);',
+    replace: '  const amt = toMicro(amount); // 改一行註解也算動到',
+    test: 'doctest',
+    expect: '凍結區裡沒有任何一個檔案或函式被改過',
+  },
+  {
+    name: '缺口 1（A5）：未實現損益那格印成成本',
+    why: 'v0.7.23 只該改標示與說明，數字一個字都不能動。以前「數字沒變」沒有斷言，只靠人看。',
+    file: 'js/views/home.js',
+    find: "    h('p', { class: 'mid-number' }, moneyNode(u.unrealizedMicro)),",
+    replace: "    h('p', { class: 'mid-number' }, moneyNode(u.costMicro)),",
+    test: 'uikittest',
+    expect: '未實現損益印的是手算的 1,519,500',
+  },
+  {
+    name: '缺口 2（A1）：成本說明還原成 v0.7.22 的舊文字',
+    why: '規格 A1 要的突變。舊文字講了「沒有加手續費」，但沒講「各家算法不一樣」「沒辦法一模一樣」「約略值」—— 語意斷言要分得出來。',
+    file: 'js/views/home.js',
+    find: "      '這裡的成本是你填的平均成本乘上股數，沒有算進手續費。'\n"
+      + "      + '各家券商手續費的算法、折扣和優惠都不一樣，券商 App 的成本通常會比這裡高一點、報酬率低一點，'\n"
+      + "      + '這裡沒辦法算得跟券商 App 一模一樣，差一點是正常的。'\n"
+      + "      + '損益和報酬率是用這個成本算的，請當成約略值。'),",
+    replace: "      '這裡的成本是你填的成交價乘上股數，沒有加手續費。'\n"
+      + "      + '券商 App 的成本通常把買進手續費算進去，所以會比這裡高一點點，報酬率也會低一點點。'),",
+    test: 'uikittest',
+    expect: '講出「各家券商的算法不一樣」',
+  },
+  {
+    name: '缺口 2（A1）：說明拿掉「沒有算進手續費」',
+    why: '舊文字也講了沒加手續費，所以還原舊文字證明不了這一條；要單獨拿掉它。',
+    file: 'js/views/home.js',
+    find: '沒有算進手續費。',
+    replace: '。',
+    test: 'uikittest',
+    expect: '講出「成本沒有算進手續費」',
+  },
+  {
+    name: '缺口 2（A1）：說明拿掉「沒辦法一模一樣，差一點是正常的」',
+    why: '這一句是「為什麼會差」之後的「所以不用擔心」。拿掉它，使用者看到差額還是會以為 App 算錯。',
+    file: 'js/views/home.js',
+    find: '這裡沒辦法算得跟券商 App 一模一樣，差一點是正常的。',
+    replace: '',
+    test: 'uikittest',
+    expect: '講出「沒辦法一模一樣，差一點是正常的」',
+  },
+  {
+    name: '缺口 3：禁用詞判準壞掉、什麼都不抓',
+    why: '以前的對照是「把禁用詞嵌進字串再問含不含」，永遠成立 —— 判準壞掉（例如清單是空的）它也照樣過。',
+    file: 'scripts/banned.mjs',
+    find: "export const bannedIn = (text) => BANNED.filter((w) => String(text ?? '').includes(w));",
+    replace: 'export const bannedIn = () => [];',
+    test: 'uikittest',
+    expect: '（對照）同一個判準抓得到含禁用詞的句子',
+  },
+  {
+    name: '缺口 3：又有測試另抄一份禁用詞清單',
+    why: '三處各抄一份時，只改其中一份，另外兩處就悄悄少擋一個詞。',
+    file: 'scripts/calcviewtest.mjs',
+    find: "import { BANNED } from './banned.mjs';",
+    replace: "const BANNED = ['預期', '保守', '樂觀', '建議', '歷史平均', '常見', '推薦', '目標價', '應該買', '值得'];",
+    test: 'doctest',
+    expect: '禁用詞清單只有一份',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

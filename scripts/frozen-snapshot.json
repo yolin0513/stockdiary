@@ -1,0 +1,24 @@
+{
+  "note": "凍結區快照。只有在 Yolin 明確同意動凍結區之後才重產（scripts/frozen.mjs 開頭）。",
+  "units": {
+    "js/avgcost.js": "4c66a2f04bf736e6",
+    "js/settle.js": "2fe23340e65ce6c4",
+    "js/holdings.js#recomputeAvgCost": "102c6085888042f5",
+    "js/holdings.js#setAvgCost": "baa1519145e9a26c",
+    "js/holdings.js#confirmChange": "49bac17057ed7f4c",
+    "js/plans.js#estimateDca": "edfb2b01aff2c375",
+    "js/plans.js#generatePending": "eedba7de6fb496c8",
+    "js/plans.js#generateReinvest": "30929d62300f798b",
+    "js/dividend.js#dividendAmount": "ef4dd480efc837f0",
+    "js/dividend.js#stockDividendShares": "44eda23c429fdbe8",
+    "js/dividend.js#dividendSummary": "addd137ecf923d7d",
+    "js/dividend.js#refPriceFromExValue": "ee8fe9edac577e83",
+    "js/dividend.js#refPriceFromForecast": "b18d8cd7ce62767e",
+    "js/events.js#confirm": "594aab5ae3eea359",
+    "js/events.js#quoteExtrasFor": "c73577ce3f6acb56",
+    "js/calc.js#simulate": "1a404be9de05f314",
+    "js/calc.js#compareMulti": "70fa850d0c00dbbc",
+    "js/calc.js#displayTotals": "0e2e8b0b3dfaa15c",
+    "js/money.js": "ee96c3f0ca68e4b0"
+  }
+}

@@ -14,7 +14,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done, noneOf, everyOf, note } from './tap.mjs';
+import { ok, eq, section, done, noneOf, everyOf, detects, note } from './tap.mjs';
+import { BANNED, bannedIn } from './banned.mjs';
 import { listen } from './serve.mjs';
 import { stripComments } from './srcscan.mjs';
 
@@ -214,10 +215,11 @@ try {
   //
   // 兩句話，都是「不講他就會以為 App 壞了」的那種：
   //
-  //   成本不含手續費：使用者拿國泰 App 對帳，成本差 252 元。實算下來那大約是
-  //     2 折的買進手續費（858,685 × 0.1425% × 0.2 ≈ 245）。我們的成本只有
-  //     成交價 × 股數（js/avgcost.js 沒有任何 fee 項，PLAN 第 23 行也把手續費
+  //   成本不含手續費：使用者拿券商 App 對帳，成本差了一點（差額見 STATUS「對帳調查」）。
+  //     來源是多年累積的手續費（2026-09-21 結案時確認；更早「約 2 折買進手續費」的推算已被推翻）。
+  //     我們的成本只有成交價 × 股數（js/avgcost.js 沒有任何 fee 項，PLAN 第 23 行也把手續費
   //     列為「不做的指標」）—— 是定義不同，不是算錯。但不講他每次都會再懷疑一次。
+  //     （這裡原本寫著他的總成本，本 repo 是 public，2026-09-23 拿掉；共用慣例 §2.4。）
   //
   //   主畫面 App 與 Safari 的儲存是分開的：在 Safari 匯出、到主畫面 App 匯入，
   //     資料會不見。而匯出／匯入是這個 App 換機與救援的**唯一**路徑。
@@ -248,6 +250,8 @@ try {
     const unrealTitle = document.querySelector('#view [data-card="unrealized"] .card-title')?.textContent.trim() ?? '';
     const mvCard = document.querySelector('#view [data-card="marketValue"]')?.textContent.replace(/\s+/g, ' ').trim() ?? '';
     const mvDate = document.querySelector('#view [data-note="marketValueDate"]')?.textContent.trim() ?? '';
+    // A5（數字沒變）要比的是畫面上印出來的數字本身，所以另外把兩張卡的數字格抓回去
+    const unrealMid = document.querySelector('#view [data-card="unrealized"] .mid-number')?.textContent.replace(/\s+/g, '') ?? '';
     const settleRow = await (await import('./js/db.js')).getAll('settle');
     const homeText = document.querySelector('#view')?.textContent.replace(/\s+/g, ' ') ?? '';
 
@@ -258,7 +262,7 @@ try {
     const split = document.querySelector('#view [data-note="storageSplit"]')?.textContent.trim() ?? '';
     return {
       cost, unrealCard, backup, split,
-      cardTitles, unrealTitle, mvCard, mvDate, homeText,
+      cardTitles, unrealTitle, mvCard, mvDate, homeText, unrealMid,
       settleDate: settleRow[0]?.date ?? null,
     };
   });
@@ -282,13 +286,17 @@ try {
   ok(disclose.cost.includes('約略值'), '而且點名損益與報酬率是約略值');
   // 「僅供參考」是沒講原因的免責套話 —— 使用者要的是知道為什麼
   noneOf([disclose.cost], (t) => /僅供參考/.test(t), '沒有用「僅供參考」這種沒講原因的套話');
-  // 這段文字是新寫的，一樣要過禁用詞（跟 calcviewtest 用同一份清單）。
+  // 這段文字是新寫的，一樣要過禁用詞 —— 清單是 scripts/banned.mjs，跟 calctest、calcviewtest **同一份**
+  // （2026-09-23 以前這裡另抄一份，哪天只改一處另外兩處就悄悄少擋）。
   // 「建議」「值得」這種字放進損益的說明裡，就從「講清楚差在哪」變成投資建議了。
-  const COST_BANNED = ['預期', '保守', '樂觀', '建議', '歷史平均', '常見', '推薦', '目標價', '應該買', '值得'];
-  noneOf(COST_BANNED.map((w) => ({ w, hit: disclose.cost.includes(w) })), (x) => x.hit,
-    `成本說明沒有任何「建議」意味的字（檢查 ${COST_BANNED.length} 個）`);
-  ok(COST_BANNED.some((w) => `這裡的成本${w}拿來參考`.includes(w)),
-    '（對照）那份清單真的抓得到含禁用詞的句子');
+  eq(bannedIn(disclose.cost), [],
+    `成本說明沒有任何「建議」意味的字（檢查 ${BANNED.length} 個）`);
+  // 對照：用**同一個判準**（bannedIn）去跑已知該抓與不該抓的句子。
+  // 以前的對照是「把禁用詞嵌進字串再問含不含」—— 那永遠成立，連清單是空的都會過。
+  detects((t) => bannedIn(t).length > 0, {
+    shouldHit: ['損益和報酬率是用這個成本算的，建議當成約略值。', '這個成本值得參考', '預期會比券商低一點'],
+    shouldMiss: [disclose.cost, '各家券商的算法不一樣，差一點是正常的', '沒有算進手續費'],
+  }, '（對照）同一個判準抓得到含禁用詞的句子，也不會誤殺現在這段說明');
 
   section('約略值：標在標題、標一次，而且只標該標的');
   //
@@ -312,6 +320,16 @@ try {
   ok(mustNotApprox.length >= 2, `（母體）不該標的卡有 ${mustNotApprox.length} 張：${mustNotApprox.join('、')}`);
   noneOf(mustNotApprox, (t) => t.includes(APPROX), '當日損益、持股市值這些卡的標題都沒有被標成約略值');
   ok(!/持股市值[^。]*約略值/.test(disclose.mvCard), '市值那張卡沒有被標成約略值（它的問題是時點，不是估計）');
+
+  // ---- A5（規格 A5「數字沒變」）：標了約略值，數字本身一個字都不能動 ----
+  // v0.7.23 只改標示與說明。這裡用手算的固定案例把畫面上的數字釘住：
+  // 1000 股、平均成本 890.5、收盤 2410 → 成本 890,500、市值 2,410,000、
+  // 未實現損益 +1,519,500、報酬率 1,519,500 ÷ 890,500 ＝ 170.634…% → 170.63%。
+  // 以後誰改到顯示（格式、取哪個欄位、四捨五入），這幾條就會紅。
+  ok(disclose.unrealMid.includes('1,519,500'), `未實現損益印的是手算的 1,519,500：「${disclose.unrealMid}」`);
+  ok(disclose.unrealCard.includes('890,500'), '成本印的是手算的 890,500');
+  ok(disclose.unrealCard.includes('170.63%'), '報酬率印的是手算的 170.63%');
+  ok(disclose.mvCard.includes('2,410,000'), `市值印的是手算的 2,410,000：「${disclose.mvCard.slice(0, 40)}」`);
 
   // ---- A5：市值要講出是哪一天的收盤價，而且是結算那天、不是今天 ----
   const mvDay = disclose.settleDate ? Number(disclose.settleDate.slice(8, 10)) : null;

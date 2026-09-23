@@ -16,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, noneOf, everyOf } from './tap.mjs';
 import { stripComments } from './srcscan.mjs';
+import { parseFrozenList, frozenSection, extractFunction, hashOf, currentHashes } from './frozen.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -170,5 +171,62 @@ eq(violations, [], '程式裡沒有任何一處用到被禁用的元件');
 // 對照組：判準真的抓得到。少了這條，regex 寫錯（例如多跳脫一層）也會全綠。
 everyOf(BANNED, (b) => b.rx.test(`x ${b.what} y`),
   '（對照）每一條判準都認得出自己要抓的東西');
+
+// ---------------------------------------------------------------------------
+section('禁用詞清單只有一份（scripts/banned.mjs）');
+// 以前 calctest、calcviewtest、uikittest 各抄一份；只改其中一份的話，另外兩處就悄悄少擋一個詞。
+{
+  // 「另抄一份」的樣子：一個陣列字面裡同時有這幾個詞
+  const looksLikeCopy = (line) => /\[[^\]]*'應該買'[^\]]*\]/.test(line) && line.includes("'歷史平均'");
+  // mutationtest.mjs 不算：它的 replace 字串是「把清單抄回去」那條突變要寫進去的程式碼，不是一份清單
+  const scriptFiles = fs.readdirSync(path.join(ROOT, 'scripts'))
+    .filter((f) => f.endsWith('.mjs') && f !== 'banned.mjs' && f !== 'mutationtest.mjs');
+  ok(scriptFiles.length > 20, `（前提）掃 scripts/ 底下 ${scriptFiles.length} 支`);
+  const copies = scriptFiles.flatMap((f) => read(`scripts/${f}`).split('\n')
+    .filter(looksLikeCopy).map((line) => ({ f, line: line.trim().slice(0, 60) })));
+  eq(copies, [], '禁用詞清單只有一份：沒有任何測試另外抄一份');
+  ok(looksLikeCopy(read('scripts/banned.mjs').split('\n').find((l) => l.includes('export const BANNED')) ?? ''),
+    '（對照）拿 banned.mjs 那一行去餵，判準認得出它是一份清單');
+  ok(!looksLikeCopy("everyOf(['不是投資建議', '目標價', '評等'], (w) => sys.includes(w))"),
+    '（對照）只提到其中幾個詞的別種清單（insighttest 那種）不算另抄一份');
+}
+
+// ---------------------------------------------------------------------------
+section('凍結區：清單從 SPEC_全面優化 §0 讀，每個單位都跟快照一樣（常設靜態稽核）');
+// 以前每一版靠人工 git diff 代驗（v0.7.23 是這樣做的）；凍結還要維持一段時間，所以做成每次都跑的。
+// 規則的出處：CLAUDE.md 常設規則 5。重產快照見 scripts/frozen.mjs 開頭。
+{
+  const SNAP_REL = 'scripts/frozen-snapshot.json';
+  const sec0 = frozenSection(read('docs/SPEC_全面優化.md'));
+  ok(sec0 != null, '（前提）SPEC_全面優化.md 裡找得到 §0 的凍結條文');
+  const units = parseFrozenList(sec0 ?? '');
+  const files = [...new Set(units.map((u) => u.file))];
+  ok(files.length >= 8 && units.some((u) => u.fn === null) && units.some((u) => u.fn),
+    `（前提）從 §0 讀出 ${files.length} 個檔、${units.length} 個凍結單位（整檔 ${units.filter((u) => !u.fn).length}、函式 ${units.filter((u) => u.fn).length}）`);
+  const now = currentHashes(units, (rel) => (fs.existsSync(path.join(ROOT, rel)) ? read(rel) : null));
+
+  if (process.argv.includes('--write-frozen-snapshot')) {
+    fs.writeFileSync(path.join(ROOT, SNAP_REL),
+      `${JSON.stringify({ note: '凍結區快照。只有在 Yolin 明確同意動凍結區之後才重產（scripts/frozen.mjs 開頭）。', units: Object.fromEntries(now.map((x) => [x.key, x.hash])) }, null, 2)}\n`);
+    console.log(`  · 已重產 ${SNAP_REL}（${now.length} 個單位）`);
+  }
+  const snap = JSON.parse(read(SNAP_REL)).units;
+
+  noneOf(now, (x) => x.hash == null, '每個凍結單位都切得出來（檔案在、函式找得到、括號平衡）');
+  noneOf(now, (x) => snap[x.key] !== x.hash,
+    `凍結區裡沒有任何一個檔案或函式被改過（連註解也不行）`);
+  eq(Object.keys(snap).sort(), now.map((x) => x.key).sort(), '快照涵蓋的單位＝§0 列出的單位（§0 改了清單，快照要跟著重產）');
+
+  // 對照組：用合成的條文與原始碼，確認解析器與切函式真的有在分辨
+  eq(parseFrozenList('`js/a.js` 全部；`js/b.js` 的 `f1`／`f2`；`js/c.js` 全部'),
+    [{ file: 'js/a.js', fn: null }, { file: 'js/b.js', fn: 'f1' }, { file: 'js/b.js', fn: 'f2' }, { file: 'js/c.js', fn: null }],
+    '（對照）條文解析：整檔與函式分得開');
+  const FAKE = 'export function a(x) {\n  if (x) { return 1; }\n  return 2;\n}\n\nexport function b() {\n  return 3;\n}\n';
+  eq(extractFunction(FAKE, 'a'), 'export function a(x) {\n  if (x) { return 1; }\n  return 2;\n}', '（對照）切得出完整的函式，不會切到下一個');
+  ok(hashOf(extractFunction(FAKE, 'a')) !== hashOf(extractFunction(FAKE.split('return 2;').join('return 2; // 改了註解'), 'a')),
+    '（對照）函式裡只改一行註解，雜湊就不一樣');
+  ok(hashOf(extractFunction(FAKE, 'a')) === hashOf(extractFunction(FAKE.split('return 3;').join('return 4;'), 'a')),
+    '（對照）改的是別的函式，這個函式的雜湊不變（函式層級的凍結不會誤殺同檔的其他程式）');
+}
 
 done('doctest');

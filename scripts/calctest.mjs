@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, near, section, done, noneOf, everyOf, detects } from './tap.mjs';
+import { BANNED } from './banned.mjs';
 import {
   validateInputs, simulate, compareScenarios, methodGap, monthlyFactor,
   REQUIRED, CONTRIB_FREQ, DIVIDEND_FREQ, METHODS, MAX_FEE_RATE, compareMulti,
@@ -156,7 +157,7 @@ section('禁用詞清單與檢查器');
 // **畫面上**（含 placeholder、預設值、說明文字）一個都不能出現 —— 那條斷言在
 // scripts/calcviewtest.mjs，因為它要看真的渲染出來的 DOM 與屬性，
 // 不是掃原始碼：這個檔案的註解本來就會提到這些詞（說明我們不做什麼）。
-const BANNED = ['預期', '保守', '樂觀', '建議', '歷史平均', '常見', '推薦', '目標價', '應該買', '值得'];
+// 清單在 scripts/banned.mjs，跟 calcviewtest、uikittest 共用同一份（2026-09-23，以前三處各抄一份）
 ok(BANNED.length >= 5, `禁用詞 ${BANNED.length} 個：${BANNED.join('、')}`);
 detects((text) => BANNED.some((w) => text.includes(w)), {
   shouldHit: ['建議報酬率 5%', '歷史平均約 8%', '保守情境', '預期年化報酬', '常見的 5%'],
