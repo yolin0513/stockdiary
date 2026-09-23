@@ -55,7 +55,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run secret-leak-test` | 金鑰不外洩：匯出範圍、靜態掃描、真的存一把假金鑰後把所有序列化出口走一遍 |
 | `npm run newstest` | 新聞：六家真實 RSS 樣本、只存標題連結來源時間、節流、14 天清理、未允許 AI 的來源不進 prompt |
 | `npm run workertest` | 新聞轉發 Worker：用 wrangler 真跑，白名單擋非法來源、CORS、快取命中、什麼都不存 |
-| `npm run upgradecheck` | 換版實測：裝著舊版的人要做什麼才吃得到新版（模仿 GitHub Pages 的 `max-age=600`） |
+| `npm run upgradecheck` | 換版實測：裝著舊版的人要做什麼才吃得到新版（模仿 GitHub Pages 的 `max-age=600`）；舊版＝往回找版本號不同的最近一個 commit |
 | `npm run racetest` | 非同步畫面競態：慢的舊畫面不准蓋掉使用者現在這頁、不准把人從他選的那頁拉走、空窗中間也不准閃出別頁 |
 | `npm run holdingtest` | 持股畫面：上櫃列沒有報價數字、未公布時顯示「—」、未實現區塊的出現條件 |
 | `npm run plantest` | 定期定額：扣款日展開與順延、估算股數與餘額、平均成本更新 |
@@ -72,7 +72,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
 
 ```
-— 243 條突變：每一條都必須讓對應的測試變紅 —
+— 246 條突變：每一條都必須讓對應的測試變紅 —
   ✓ 把「沒成交」的漲跌價差照抄成 0 → parsetest 變紅
   ✓ 不認得除權息的 "X0.00" 標記 → parsetest 變紅
   ✓ 除權息日拿不到參考價時，退回用前一日收盤當基準 → settletest 變紅

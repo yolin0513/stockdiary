@@ -15,6 +15,7 @@ import { ok, eq, section, done, noneOf, everyOf, detects } from './tap.mjs';
 import { listen } from './serve.mjs';
 import { stripComments } from './srcscan.mjs';
 import { selectAffected, moduleClosure, moduleRefsOf } from './affected.mjs';
+import { pickOldRev, findOldRev, versionAt } from './oldrev.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -438,6 +439,29 @@ ok(realPick.length > 0 && realPick.length < realMuts.length,
   `改 js/twse.js 從真清單挑出 ${realPick.length}/${realMuts.length} 條`);
 everyOf(realPick, (m) => m.file === 'js/twse.js' || moduleClosure(`scripts/${m.test}.mjs`, (rel) => read(rel)).includes('js/twse.js'),
   '挑出來的每一條，不是檔案被改到就是測試碰得到那個檔');
+
+section('換版實測的舊版基準（upgradecheck，SPEC_測試可信度 B）');
+// 以前是 HEAD~1：連續幾個文件 commit 之後「舊版」＝「新版」，upgradecheck 的前提必紅，
+// 連帶讓 mutationtest 的基準不綠、整套突變一條都沒跑。現在往回找版本號不同的最近一個。
+{
+  const C = (rev, version) => ({ rev, version });
+  const docsOnTop = [C('h0', 'v9'), C('h1', 'v9'), C('h2', 'v9'), C('h3', 'v8'), C('h4', 'v7')];
+  eq(pickOldRev(docsOnTop, 'v9').rev, 'h3', '最近三個都是文件 commit（版本一樣）→ 跳過它們，挑到上一版 v8 那個');
+  eq(pickOldRev([C('b0', 'v9'), C('b1', 'v8')], 'v9').rev, 'b1', 'HEAD 就是 bump 那個 commit → 挑它的前一版');
+  eq(pickOldRev([C('w0', 'v8'), C('w1', 'v8')], 'v9').rev, 'w0', '工作目錄 bump 了還沒 commit → HEAD 本身就是舊版');
+  eq(pickOldRev([C('n0', null), C('n1', 'v8')], 'v9').rev, 'n1', '讀不到版本號的 commit（那時還沒有 sw.js）不算數');
+  const none = pickOldRev([C('x0', 'v9'), C('x1', 'v9')], 'v9');
+  ok(none.rev === null && /沒有可比的舊版/.test(none.reason),
+    `整段歷史都是同一版 → 回報「沒有可比的舊版」，不是亂挑一個：「${none.reason}」`);
+  ok(pickOldRev([], 'v9').rev === null, '空的歷史（全新的 repo）→ 一樣回報沒有可比的舊版');
+
+  // B2：真的在這個 repo 上挑一次
+  const cur = /APP_VERSION = '([^']+)'/.exec(read('js/version.js'))[1];
+  const real = findOldRev(ROOT, cur);
+  ok(real.rev != null, `（前提）這個 repo 的 git log 裡確實有比現在（${cur}）舊的版本：${real.version ?? '沒有'}`);
+  ok(real.version != null && real.version !== cur && versionAt(ROOT, real.rev) === real.version,
+    `實際挑到 ${String(real.rev).slice(0, 7)}，它的版本 ${real.version} 跟現在 ${cur} 不同（往回跳過了 ${real.skipped} 個同版本的 commit）`);
+}
 
 section('無障礙與 PWA 的靜態稽核（A4、A7、A16）');
 {

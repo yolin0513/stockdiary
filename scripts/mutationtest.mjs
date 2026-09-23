@@ -2110,6 +2110,33 @@ const MUTATIONS = [
     test: 'checkmutations',
     expect: '原樣寫進去（String.replace(字串, 字串) 會把它們當特殊序列）',
   },
+  {
+    name: 'B：挑舊版基準改回「上一個 commit」',
+    why: '連續幾個文件 commit 之後，上一個 commit 跟現在是同一版 —— upgradecheck 前提必紅，連帶擋掉整套突變（2026-09-21 白跑 540 秒）。',
+    file: 'scripts/oldrev.mjs',
+    find: '    if (c.version && c.version !== current) return { rev: c.rev, version: c.version, skipped: commits.indexOf(c) };',
+    replace: '    if (commits[1]) return { rev: commits[1].rev, version: commits[1].version, skipped: 1 };',
+    test: 'shelltest',
+    expect: '最近三個都是文件 commit（版本一樣）',
+  },
+  {
+    name: 'B：沒有可比的舊版時亂挑一個',
+    why: '全新的 repo 或整段歷史同一版時，要講「沒得比、略過了」；亂挑一個就變成拿同一版跟自己比，或靜默通過。',
+    file: 'scripts/oldrev.mjs',
+    find: '  return { rev: null, version: null, reason:',
+    replace: "  return { rev: commits[0]?.rev ?? 'HEAD', version: null, reason:",
+    test: 'shelltest',
+    expect: '整段歷史都是同一版',
+  },
+  {
+    name: 'B：upgradecheck 又直接用 HEAD~1',
+    why: '純函式對了但 upgradecheck 沒用它，等於沒修。這條從真實入口驗：現在 HEAD~1 是文件 commit，舊版＝新版。',
+    file: 'scripts/upgradecheck.mjs',
+    find: "const PICKED = process.argv[2] ? { rev: process.argv[2], manual: true } : findOldRev(ROOT, NEW_VERSION_EARLY);",
+    replace: "const PICKED = process.argv[2] ? { rev: process.argv[2], manual: true } : { rev: 'HEAD~1', version: '?', skipped: 0 };",
+    test: 'upgradecheck',
+    expect: '確實不同版',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

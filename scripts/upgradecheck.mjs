@@ -20,12 +20,24 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 import { ok, eq, section, done, note } from './tap.mjs';
+import { findOldRev } from './oldrev.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-// 預設拿**上一個 commit**當舊版。以前這裡寫死一個 commit id（8968518，v0.5.0），
-// 於是每發一版，這支測的都還是「從 v0.5.0 升上來」—— 真正要驗的那一跳從來沒測到。
-// 跟突變寫死版本號是同一種過期。要測特定版本就用 npm run upgradecheck -- <rev>。
-const OLD_REV = process.argv[2] || 'HEAD~1';
+// 舊版＝**往回找、版本號跟現在不同的最近一個 commit**（scripts/oldrev.mjs）。
+// 兩個教訓都在那裡：以前寫死一個 commit id（8968518，v0.5.0），於是每發一版測的都還是
+// 「從 v0.5.0 升上來」，真正要驗的那一跳從來沒測到；後來改成 HEAD~1，
+// 結果連續幾個文件 commit 之後舊版＝新版，前提必紅，連帶擋掉整套突變（2026-09-21）。
+// 要測特定版本就用 npm run upgradecheck -- <rev>。
+const NEW_VERSION_EARLY = /APP_VERSION = '([^']+)'/.exec(fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8'))[1];
+const PICKED = process.argv[2] ? { rev: process.argv[2], manual: true } : findOldRev(ROOT, NEW_VERSION_EARLY);
+if (!PICKED.rev) {
+  // 全新的 repo、或歷史裡從來沒有別的版本：沒得比。**不靜默通過、也不紅**，講清楚略過了什麼。
+  section('略過：沒有可比的舊版');
+  note(`SKIP ${PICKED.reason}。換版實測這次沒有跑；要指定就用 npm run upgradecheck -- <rev>`);
+  done('upgradecheck');
+  process.exit(0);
+}
+const OLD_REV = PICKED.rev;
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -144,6 +156,9 @@ const NEW_VERSION = /APP_VERSION = '([^']+)'/.exec(fs.readFileSync(path.join(ROO
 try {
   // -------------------------------------------------------------------------
   section('前提：先把使用者的處境重建出來（裝著舊版、SW 已接手）');
+  note(PICKED.manual
+    ? `舊版用手動指定的 ${OLD_REV}`
+    : `舊版自動挑到 ${OLD_REV.slice(0, 7)}（${PICKED.version}；往回跳過了 ${PICKED.skipped} 個同版本的 commit）`);
   const oldSw = fromRev(OLD_REV, 'sw.js')?.toString('utf8') ?? '';
   const oldVersion = /const VERSION = '([^']+)';/.exec(oldSw)?.[1];
   ok(oldVersion && oldVersion !== NEW_VERSION,
