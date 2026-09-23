@@ -34,6 +34,8 @@ const TESTS = [
   // v0.7.7 之後新增的兩支端對端 —— 不補進來的話，它們的 140+ 條斷言
   // 從來不會被假斷言健檢掃到（這正是這支報告存在的理由）。
   'scenariotest', 'pathtest',
+  // 2026-09-23（SPEC_測試可信度 A）接進 npm test 鏈的秒級檢查
+  'checkmutations',
 ];
 
 const only = process.argv[2];

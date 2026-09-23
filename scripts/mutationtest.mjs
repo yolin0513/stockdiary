@@ -2176,6 +2176,25 @@ const MUTATIONS = [
     test: 'doctest',
     expect: '前面有「當時」的是歷史紀錄，跳過',
   },
+  {
+    name: 'D2：遮罩多露出金鑰中間五個字',
+    why: '以前那條只驗兩段手挑的長切片：多露出一小段中間的字，遮罩仍然短於 20 字、兩段長切片也都不是它的子字串，照樣會過。',
+    file: 'js/secrets.js',
+    find: '  return `${KEY_PREFIX}…${tail}`;',
+    replace: '  return `${KEY_PREFIX}…${key.slice(20, 25)}…${tail}`;',
+    test: 'secret-leak-test',
+    expect: '金鑰中段的任何一截都沒有出現在遮罩裡',
+  },
+  {
+    name: 'D2：跨年那一段讀畫面讀到空字串',
+    why: '「畫面上沒有生出假的當日損益數字」的母體是單一字串；讀畫面讀錯地方、拿到空字串時那條恆真。前置要先紅。'
+      + '（改 App 讓首頁空白行不通：freshApp 開機就在等 #view .card，會在更前面崩掉、紅錯地方 —— 所以改的是測試讀畫面的那一行。）',
+    file: 'scripts/pathtest.mjs',
+    find: "        settled: r.settled ?? [],\n        homeText: document.querySelector('#view').textContent.replace(/\\s+/g, ' '),",
+    replace: "        settled: r.settled ?? [],\n        homeText: document.querySelector('#view .no-such-card')?.textContent ?? '',",
+    test: 'pathtest',
+    expect: '（前提）首頁真的畫出來了：有當日損益那張卡',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

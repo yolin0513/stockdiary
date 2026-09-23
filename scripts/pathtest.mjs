@@ -926,6 +926,9 @@ try {
     ok(/更新 App 之後就會恢復/.test(over.message),
       `訊息講得出怎麼恢復：「${over.message}」`);
     ok(/2020/.test(over.message), '也講得出目前涵蓋到哪些年份');
+    // 前置（2026-09-23 D2）：下一條的母體是單一字串，首頁沒畫出來（空字串）時它恆真。
+    ok(/當日損益/.test(over.homeText) && /更新 App/.test(over.homeText),
+      `（前提）首頁真的畫出來了：有當日損益那張卡，也講了要更新 App（${over.homeText.length} 字）`);
     noneOf([over.homeText], (t) => /當日損益\s*[+-]?[\d,]+\s*元/.test(t),
       '畫面上沒有生出一個假的當日損益數字');
     await pageOver.close();

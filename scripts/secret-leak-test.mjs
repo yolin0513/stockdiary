@@ -68,7 +68,13 @@ const masked = mask(FAKE_KEY);
 ok(!masked.includes(FAKE_KEY), '遮罩裡沒有完整金鑰');
 ok(masked.endsWith(FAKE_KEY.slice(-4)), `看得出是哪一把（${masked}）`);
 ok(masked.length < 20, '遮罩很短，不可能把主體露出來');
-noneOf([FAKE_KEY.slice(7, 30), FAKE_KEY.slice(10, 40)], (chunk) => masked.includes(chunk),
+// 母體要是**中段的每一截**，不是手挑的兩段（2026-09-23 D2）：以前只驗 slice(7,30) 與 slice(10,40) 兩段，
+// 一個「多露出中間五個字」的 mask 照樣會過（遮罩仍然短於 20 字，兩段長切片也都不是它的子字串）。
+// 開頭的 sk-ant- 與最後四碼本來就是刻意露出來的，所以只切中段；每截 5 個字，短到露一小段就抓得到。
+const MIDDLE = FAKE_KEY.slice('sk-ant-'.length, -4);
+const CHUNKS = [...Array(MIDDLE.length - 4).keys()].map((i) => MIDDLE.slice(i, i + 5));
+ok(CHUNKS.length > 30, `（前提）中段切成 ${CHUNKS.length} 截、每截 5 個字`);
+noneOf(CHUNKS, (chunk) => masked.includes(chunk),
   '金鑰中段的任何一截都沒有出現在遮罩裡');
 
 // ---------------------------------------------------------------------------

@@ -73,7 +73,7 @@ C 修那條過期的突變＋加一個秒級的「每條 `find` 剛好出現一�
 | v0.7.21 | 修復（真正的根因）：更新流程不再 `unregister`；`js/bootguard.js` 開機看門狗 | ✅ 線上；**沒有逐項的實機確認**。2026-09-18 Yolin 整體回覆「使用上沒有太大問題」（見下方待回覆表的註記），不等於已確認修好 |
 | v0.7.22 | 批次 4：A8 CSP 拿掉 `unsafe-inline`、A11 死碼、A15 收重複、B2 SW 導覽 3 秒逾時 | ✅ 線上；內建瀏覽器實機驗過長條圖／逐年圖／對話框 |
 
-測試：29 支＋250 條突變。**2026-09-21 跑過一次全面檢測**（當時 234 條，233 條變紅、1 條過期）；
+測試：29 支＋252 條突變。**2026-09-21 跑過一次全面檢測**（當時 234 條，233 條變紅、1 條過期）；
 v0.7.23 新增／改寫的 5 條已各自用 `--only` 驗過會紅。
 
 ### 下一步該做什麼（照建議順序）
@@ -90,7 +90,7 @@ v0.7.23 新增／改寫的 5 條已各自用 `--only` 驗過會紅。
    要嘛併進下一次 bump 一起上線，要嘛單獨一個不 bump 的 commit（只有註解，線上行為零變化，
    已裝的使用者要到下次 bump 才會重抓）。**建議併進 `SPEC_測試可信度.md` 那一輪**：它本來就要動 `scripts/`。
 4. **2026-11-16 起**總覽會出現「開休市日只到 12/31」的警示 —— 那是預期中的，不是 bug。證交所公布 2027 年休市日之後照「交易日曆」那一節的步驟產檔、發版。
-5. Yolin 叫「全面檢測」時：全套 29 支＋全部 250 條突變＋`sweep`＋`upgradecheck`＋`workertest`，**實測約 1 小時 52 分**。
+5. Yolin 叫「全面檢測」時：全套 29 支＋全部 252 條突變＋`sweep`＋`upgradecheck`＋`workertest`，**實測約 1 小時 52 分**。
    **2026-09-21 已經跑過一次**（Yolin 指定），結果與三項發現見「測試範圍 → 全面檢測」那一節；上限也在那裡。
 
 ### 在等 Yolin 回覆的事
@@ -136,7 +136,7 @@ v0.7.23 新增／改寫的 5 條已各自用 `--only` 驗過會紅。
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：29 支測試＋突變套件，`npm run mutationtest` 用 **250 條突變**逐一證明關鍵斷言改壞會紅。
+測試現況：29 支測試＋突變套件，`npm run mutationtest` 用 **252 條突變**逐一證明關鍵斷言改壞會紅。
 （這兩個數字由 `npm run doctest` 從程式數出來核對 —— 文件漂移過一次：STATUS 與 README 都停在 138，實際已經 182。）
 突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
 （所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
@@ -278,7 +278,7 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
 
 **只在使用者要求時**跑：完整 29 支 ＋ 全部突變 ＋ `sweep` ＋ `upgradecheck` ＋ `workertest`。
 
-**整套指的是什麼、要多久**：整套 ＝ `npm test` 的 29 支 ＋ `mutationtest` 全部 250 條突變（每條都要改寫原始碼、跑一次完整的對應測試再還原，不能平行）。
+**整套指的是什麼、要多久**：整套 ＝ `npm test` 的 29 支 ＋ `mutationtest` 全部 252 條突變（每條都要改寫原始碼、跑一次完整的對應測試再還原，不能平行）。
 耗時**實測 6,730 秒 ≈ 1 小時 52 分**（2026-09-21 全面檢測，見下面「上次全面檢測」那一列的分段）。
 以前寫的「約 3.5–4 小時」是文件記載值、從來沒有人量過 —— **實際只有一半**。
 
@@ -298,7 +298,10 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
 **怎麼跑的（下次照這個做）**：在 **repo 外**開 worktree（`git worktree add --detach <repo 外的空目錄> <commit>`），
 `node_modules` 用 junction 連回主 repo（`cmd /c mklink /J`），整套跑在那裡 ——
 `mutationtest` 會暫時改寫工作目錄的原始碼（**包含凍結檔** `js/avgcost.js`、`js/settle.js`、`js/money.js`），
-在 worktree 裡跑，main 完全不受影響，中途被砍也不會留下被改過的凍結檔。跑完 `git worktree remove` 收掉。
+在 worktree 裡跑，main 完全不受影響，中途被砍也不會留下被改過的凍結檔。
+**跑完先拆 junction、再收 worktree**：`cmd /c rmdir <worktree>\node_modules`（只拆連結，不刪內容）→ `git worktree remove <worktree>`。
+**順序反過來、或對還掛著 junction 的 worktree 用 `git worktree remove --force`，會沿著 junction 把主 repo 的 `node_modules` 內容一起刪掉**
+（2026-09-23 實際發生，見「環境與工具陷阱」）。
 **worktree 直接開在要驗的那個 commit 就好**（通常就是 HEAD）：2026-09-23 起 `upgradecheck` 會自己往回找版本號不同的舊版，
 **不必再為了它把 worktree 切到最後一個 bump 過的 commit**（下面發現 1 的繞法已經不需要）。
 
@@ -327,6 +330,31 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
 **「新增／改過的突變」怎麼數**：`git diff <上次整套的 commit>..HEAD -- scripts/mutationtest.mjs` 裡以 `+` 開頭且含 `find:` 的行數
 （一條突變一個 `find:`；改過的條目會同時算進刪除與新增，所以這個數字是**偏保守的上界**，寧可早一點提醒）。
 這一批沒有為它新增腳本、也沒有改 `doctest` —— 要不要做成自動提示，另外排。
+
+### 2026-09-23 母體 ≤ 2 的斷言複查（`SPEC_測試可信度.md` D2）
+
+重跑 `assertaudit`：**29 支、2,040 條斷言**；母體 ≤ 2 的 `noneOf`／`everyOf` 共 **71 條**（草稿寫 58 條，v0.7.16 之後又加了一些）。
+A14（v0.7.16）看過 uikittest、pathtest、calcviewtest、holdingtest 那四支當時的 27 條；這次看的是**其餘 33 條**，
+加上那四支裡 v0.7.16 之後才加的（`git blame` 判斷）。每條問三件事：母體是單一字串的話有沒有非空保證、
+母體是不是「有問題的那幾個」而不是全部、需要特定情境的有沒有前置（共用慣例 §5.8）。
+
+**改了 2 條**（都用突變證明會紅，且帶 `expect`）：
+- `secret-leak-test`「金鑰中段的**任何一截**都沒有出現在遮罩裡」：母體原本是手挑的兩段長切片。
+  **實測**：拿修正前的測試去跑一個多露出中間五個字的遮罩（`sk-ant-…BCCCC…Me99`），73 項全綠。
+  改成中段每一截（5 個字、51 截）＋前置，同一個遮罩就紅。
+- `pathtest` 路徑 9c「畫面上沒有生出一個假的當日損益數字」：母體是單一字串，沒有「首頁真的畫出來」的前置 —— 讀畫面讀錯地方拿到空字串時恆真。
+  補了前置（有當日損益那張卡、也講了要更新 App）。突變一開始改 App 讓首頁空白，結果 `freshApp` 開機就在等 `#view .card`、在更前面崩掉 ——
+  **新的判定當場判成【紅錯地方】**；改成對測試讀畫面的那一行做突變，才紅在前置上。
+
+**確認沒問題、沒改的**（母體小是因為 fixture 本來就只有那幾個，而且都有前置或非空保證）：
+parsetest 1、settletest 3、changestest 3、dividendtest 3、datatest 3、shelltest 2、eventtest 3、dcatest 1、newstest 2、
+insighttest 3、concentrationtest 1、divrecordtest 3、scenariotest 2、doctest 2，以及那四支裡 v0.7.16 之後加的（v0.7.23 的三條、
+A4 讀屏兩條、看門狗按鈕、跨年、B3 代號表過期等）。其中 `dividendtest`「算不出來時不是 0」只驗了「不是 0n」、沒驗「是 null」，
+偏弱但沒有錯（上一條已驗 `grossMicro` 是 null），照 SPEC「不要為了湊數去改沒問題的」沒動。
+
+**複查時順便抓到的（範圍外，沒修，列在「下一步」）**：`divrecordtest` 從 2026-09-22 起必紅 4 條 ——
+端對端情境把一筆「即將除息」的 fixture 寫死在 `2026-09-21`，畫面用真實的今天判斷，日子一過它就變成「過去」。
+**實測**：在今天任何改動之前的 commit（`3c4f35e`）上跑，同樣 4 條紅，所以不是這一輪造成的。這是第 35 條（時間走過去）的同一種形狀。
 
 ### 怎麼判斷「受影響」
 
@@ -999,6 +1027,13 @@ Yolin 原本把兩邊的市值講成「損益」—— **那兩個數字是市�
 - **puppeteer**：不認 `'Shift+Tab'`（要 `down/press/up`）；module 圖有檔案吊死時 `DOMContentLoaded` 永遠不觸發，`page.goto` 不能 await；`page.$eval` 回單一元素、`page.$$eval` 回陣列。
 - **`--changed` 挑不到「時間走過去」造成的失敗**（第 35 條）；`assertaudit` 也看不出來。全面檢測才抓得到。
 - **證交所 `holidaySchedule` 在 2026-09-17 只有民國 115 年**（見「交易日曆」那一節）。
+- **`git worktree remove --force` 會沿著 junction 刪到主 repo 的 `node_modules`**（2026-09-23 實際發生）：
+  為了證明某支測試在改動之前就是紅的，在 repo 外開了 worktree、用 `mklink /J` 把 `node_modules` 連回主 repo，
+  跑完用 `git worktree remove --force` 收 —— 主 repo 的 `node_modules` 變成空的。
+  · 復原：`PUPPETEER_SKIP_DOWNLOAD=1 npm ci`（照 `package-lock.json` 原樣重裝，版本不會漂；瀏覽器本體在 `~/.cache/puppeteer`，沒被刪）。
+    不加那個環境變數的話，puppeteer 安裝後會重新設定 headless shell 而失敗。重裝完實跑 `shelltest`／`uikittest` 確認瀏覽器測試能開。
+  · 預防：**先 `cmd /c rmdir <worktree>\node_modules` 拆掉連結，再 `git worktree remove`**（不要加 `--force`）。
+  · 沒有碰到任何使用者資料、git 歷史或程式碼；`node_modules` 本來就不進 repo。
 ## 使用者明確決定過的事（**不要回頭**）
 
 這一節記的是「我曾經加、使用者叫我拿掉」的東西。沒有這一節的話，
@@ -1114,7 +1149,7 @@ puppeteer 不認 `'Shift+Tab'` 這種組合寫法，要 `keyboard.down('Shift')`
 
 | # | 項目 | 怎麼做 |
 |---|---|---|
-| 1 | 全部測試綠 | `npm test`（29 支＋250 條突變；數字由 `doctest` 盯著 —— 現在的總數寫成「N 支＋M 條突變」「N 支測試」「M 條突變」，歷史紀錄前面加「當時」；寫法約定在 `scripts/doctest.mjs` 的 `declaredCounts` 旁。以前它只認「N 條突變」，這一行寫成「突變 N 條」就漂到 185 沒人發現） |
+| 1 | 全部測試綠 | `npm test`（29 支＋252 條突變；數字由 `doctest` 盯著 —— 現在的總數寫成「N 支＋M 條突變」「N 支測試」「M 條突變」，歷史紀錄前面加「當時」；寫法約定在 `scripts/doctest.mjs` 的 `declaredCounts` 旁。以前它只認「N 條突變」，這一行寫成「突變 N 條」就漂到 185 沒人發現） |
 | 2 | 版本四處一致 | `npm run bump -- stockdiary-vX.Y.Z` 會一次改完（`js/version.js`、`sw.js`、`index.html`、`package.json`），`shelltest` 會驗 |
 | 3 | 線上巡檢 | `npm run sweep` —— 版本一致、七頁開得起來、SW 接手、離線正常、Worker 活著 |
 | 4 | Worker 稽核 | `npm run workertest`（要 wrangler；會碰一次上游，別連跑） |

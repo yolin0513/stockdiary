@@ -91,7 +91,7 @@
 | A14 | 假斷言複查（慣例 12） | `assert-audit.jsonl` 母體 ≤ 2：uikittest 11、pathtest 7、calcviewtest 5、holdingtest 4 | 低 | S |
 | A15 | 非凍結區的重複程式 | `KIND_LABEL` 在 `views/holding.js` 與 `views/plans.js` 一模一樣；`newId()` 在 `holdings.js` 與 `plans.js` 一模一樣 | 低 | S |
 | A16 | PWA 補齊 | `manifest.webmanifest` 沒有 `id`；`index.html` 沒有 `<meta name="color-scheme">`（CSS 有 `color-scheme: dark`，但表單控制項在載 CSS 前會先閃白） | 低 | S |
-| A17 | 開發迴圈：突變套件 3.5 小時，沒有「只跑受影響的」自動化 | STATUS 慣例要求手動 `--only <關鍵字>`；`mutationtest.mjs` 每條有 `file`，可以從 `git diff --name-only` 自動挑 | 低 | M |
+| A17 | 開發迴圈：突變套件 3.5 小時（2026-09-21 實測：當時 234 條突變 5,609 秒 ≈ 93.5 分；連 28 支測試與巡檢全面檢測 ≈ 1 小時 52 分。這裡的 3.5 小時是當時的文件記載值，沒有人量過），沒有「只跑受影響的」自動化 | STATUS 慣例要求手動 `--only <關鍵字>`；`mutationtest.mjs` 每條有 `file`，可以從 `git diff --name-only` 自動挑 | 低 | M |
 
 ### A1 交易日曆跨年：提前警示 ＋ 多年份 ＋ 跨年測試
 **現況。** `covers(cal, iso)` 用 `String(iso).startsWith(`${cal.year}-`)`；日曆只有一年。2027-01-01 開 App：`runUpdate` 回「開休市日只涵蓋 2026 年，今天不在範圍內」，**之後每一天都是這句**，除權息預告、待確認扣款也全部停掉，而 12 月裡沒有任何提示。
@@ -186,7 +186,7 @@
 | `home.js` 讀 `events` store 兩次（`pending()` 與 `summary()` 各 `getAll`） | 兩次 IndexedDB 讀取 | 資料量是幾十筆，毫秒級；合併會讓 `events.js` 的 API 變得不對稱 |
 | 三個 view 的模組層狀態（`calc.js state`、`news.js relatedFilter`、`holdings.js showClosed`） | 換頁後保留 | 是刻意的（各有註解說明：試算欄位不該換頁就清空、篩選是當下狀態） |
 | 19 處靜默 `catch` | 逐條看過 | 每一處都有註解寫為什麼可以吞（剪貼簿權限、SW 註冊失敗、對照資料讀不到等），而且都有降級文案 |
-| `mutationtest` 3.5 小時 | 每條改寫原始碼再跑測試 | 改寫工作目錄的機制**不能平行**；改成隔離複本會讓「突變過期＝失敗」的偵測變複雜。A17 的 `--changed` 已把日常成本降到夠低 |
+| `mutationtest` 3.5 小時（2026-09-21 實測：當時 234 條突變 5,609 秒 ≈ 93.5 分；連 28 支測試與巡檢全面檢測 ≈ 1 小時 52 分。這裡的 3.5 小時是當時的文件記載值，沒有人量過） | 每條改寫原始碼再跑測試 | 改寫工作目錄的機制**不能平行**；改成隔離複本會讓「突變過期＝失敗」的偵測變複雜。A17 的 `--changed` 已把日常成本降到夠低 |
 | Worker `compatibility_date = 2024-11-01` | 舊 | 沒有用到任何新 runtime 特性；升了要重跑 `workertest`，零收益 |
 | 對比度、觸控區 | 量過 ≥ 6:1；`uikittest` 已掃 ≥ 44px | 合格 |
 | `workers/.wrangler/tmp` 六份殘留 | gitignored | 本機暫存，不影響任何人 |
