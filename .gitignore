@@ -15,3 +15,6 @@ assert-audit.jsonl
 
 # 突變跑到一半被殺掉時的還原記錄（不進版控）
 scripts/.mutation-pending.json
+
+# 公開前自查第五類的黑名單（內容是個資字面，不進 repo；見 docs/STATUS.md「推送閘門」）
+.private/
