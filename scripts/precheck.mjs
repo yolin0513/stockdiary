@@ -1,5 +1,5 @@
 // 公開前自查：四類（本 repo 是 public）。由 scripts/gatepush.sh 在推送前呼叫，也可以自己跑：
-//   node scripts/precheck.mjs [rev]      （預設 HEAD）
+//   node scripts/precheck.mjs [rev|範圍]      （預設 HEAD；閘門給的是 `<遠端 main>..HEAD`，也就是這次要推的全部 commit）
 //
 // 查的是這次 commit 的**新增行**：(a) 金鑰／token、(b) email（GitHub 與 Anthropic 的 noreply 不算）、
 // (c) 本機使用者名稱、(d) 磁碟機代號與家目錄路徑。第五類（個人財務資料）在 scripts/piiscan.mjs。
@@ -18,7 +18,11 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const rev = process.argv[2] || 'HEAD';
 
-const raw = execFileSync('git', ['-C', ROOT, 'show', rev, '--format=', '--unified=0'], {
+// 單一 commit（`HEAD`）用 git show；一段範圍（`<遠端>..HEAD`，閘門給的）用 git log -p，
+// **逐個 commit** 取新增行 —— 用 git diff 比兩端的話，中間某個 commit 加了又刪掉的行會漏掉，但它照樣會被推上去。
+const raw = execFileSync('git', rev.includes('..')
+  ? ['-C', ROOT, 'log', '-p', '--format=', '--unified=0', rev]
+  : ['-C', ROOT, 'show', rev, '--format=', '--unified=0'], {
   encoding: 'utf8',
   maxBuffer: 64 * 1024 * 1024,
 });
