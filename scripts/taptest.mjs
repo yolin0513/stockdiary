@@ -29,8 +29,29 @@ function probe(name, body) {
 }
 const failed = (r) => r.code !== 0 && /1 項失敗/.test(r.out);
 const passed = (r) => r.code === 0 && /1 項通過/.test(r.out) && !/失敗/.test(r.out);
+/**
+ * 紅的理由：只取「  ✗ 」那一行**底下**的細節行（六格縮排）。2026-09-24（補充說明（四）第 1 點）以前在整份輸出裡找，
+ * 理由的字眼若出現在斷言名稱或別的行，照樣算數——「出現過」不等於「是理由」。
+ */
+function reasonOf(out) {
+  const lines = String(out).split('\n').map((l) => l.replace(/\r$/, ''));
+  const got = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!lines[i].startsWith('  ✗ ')) continue;
+    for (let j = i + 1; j < lines.length && lines[j].startsWith('      '); j += 1) got.push(lines[j].trim());
+  }
+  return got.join('\n');
+}
 
 try {
+  section('對照組：取紅的理由的程式，兩個方向');
+  {
+    const onlyLabel = '  ✗ 母體是空的（這是斷言的名稱，不是理由）\n      命中 1 項\n  ✓ 母體是空的也出現在這裡';
+    const inDetail = '  ✓ 無關\n  ✗ 空母體\n      母體是空的 —— 這條斷言沒有檢查到任何東西';
+    ok(!/母體是空的/.test(reasonOf(onlyLabel)) && /母體是空的/.test(reasonOf(inDetail)) && reasonOf('') === '',
+      '（對照）取紅的理由：字眼只出現在斷言名稱或 ✓ 行 → 不算；出現在 ✗ 底下的細節行 → 算', JSON.stringify([reasonOf(onlyLabel), reasonOf(inDetail)]));
+  }
+
   section('對照組：母體非空、乾淨的斷言要放行（不然「什麼都判紅」的 tap 也會讓下面全過）');
   const okNone = probe('ok-none', "noneOf([1, 2], (x) => x > 5, '對照：乾淨的 noneOf');");
   const okEvery = probe('ok-every', "everyOf([1, 2], (x) => x > 0, '對照：乾淨的 everyOf');");
@@ -41,23 +62,23 @@ try {
 
   section('母體是空的就紅：斷言沒檢查到任何東西，不能算通過');
   const emptyNone = probe('empty-none', "noneOf([], () => true, '空母體');");
-  ok(failed(emptyNone) && /母體是空的/.test(emptyNone.out),
+  ok(failed(emptyNone) && /母體是空的/.test(reasonOf(emptyNone.out)),
     `空母體的 noneOf 必須紅，而且講明是母體是空的（exit ${emptyNone.code}）`, emptyNone.out.slice(0, 200));
   const emptyEvery = probe('empty-every', "everyOf([], () => true, '空母體');");
-  ok(failed(emptyEvery) && /母體是空的/.test(emptyEvery.out),
+  ok(failed(emptyEvery) && /母體是空的/.test(reasonOf(emptyEvery.out)),
     `空母體的 everyOf 必須紅，而且講明是母體是空的（exit ${emptyEvery.code}）`, emptyEvery.out.slice(0, 200));
 
   section('對照組要正例反例都有：只給一邊，一個「永遠回 true」的檢查器也會過');
   const noMiss = probe('no-miss', "detects(() => true, { shouldHit: ['a'], shouldMiss: [] }, '沒有反例');");
-  ok(failed(noMiss) && /沒有給反例/.test(noMiss.out),
+  ok(failed(noMiss) && /沒有給反例/.test(reasonOf(noMiss.out)),
     `沒有反例的 detects 必須紅，而且講明沒有給反例（exit ${noMiss.code}）`, noMiss.out.slice(0, 200));
   const noHit = probe('no-hit', "detects(() => false, { shouldHit: [], shouldMiss: ['a'] }, '沒有正例');");
-  ok(failed(noHit) && /沒有給正例/.test(noHit.out),
+  ok(failed(noHit) && /沒有給正例/.test(reasonOf(noHit.out)),
     `沒有正例的 detects 必須紅，而且講明沒有給正例（exit ${noHit.code}）`, noHit.out.slice(0, 200));
 
   section('命中就紅（基本功能）');
   const hitNone = probe('hit-none', "noneOf([1, 9], (x) => x > 5, '有命中');");
-  ok(failed(hitNone) && /命中 1 項/.test(hitNone.out), `有命中的 noneOf 必須紅，而且講得出命中幾項（exit ${hitNone.code}）`, hitNone.out.slice(0, 200));
+  ok(failed(hitNone) && /命中 1 項/.test(reasonOf(hitNone.out)), `有命中的 noneOf 必須紅，而且講得出命中幾項（exit ${hitNone.code}）`, hitNone.out.slice(0, 200));
 } finally {
   fs.rmSync(DIR, { recursive: true, force: true });
 }

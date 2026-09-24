@@ -61,7 +61,7 @@ git('config', 'user.name', execFileSync('git', ['-C', ROOT, 'config', 'user.name
 git('config', 'user.email', execFileSync('git', ['-C', ROOT, 'config', 'user.email'], { encoding: 'utf8' }).trim());
 // 用 repo **工作區**的四支閘門檔（不是已 commit 的）：mutationtest 改壞工作區的檔時，這裡才看得到。
 // gatetest.sh 驗的是已 commit 的內容，所以在複本裡把它們 commit 成這一輪的起點。
-for (const f of ['scripts/gatepush.sh', 'scripts/gatetest.sh', 'scripts/precheck.mjs', 'scripts/piiscan.mjs']) fs.copyFileSync(path.join(ROOT, f), path.join(W, f));
+for (const f of ['scripts/gatepush.sh', 'scripts/gatetest.sh', 'scripts/precheck.mjs', 'scripts/piiscan.mjs', 'scripts/gatereason.mjs']) fs.copyFileSync(path.join(ROOT, f), path.join(W, f));
 if (git('status', '--porcelain')) git('commit', '-q', '-am', 'gateselftest：工作區的閘門檔');
 const BASE = git('rev-parse', 'HEAD');
 const REG = path.join(W, '.logs', 'gate-verified.txt');

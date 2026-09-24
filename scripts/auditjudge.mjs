@@ -39,6 +39,8 @@ export const AUDIT_TESTS = [
   'taptest', 'controltest', 'gatescan',
   // 2026-09-24：三支 build 的寫檔前關卡（孤兒檢查一接進鏈就點名它）
   'buildtest',
+  // 2026-09-24：跳脫掃描（補充說明（四）第 4 點）
+  'escscan',
 ];
 /** npm test 鏈上、刻意不收的：名稱 → 理由。 */
 export const AUDIT_SKIP = {

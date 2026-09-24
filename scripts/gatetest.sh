@@ -15,7 +15,7 @@
 # 每一種都檢查三件事：閘門的回傳值、假遠端的 main 有沒有被動到、輸出裡講的是不是對的那一關。
 #
 # **驗法登記（閘門第零關，2026-09-24，SPEC_檢查器修補 S7）**：一開跑就刪掉本 repo 的 .logs/gate-verified.txt；
-# 全部符合，才把四支檔案**已 commit 版本**（＝複本裡驗的那一份）的雜湊寫回去。沒全過、中途出錯，登記就不在，閘門回 4。
+# 全部符合，才把五支檔案**已 commit 版本**（＝複本裡驗的那一份）的雜湊寫回去。沒全過、中途出錯，登記就不在，閘門回 4。
 #
 # 每一種情境是獨立的函式，開頭一律還原（假遠端的 hook、黑名單檔、登記、本機分支），所以順序可以換；
 # 以前情境 1b 疊在情境 1 的 commit 上、2a 與 2b 共用同一份壞掉的複本，換順序結論就會變。
@@ -40,8 +40,8 @@ mkdir -p .private .logs
 # 合成字面拆開寫：原樣寫在這支檔裡的話，第五類掃描會在複本裡掃到這一行，每一種情境都被它擋下
 printf '# 驗法用的合成黑名單（不是真的個資）\n%s%s\n' '7,6-5' ',4-3 合成字面' > .private/pii-blacklist.txt
 
-# 驗的是複本裡這四支（＝本 repo 已 commit 的版本）。先把雜湊記下來：全部符合時登記的就是這一份。
-GATE_FILES="scripts/gatepush.sh scripts/precheck.mjs scripts/piiscan.mjs scripts/gatetest.sh"
+# 驗的是複本裡這五支（＝本 repo 已 commit 的版本）。先把雜湊記下來：全部符合時登記的就是這一份。
+GATE_FILES="scripts/gatepush.sh scripts/precheck.mjs scripts/piiscan.mjs scripts/gatetest.sh scripts/gatereason.mjs"
 REG_CONTENT=""
 for f in $GATE_FILES; do
   h="$(git hash-object "$f")" || { echo "算不出 $f 的雜湊"; exit 1; }
@@ -65,20 +65,16 @@ prep() {
 
 OK=0
 BAD=0
-# 比對「輸出裡有沒有這一句」—— 每一種情境都靠它判斷是誰擋的，所以它自己也要有對照組（§5.11 第二層）：
-# 它若抓空，「比對是誰擋的」就默默退化成只剩回傳值。
-has() { grep -qF -- "$2" "$1"; }
-printf '%s\n' '(a) 金鑰／token：對照組命中 1 ✔｜目標命中 1 ✘' '【第一關擋下】公開前自查沒過（四類 precheck=1、第五類 piiscan=0），不推' > "$T/ctrl.txt"
-if has "$T/ctrl.txt" "(a) 金鑰／token：對照組命中 1 ✔｜目標命中 1" && has "$T/ctrl.txt" "【第一關擋下】" \
-   && ! has "$T/ctrl.txt" "【第三關擋下】" && ! has "$T/ctrl.txt" "找不到黑名單檔"; then
-  echo "  ✓ （對照）比對擋下原因的那段程式：已知的輸出抓得到該抓的兩句，也不會把沒出現的句子當成有"
-else
-  echo "  ✗ （對照）比對擋下原因的那段程式壞了 —— 後面每一種情境的「是誰擋的」都不可信"; exit 1
-fi
+# 比對「是誰、為什麼擋的」—— 只在錯誤訊息的位置比（scripts/gatereason.mjs；2026-09-24，補充說明（四）第 1 點）：
+# 以前在整份輸出裡找一句話；自查會把命中內容原樣印出來、每一類都印標頭，「出現過」不等於「是理由」。
+# 規格兩種：hit|<類別>|<來源>|<內容>（那一類的標頭寫著目標命中 ✘，底下的命中行有這一行）、head|<開頭>（從行首起）。
+# 它自己要有對照組（§5.11 第二層），兩個方向：只出現在別處 → 不算；出現在錯誤訊息的位置 → 算。
+reason() { node scripts/gatereason.mjs "$1" "$2"; }
+node scripts/gatereason.mjs --selftest || { echo "  ✗ （對照）比對擋下理由的程式壞了 —— 後面每一種情境的「是誰擋的」都不可信"; exit 1; }
 
 NOT=""   # 設了的話：輸出裡**不能**出現這一句（run 用完就清掉）
 run() {
-  # run <情境> <預期回傳值> <假遠端應該：沒動|等於本機> <輸出裡必須出現的字（證明是「對的那一關、對的那一支」擋下）> [環境變數…]
+  # run <情境> <預期回傳值> <假遠端應該：沒動|等於本機> <理由的規格（證明是「對的那一關、對的那一類」擋下；見 gatereason.mjs）> [環境變數…]
   # 只看回傳值不夠：第一版情境 1 回傳了 1，但擋下它的是第五類、不是該抓 token 的四類自查。
   local name="$1" want="$2" remote_should="$3" must="$4"; shift 4
   local before after code
@@ -92,9 +88,9 @@ run() {
   [ "$code" -ne "$want" ] && good=0
   if [ "$remote_should" = "沒動" ] && [ "$before" != "$after" ]; then good=0; fi
   if [ "$remote_should" = "等於本機" ] && [ "$after" != "$(git rev-parse HEAD)" ]; then good=0; fi
-  has "$T/out.txt" "$must" || good=0
+  reason "$T/out.txt" "$must" || good=0
   local extra=""
-  if [ -n "$NOT" ] && has "$T/out.txt" "$NOT"; then good=0; extra="，輸出裡不該有「$NOT」卻有"; fi
+  if [ -n "$NOT" ] && reason "$T/out.txt" "$NOT"; then good=0; extra="，輸出裡不該有「$NOT」卻有"; fi
   NOT=""
   local verdict
   verdict="$(grep -E '^【' "$T/out.txt")"
@@ -108,13 +104,13 @@ token_commit() { printf 'const k = "%s";\n' "$TOK" > "$1"; git add "$1"; git com
 # 1. 自查命中：HEAD 帶一個合成 token（拆開拼，這支檔自己才不會被自查抓到）
 sc_1() {
   token_commit gatetest-fake.js
-  run "1. 自查命中（HEAD 帶合成 token）" 1 沒動 "(a) 金鑰／token：對照組命中 1 ✔｜目標命中 1"
+  run "1. 自查命中（HEAD 帶合成 token）" 1 沒動 "hit|(a) 金鑰／token|新增行|const k ="
 }
 # 1b. 命中在較早的 commit、HEAD 是乾淨的 —— 以前只掃 HEAD 會漏掉這種
 sc_1b() {
   token_commit gatetest-fake.js
   clean_commit "命中之後又疊一個乾淨的"
-  run "1b. 命中在較早的 commit（HEAD 乾淨）" 1 沒動 "(a) 金鑰／token：對照組命中 1 ✔｜目標命中 1"
+  run "1b. 命中在較早的 commit（HEAD 乾淨）" 1 沒動 "hit|(a) 金鑰／token|新增行|const k ="
 }
 # 2. 對照組壞掉（乾淨的 commit，讓對照組成為唯一的失敗原因）
 make_broken() {
@@ -128,35 +124,35 @@ if(b.split(y).length!==2)process.exit(9);fs.writeFileSync('.logs/piiscan-broken.
 }
 sc_2a() {
   clean_commit "對照組壞掉"; make_broken
-  run "2a. 四類自查的對照組壞掉" 1 沒動 "(a) 金鑰／token：對照組命中 0 ✘" PRECHECK=.logs/precheck-broken.mjs
+  run "2a. 四類自查的對照組壞掉" 1 沒動 "head|(a) 金鑰／token：對照組命中 0 ✘" PRECHECK=.logs/precheck-broken.mjs
 }
 sc_2b() {
   clean_commit "對照組壞掉"; make_broken
-  run "2b. 第五類的對照組壞掉" 1 沒動 "判準 (1) 黑名單：對照組 正例 0" PIISCAN=.logs/piiscan-broken.mjs
+  run "2b. 第五類的對照組壞掉" 1 沒動 "head|判準 (1) 黑名單：對照組 正例 0" PIISCAN=.logs/piiscan-broken.mjs
 }
 sc_2c() {
   clean_commit "黑名單檔拿走"
   [ -s .private/pii-blacklist.txt ] || die "情境 2c：黑名單檔原本就不在，前提沒造成"
   mv .private/pii-blacklist.txt .private/pii-blacklist.moved
-  run "2c. 黑名單檔不見" 1 沒動 "找不到黑名單檔"
+  run "2c. 黑名單檔不見" 1 沒動 "head|第五類：找不到黑名單檔"
 }
 # 3. 推送被拒
 sc_3() {
   printf '#!/bin/sh\nexit 1\n' > "$T/remote.git/hooks/pre-receive"; chmod +x "$T/remote.git/hooks/pre-receive"
   clean_commit "推送被拒"
-  run "3. 推送被拒（pre-receive 回 1）" 2 沒動 "【第二關擋下】"
+  run "3. 推送被拒（pre-receive 回 1）" 2 沒動 "head|【第二關擋下】"
 }
 # 4. 推送回報成功、遠端卻沒更新
 sc_4() {
   printf '#!/bin/sh\nwhile read old new ref; do [ "$ref" = refs/heads/main ] && git update-ref refs/heads/main "$old"; done\n' > "$T/remote.git/hooks/post-receive"
   chmod +x "$T/remote.git/hooks/post-receive"
   clean_commit "推了卻沒更新"
-  run "4. 推了卻沒更新（post-receive 退回舊值）" 3 沒動 "【第三關擋下】"
+  run "4. 推了卻沒更新（post-receive 退回舊值）" 3 沒動 "head|【第三關擋下】"
 }
 # 5. 全部正常
 sc_5() {
   clean_commit "全部正常"
-  run "5. 全部正常" 0 等於本機 "【放行】三關都過"
+  run "5. 全部正常" 0 等於本機 "head|【放行】三關都過"
 }
 # 6. 本機以為已經推上去、遠端其實沒有（共用慣例 v8 §2.5「自查的範圍要照遠端的實際狀態算」）
 # 因果：第三關攔到「推了沒更新」之後，本機的追蹤分支與 FETCH_HEAD 都已經指著那個 commit；
@@ -174,7 +170,7 @@ sc_6() {
   [ "$(remote_sha)" = "$base" ] || die "情境 6：假遠端沒有退回原本的 main"
   [ "$(git rev-parse FETCH_HEAD)" = "$hit" ] || die "情境 6：本機的 FETCH_HEAD 沒有指著帶命中的 commit，前提沒造成"
   clean_commit "本機以為已推上去，再疊一個乾淨的"
-  run "6. 本機以為已推上去、遠端其實沒有（帶命中的在前、HEAD 乾淨）" 1 沒動 "(a) 金鑰／token：對照組命中 1 ✔｜目標命中 1"
+  run "6. 本機以為已推上去、遠端其實沒有（帶命中的在前、HEAD 乾淨）" 1 沒動 "hit|(a) 金鑰／token|新增行|const k ="
   if git --git-dir="$T/remote.git" merge-base --is-ancestor "$hit" main 2> /dev/null; then
     echo "    · 帶命中的 commit 已經在假遠端上（閘門放行了它）"
   else
@@ -184,13 +180,13 @@ sc_6() {
 # 7. 命中只出現在 commit 訊息（沒有任何新增行）—— 2026-09-24 以前自查只掃新增行，這種會放行（v8 §2.5「自查的範圍」）
 sc_7() {
   git commit -q --allow-empty -m "gatetest：合成 token 只放在訊息裡 $TOK" || die "commit 失敗（情境 7）"
-  run "7. 命中只出現在 commit 訊息" 1 沒動 "[commit 訊息／作者] +gatetest：合成 token 只放在訊息裡"
+  run "7. 命中只出現在 commit 訊息" 1 沒動 "hit|(a) 金鑰／token|commit 訊息／作者|+gatetest：合成 token 只放在訊息裡"
 }
 # 7b. 命中只出現在作者信箱（真實信箱樣式、不是 noreply）；信箱拆開拼，這支檔自己才不會被自查抓到
 sc_7b() {
   local fake_mail="someone""@""example.com"
   git -c user.email="$fake_mail" commit -q --allow-empty -m "gatetest：作者信箱不是 noreply" || die "commit 失敗（情境 7b）"
-  run "7b. 命中只出現在作者信箱" 1 沒動 "[commit 訊息／作者] +作者："
+  run "7b. 命中只出現在作者信箱" 1 沒動 "hit|(b) email（noreply 不算）|commit 訊息／作者|+作者："
 }
 # 8. 內容以 `++` 開頭的命中行，而且先加、下一個 commit 又刪掉（2026-09-24）
 # 以前抽新增行用「以 + 開頭、但不是 +++」：`++` 開頭的內容加上 diff 的 `+` 變成 `+++…`，被當成檔頭丟掉。
@@ -199,7 +195,7 @@ sc_8() {
   printf '++ const k = "%s";\n' "$TOK" > gatetest-pp.txt; git add gatetest-pp.txt
   git commit -q -m "gatetest：++ 開頭的命中行" || die "commit 失敗（情境 8 加）"
   git rm -q gatetest-pp.txt; git commit -q -m "gatetest：又刪掉" || die "commit 失敗（情境 8 刪）"
-  run "8. ++ 開頭的命中行（先加再刪）" 1 沒動 "[新增行] +++ const k ="
+  run "8. ++ 開頭的命中行（先加再刪）" 1 沒動 "hit|(a) 金鑰／token|新增行|+++ const k ="
 }
 # 9. 只刪不增的正常推送要放行（兩種數法都是 0 行；不能把「抽出 0 行」一律當失敗）
 sc_9() {
@@ -210,7 +206,7 @@ sc_9() {
   # 前置不接管線：git show 失敗時 awk 照樣印 0，前置就會默默通過
   git show --numstat --format= HEAD > "$T/ns9.txt" || die "情境 9：讀不到 numstat"
   [ -s "$T/ns9.txt" ] && [ "$(awk '{s+=$1} END {print s+0}' "$T/ns9.txt")" = "0" ] || die "情境 9：這個 commit 不是只刪不增，前提沒造成"
-  run "9. 只刪不增的正常推送" 0 等於本機 "新增行 0 行"
+  run "9. 只刪不增的正常推送" 0 等於本機 "head|四類自查：FETCH_HEAD..refs/heads/main，新增行 0 行"
 }
 # 10. 閘門改過一行、沒重跑驗法（登記對不上）→ 回 4，停在第零關：連 fetch 與自查都沒跑
 sc_10() {
@@ -218,16 +214,16 @@ sc_10() {
   git add scripts/gatepush.sh; git commit -q -m "gatetest：改閘門一行" || die "commit 失敗（情境 10）"
   [ "$(git hash-object scripts/gatepush.sh)" != "$(awk '$1 == "scripts/gatepush.sh" { print $2 }' .logs/gate-verified.txt)" ] \
     || die "情境 10：改完閘門，雜湊還跟登記一樣，前提沒造成"
-  NOT="(a) 金鑰／token"
-  run "10. 閘門改過、沒重跑驗法" 4 沒動 "【第零關擋下】改過之後還沒跑過驗法：scripts/gatepush.sh"
+  NOT="head|(a) 金鑰／token"
+  run "10. 閘門改過、沒重跑驗法" 4 沒動 "head|【第零關擋下】改過之後還沒跑過驗法：scripts/gatepush.sh"
 }
 # 11. 沒有登記檔（新 clone、剛改完、或上次驗法沒全過）→ 回 4
 sc_11() {
   clean_commit "沒有登記檔"
   [ -s .logs/gate-verified.txt ] || die "情境 11：登記檔原本就不在，前提沒造成"
   rm .logs/gate-verified.txt
-  NOT="(a) 金鑰／token"
-  run "11. 沒有登記檔" 4 沒動 "【第零關擋下】沒有驗法登記"
+  NOT="head|(a) 金鑰／token"
+  run "11. 沒有登記檔" 4 沒動 "head|【第零關擋下】沒有驗法登記"
 }
 
 ALL="1 1b 2a 2b 2c 3 4 6 7 7b 8 9 10 11 5"
@@ -249,7 +245,7 @@ echo "推送閘門驗法：$OK 種符合、$BAD 種不符合"
 set -- $ALL
 if [ "$BAD" -eq 0 ] && [ "$OK" -eq "$#" ]; then
   printf '%s' "$REG_CONTENT" > "$REG_ROOT" || { echo "寫不進驗法登記"; exit 1; }
-  echo "驗法登記：已寫入 .logs/gate-verified.txt（四支檔案已 commit 版本的雜湊）"
+  echo "驗法登記：已寫入 .logs/gate-verified.txt（五支檔案已 commit 版本的雜湊）"
   exit 0
 fi
 echo "驗法登記：沒有寫入（沒全部符合）——閘門第零關會擋下推送"

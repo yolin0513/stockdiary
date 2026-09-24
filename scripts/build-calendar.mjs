@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rocCompactToISO } from '../js/roc.js';
-import { guard, shrinkProblem, readPrevious, writeAtomic } from './buildguard.mjs';
+import { guard, shrinkProblem, readPrevious, writeAtomic, reportAndExit } from './buildguard.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SOURCE = 'https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule';
@@ -170,5 +170,5 @@ async function main() {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('build-calendar.mjs')) {
-  main().catch((e) => { console.error(e); process.exit(1); });
+  main().catch(reportAndExit);
 }

@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { guard, shrinkProblem, readPrevious, writeAtomic } from './buildguard.mjs';
+import { guard, shrinkProblem, readPrevious, writeAtomic, reportAndExit } from './buildguard.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const URL_SRC = 'https://openapi.twse.com.tw/v1/opendata/t187ap45_L';
@@ -127,4 +127,4 @@ async function main() {
     + '⚠ 這份資料需要定期重跑（公司每季會公告新的股利決議）。\n');
 }
 
-main().catch((e) => { process.stderr.write(`失敗：${e.message}\n`); process.exit(1); });
+main().catch(reportAndExit);

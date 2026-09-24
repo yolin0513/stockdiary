@@ -67,16 +67,18 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run pathtest` | 真實使用路徑：第一次開啟、只有一檔、跨月、長假回補、併發更新、慢網路、離線、上游掛掉、賣出 |
 | `npm run doctest` | 文件與程式對齊：測試清單、突變條數、版本四處一致、禁用元件真的沒被用回去；凍結區（成本／損益的數學）跟快照一樣、禁用詞清單只有一份 |
 | `npm run taptest` | `tap.mjs` 自己的測試：空母體的 `noneOf`／`everyOf`、只有正例或只有反例的 `detects` 都必須紅（在子程序裡跑探針），乾淨的斷言要放行 |
-| `npm run buildtest` | 三支 build（`build-calendar`、`build-dividends`、`build-stocks`）的寫檔前關卡：每一份來源空的、取不到、欄位對不上、解析不了、比上一次成功的少一半以上，都要停、點名是哪一份、一個檔都不寫（在暫存複本裡從真實入口跑，`fetch` 換成 `scripts/testfetch.mjs`，不打網路） |
+| `npm run buildtest` | 三支 build（`build-calendar`、`build-dividends`、`build-stocks`）的寫檔前關卡與寫檔（F8）：母體是逐字寫出的「單位 × 情境」矩陣——每一份來源空的、取不到、欄位對不上、解析不了、比上一次成功的少一半以上，上一次的輸出壞掉，寫檔那一步出事（暫存檔的位置被佔住、換不上去、清理也失敗）；每一格要回非 0、理由點名那個單位、`data/` 雜湊不變、不吐堆疊，並分「擋／碰巧擋下／沒擋」統計（在暫存複本裡從真實入口跑，`fetch` 換成 `scripts/testfetch.mjs`，不打網路） |
+| `npm run escscan` | 跳脫掃描：repo 裡所有腳本（`.mjs`／`.js`／`.cjs`／`.sh`，拿 git 追蹤清單核對一支不漏）有沒有 regex 被多跳脫一次、字串少跳脫一次、shell 樣式帶反斜線——語法正確卻默默空轉的那一種，寫的當下攔不到 |
 | `npm run controltest` | 不在 `npm test` 裡的檢查器，它們的判斷邏輯每版在這裡用合成樣本驗（不打網路）：`assertaudit`（一定失敗的斷言、空母體、寫出資料前就崩掉，都要判對；必過的乾淨測試不能被挑出來）、`sweep`（線上版本是舊的、讀不到版本、留著舊快取、真的錯誤被當成新聞上游雜訊，都要報；全部一致時什麼都不報）、`livecheck`（用 `scripts/fixtures/` 錄好的證交所回應，每個判斷一對：好的錄音不能報、故意改壞的錄音要報，不打證交所）；另做兩道孤兒檢查：`npm test` 鏈上的每一支都要在 `assertaudit` 的清單裡，或寫明不收的理由；`js/app.js` 註冊的每一條路由都要在 `scripts/routes.mjs` 的逐頁清單裡（`sweep` 與 `upgradecheck` 共用），或寫明不巡的理由 |
 | `npm run checkmutations` | 突變清單的秒級檢查：判定邏輯（紅要紅在 `expect` 那一條）、每條 `expect` 都找得到、新突變一律帶 `expect` |
 | `npm run gatescan` | 推送閘門、公開前自查、閘門驗法有沒有已知的壞寫法（管線吞結束碼、`\|\| true`、空 catch、`+++` 濾檔頭、取 diff 卻不取訊息與作者……）；登記制，對照組含本 App 真的出過事的原文；另做孤兒檢查：repo 裡看起來是推送、自查、閘門的腳本（含還沒 commit 的）都要登記或寫理由 |
+| `npm run gateselftest` | 推送閘門驗法的自我測試（約 7 分鐘，不在 `npm test` 裡；改過 `gatepush.sh`／`gatetest.sh`／`gatereason.mjs` 之後跑）：把第零關改壞三種，看驗法是不是**剛好**報那幾種、驗法沒全過時舊登記有沒有被刪掉、兩種順序結論是否逐一相同 |
 | `npm run mutationtest` | **突變測試**：把邏輯改壞，確認對應的測試真的會紅；帶 `expect` 的還要紅在含那段字的斷言上 |
 
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
 
 ```
-— 337 條突變：每一條都必須讓對應的測試變紅 —
+— 350 條突變：每一條都必須讓對應的測試變紅 —
   ✓ 把「沒成交」的漲跌價差照抄成 0 → parsetest 變紅
   ✓ 不認得除權息的 "X0.00" 標記 → parsetest 變紅
   ✓ 除權息日拿不到參考價時，退回用前一日收盤當基準 → settletest 變紅

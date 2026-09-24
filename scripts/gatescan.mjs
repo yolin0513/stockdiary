@@ -18,7 +18,7 @@ import { ok, eq, section, done, note } from './tap.mjs';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 // ---- 登記：要掃的檔（§5.2 登記制，不是「scripts/ 全部扣掉例外」）----
-const FILES = ['scripts/gatepush.sh', 'scripts/precheck.mjs', 'scripts/piiscan.mjs', 'scripts/gatetest.sh', 'scripts/gateselftest.mjs'];
+const FILES = ['scripts/gatepush.sh', 'scripts/precheck.mjs', 'scripts/piiscan.mjs', 'scripts/gatetest.sh', 'scripts/gateselftest.mjs', 'scripts/gatereason.mjs'];
 
 // ---- 規則 ----
 // 每一條：id、說明、scope（'sh'｜'mjs'｜'all'）、line(行) → 命中與否；或 file(全文) → 命中與否（檔案層級的規則）

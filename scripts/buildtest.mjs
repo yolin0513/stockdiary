@@ -9,6 +9,9 @@
 //   2. 擋下的理由**點名這個單位、這一種狀況**，而且落在錯誤訊息的位置（「不寫檔：」後面那串「  · 」問題清單）——
 //      被別的規則碰巧擋下（理由裡沒有這個單位）一律算「沒擋」
 //   3. **輸出目錄（data/）的雜湊前後相同**（一個檔都沒寫、也沒留下暫存檔）
+//   4. 沒有吐堆疊（設計好的停下只印訊息；補充說明（四）第 5 點）
+// 分三類記（照 MealMate 的形狀）：擋／碰巧擋下（回非 0、輸出沒變，但沒點名這個單位或吐了堆疊）／沒擋。
+// 寫檔那一步出事的三種（暫存檔的位置被佔住、換不上去、清理也失敗）另成一張表，三支各三格。
 // 每一支另跑一格「正常輸入要寫檔、回 0」的對照（不然「什麼都擋」的關卡也會讓矩陣全過）。
 // 在暫存目錄放 scripts／js／data 的複本，從真實入口（node scripts/build-*.mjs）跑，fetch 換成 scripts/testfetch.mjs（不打網路）。
 
@@ -18,7 +21,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ok, eq, section, done } from './tap.mjs';
+import { ok, eq, section, done, note } from './tap.mjs';
 
 const REPO = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const W = fs.mkdtempSync(path.join(os.tmpdir(), 'buildtest-'));
@@ -45,19 +48,41 @@ function dirHash(dir) {
   return h.digest('hex');
 }
 const put = (name, data) => { const f = path.join(IN, name); fs.writeFileSync(f, typeof data === 'string' ? data : JSON.stringify(data)); return f; };
-/** 「不寫檔：」後面那串問題清單（只取「  · 」開頭的行）。擋下的理由必須落在這裡。 */
+/**
+ * 「不寫檔：」或「寫檔失敗：」後面那串問題清單（只取「  · 」開頭的行）。擋下的理由必須落在這裡——
+ * 不數整份輸出有沒有出現那個字（補充說明（四）第 1 點：正常的進度輸出裡本來就會印出同一個名字）。
+ */
 const reasonsOf = (out) => {
-  const i = out.indexOf('不寫檔：');
-  if (i < 0) return [];
+  const i = [out.indexOf('不寫檔：'), out.indexOf('寫檔失敗：')].filter((x) => x >= 0).sort((a, b) => a - b)[0];
+  if (i == null) return [];
   return out.slice(i).split('\n').filter((l) => l.startsWith('  · ')).map((l) => l.slice(4));
 };
+/**
+ * 理由裡有沒有這個狀況字眼——**對邊界**：「0 筆」不能被「10 筆」湊到（數字開頭的字眼，前一個字不能也是數字）。
+ * 單位名稱的邊界由「單位：」的全形冒號保證（isinOtc 湊不到 isinOtcX）。
+ */
+function hasWord(x, k) {
+  for (let i = x.indexOf(k); i >= 0; i = x.indexOf(k, i + 1)) {
+    if (!(/^\d/.test(k) && /\d/.test(x[i - 1] ?? ''))) return true;
+  }
+  return false;
+}
+/** 吐了堆疊（設計好的停下只印訊息；堆疊代表沒接住）。 */
+const hasStack = (out) => out.split('\n').some((l) => /^\s+at .+:\d+:\d+\)?\s*$/.test(l));
 
-// 對照（§5.11 第二層）：擷取理由的程式、目錄雜湊，各自要抓得到該抓的
+// 對照（§5.11 第二層）：擷取理由的程式、目錄雜湊、堆疊的判斷，各自兩個方向
 {
-  const sample = '  twseCompanies：用快取（1 KB）\nError: build-stocks 不寫檔：寫檔前的檢查沒過\n  · tpexCompanies：來源 0 筆\n  · 上櫃：檔數少了一半以上\n    at main';
+  const sample = '  twseCompanies：用快取（1 KB）\nError: build-stocks 不寫檔：寫檔前的檢查沒過\n  · tpexCompanies：來源 0 筆\n  · 上櫃：檔數少了一半以上';
   const got = reasonsOf(sample);
-  ok(got.length === 2 && got[0] === 'tpexCompanies：來源 0 筆' && reasonsOf('twseCompanies：用快取').length === 0,
-    '（對照）擷取擋下理由的程式：只取「不寫檔：」後面的問題清單，進度輸出裡的同名字不算', JSON.stringify(got));
+  ok(got.length === 2 && got[0] === 'tpexCompanies：來源 0 筆' && reasonsOf('twseCompanies：用快取').length === 0
+    && reasonsOf('  · tpexCompanies：來源 0 筆（沒有「不寫檔：」開頭，只是別處印的一行）').length === 0,
+    '（對照）擷取擋下理由的程式：只取「不寫檔：」後面的問題清單，進度輸出裡的同名字、別處印的同一行都不算', JSON.stringify(got));
+  const wf = reasonsOf('✗ 寫檔失敗：輸出維持上一次成功的內容\n  · 輸出檔（x.json）：換不上去（EPERM）');
+  ok(wf.length === 1 && wf[0].startsWith('輸出檔（x.json）：'), '（對照）擷取擋下理由的程式：「寫檔失敗：」後面的清單也抓得到', JSON.stringify(wf));
+  ok(hasWord('twseCompanies：來源 0 筆', '0 筆') && !hasWord('twseCompanies：來源 10 筆', '0 筆') && hasWord('上櫃：檔數少了一半以上', '少了一半以上'),
+    '（對照）狀況字眼對邊界：「0 筆」抓得到，「10 筆」湊不到');
+  ok(hasStack('Error: x\n    at main (file:///a/b.mjs:12:5)\n    at run (node:internal/x:3:1)') && !hasStack('✗ 寫檔失敗：…\n  · 輸出檔（x.json）：換不上去（EPERM）'),
+    '（對照）堆疊的判斷：有「    at …:行:欄」就算吐了堆疊，設計好的訊息不算');
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'dirhash-'));
   fs.writeFileSync(path.join(d, 'a.json'), '1');
   const h0 = dirHash(d);
@@ -77,12 +102,22 @@ const run = (script, args, env = {}) => {
     path.join(W, 'scripts', script), ...args], { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 120000 });
   return { code: r.status, out: `${r.stdout}${r.stderr}`, changed: dirHash(DATA) !== before };
 };
-/** 一格：回傳非 0、理由點名單位與狀況（落在錯誤訊息位置）、data/ 雜湊不變。label 是固定標籤。 */
-function cell(label, r, unit, kind) {
+/**
+ * 一格：回傳非 0、理由點名單位與狀況（落在錯誤訊息位置）、data/ 雜湊不變、沒有吐堆疊。label 是固定標籤。
+ * 另外照 MealMate 的形狀分三類記下來：擋（全部成立）／碰巧擋下（回非 0、輸出沒變，但理由沒點名這個單位、或吐了堆疊）／沒擋。
+ */
+const tally = { 擋: 0, 碰巧擋下: 0, 沒擋: 0 };
+const notBlocked = [];
+function cell(label, r, unit, kind, { allowChanged = false } = {}) {
   const reasons = reasonsOf(r.out);
-  const hit = reasons.some((x) => x.startsWith(`${unit}：`) && kind.some((k) => x.includes(k)));
-  ok(r.code !== 0 && hit && !r.changed, label,
-    `回傳 ${r.code}；data/ ${r.changed ? '變了' : '沒變'}；要有以「${unit}：」開頭、含「${kind.join('／')}」的理由；實際理由：${JSON.stringify(reasons).slice(0, 300)}；輸出末段：${r.out.slice(-200)}`);
+  const hit = reasons.some((x) => x.startsWith(`${unit}：`) && kind.some((k) => hasWord(x, k)));
+  const stack = hasStack(r.out);
+  const kept = allowChanged || !r.changed;
+  const verdict = r.code !== 0 && kept ? (hit && !stack ? '擋' : '碰巧擋下') : '沒擋';
+  tally[verdict] += 1;
+  if (verdict !== '擋') notBlocked.push(`${verdict}：${label}`);
+  ok(verdict === '擋', label,
+    `回傳 ${r.code}；data/ ${r.changed ? '變了' : '沒變'}；${stack ? '吐了堆疊；' : ''}要有以「${unit}：」開頭、含「${kind.join('／')}」的理由；實際理由：${JSON.stringify(reasons).slice(0, 300)}；輸出末段：${r.out.slice(-200)}`);
 }
 function writes(label, r) {
   ok(r.code === 0 && r.changed, label, `回傳 ${r.code}；data/ ${r.changed ? '變了' : '沒變'}；輸出末段：${r.out.slice(-300)}`);
@@ -91,7 +126,12 @@ const snapshot = new Map();
 for (const f of fs.readdirSync(DATA)) snapshot.set(f, fs.readFileSync(path.join(DATA, f)));
 const restoreData = () => {
   for (const f of fs.readdirSync(DATA)) if (!snapshot.has(f)) fs.rmSync(path.join(DATA, f), { recursive: true, force: true });
-  for (const [f, b] of snapshot) fs.writeFileSync(path.join(DATA, f), b);
+  // 寫檔失敗的格子會把輸出檔換成資料夾：先整個拿掉再寫回
+  for (const [f, b] of snapshot) {
+    try { fs.chmodSync(path.join(DATA, f), 0o666); } catch { /* 檔案不在就沒有權限可改；下一行照樣整個拿掉再寫回 */ }
+    fs.rmSync(path.join(DATA, f), { recursive: true, force: true });
+    fs.writeFileSync(path.join(DATA, f), b);
+  }
 };
 // ---- 母體：每一個單位 × 每一種情境（F8 四家統一驗法）----
 // 每一格的標籤**逐字寫在這裡**：它就是母體清單，也讓突變的 expect 對得到「剛好那一格」（樣板字串對不到）。
@@ -159,6 +199,24 @@ const MATRIX = {
   },
 };
 // 另一個單位：上一次成功的輸出檔。三支各一格——壞掉時不能當成「第一次產」而跳過「變少」的比對
+// 寫檔那一步出事（補充說明（四）第 5 點），三支各三格
+const WRITEFAIL = {
+  'build-calendar': {
+    tmpDir: 'build-calendar 寫檔失敗：暫存檔的位置被資料夾佔住',
+    readonly: 'build-calendar 寫檔失敗：輸出檔換不上去',
+    cleanup: 'build-calendar 寫檔失敗：清理也失敗',
+  },
+  'build-dividends': {
+    tmpDir: 'build-dividends 寫檔失敗：暫存檔的位置被資料夾佔住',
+    readonly: 'build-dividends 寫檔失敗：輸出檔換不上去',
+    cleanup: 'build-dividends 寫檔失敗：清理也失敗',
+  },
+  'build-stocks': {
+    tmpDir: 'build-stocks 寫檔失敗：暫存檔的位置被資料夾佔住',
+    readonly: 'build-stocks 寫檔失敗：輸出檔換不上去',
+    cleanup: 'build-stocks 寫檔失敗：清理也失敗',
+  },
+};
 const CORRUPT = {
   'build-calendar': 'build-calendar 上一次的輸出壞掉：要擋、點名它',
   'build-dividends': 'build-dividends 上一次的輸出壞掉：要擋、點名它',
@@ -195,6 +253,7 @@ section('（前提）母體：矩陣＝每一個單位 × 每一種情境');
   }
   eq(shape, [], '（前提）每一個單位都有全部的情境（一格都不挑掉）');
   eq(Object.keys(CORRUPT), Object.keys(MATRIX), '（前提）「上一次的輸出壞掉」三支各一格');
+  eq(Object.entries(WRITEFAIL).map(([k, v]) => `${k}:${Object.keys(v).join()}`), Object.keys(MATRIX).map((k) => `${k}:tmpDir,readonly,cleanup`), '（前提）「寫檔失敗」三支各三格');
 }
 
 try {
@@ -306,6 +365,55 @@ try {
   };
   const OUT_NAME = { 'build-calendar': 'calendar.json', 'build-dividends': 'dividends.json', 'build-stocks': 'stocks.json' };
   for (const [script, label] of Object.entries(CORRUPT)) cell(label, corruptRun[script](), `上一次的輸出（${OUT_NAME[script]}）`, K.unparsable);
+
+  // ======================= 寫檔失敗（三支 × 三種；補充說明（四）第 5 點）=======================
+  // 輸入都是正常的（寫檔前關卡會過），只有寫檔那一步出事：
+  //   tmpDir   暫存檔的位置（<輸出檔>.tmp）先放一個同名資料夾 → 寫不進去；那個資料夾不能被動到
+  //   readonly 輸出檔設成唯讀 → 暫存檔寫好了卻換不上去（Windows 上 EPERM）；要清掉自己寫出的暫存檔
+  //   cleanup  換不上去，而且清理也失敗（預載模組讓刪 .tmp 丟 EPERM）→ 要點名留下的暫存檔、不中斷、不吐堆疊
+  section('寫檔失敗：三支 × 三種（暫存檔的位置被佔住、換不上去、清理也失敗）');
+  const valid = {
+    'build-calendar': (env) => run('build-calendar.mjs', ['--year', '2026', '--from', put('hol-ok3.json', hol)], env),
+    'build-dividends': (env) => run('build-dividends.mjs', [], { TESTFETCH_BODY: put('div-ok3.json', rowsAll), ...env }),
+    'build-stocks': (env) => {
+      const dir = path.join(IN, 'stk-write');
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.mkdirSync(dir, { recursive: true });
+      for (const name of SOURCES) fs.writeFileSync(path.join(dir, `${name}.bin`), good[name]);
+      return run('build-stocks.mjs', ['--cache', dir], env);
+    },
+  };
+  const prepStocksPrev = () => fs.writeFileSync(path.join(DATA, 'stocks.json'), JSON.stringify({ counts: { byMarket: PREV_OK }, stocks: {} }));
+  for (const [script, labels] of Object.entries(WRITEFAIL)) {
+    const out = path.join(DATA, OUT_NAME[script]);
+    const unit = `輸出檔（${OUT_NAME[script]}）`;
+    // tmpDir
+    restoreData(); if (script === 'build-stocks') prepStocksPrev();
+    fs.mkdirSync(`${out}.tmp`); fs.writeFileSync(path.join(`${out}.tmp`, '別人的檔.txt'), '不能被刪');
+    const a = valid[script]({});
+    cell(labels.tmpDir, a, unit, ['暫存檔寫不進去']);
+    ok(fs.existsSync(path.join(`${out}.tmp`, '別人的檔.txt')), `${labels.tmpDir}（佔位的資料夾與裡面的檔都還在）`);
+    // readonly
+    restoreData(); if (script === 'build-stocks') prepStocksPrev();
+    fs.chmodSync(out, 0o444);
+    const b = valid[script]({});
+    cell(labels.readonly, b, unit, ['換不上去']);
+    ok(reasonsOf(b.out).some((x) => x.startsWith(`${unit}：已清掉這次寫出的暫存檔`)) && !fs.existsSync(`${out}.tmp`),
+      `${labels.readonly}（清掉了自己寫出的暫存檔，而且講出來）`, JSON.stringify(reasonsOf(b.out)));
+    // cleanup：暫存檔會留下（這一格 data/ 本來就會多一個檔），其他三件照樣要成立，而且要點名留下的檔
+    restoreData(); if (script === 'build-stocks') prepStocksPrev();
+    fs.chmodSync(out, 0o444);
+    const outBefore = fs.readFileSync(out);
+    const c = valid[script]({ TESTFS_RM_FAIL: '1' });
+    cell(labels.cleanup, c, unit, ['清理也失敗'], { allowChanged: true });
+    ok(fs.readFileSync(out).equals(outBefore) && fs.existsSync(`${out}.tmp`) && reasonsOf(c.out).some((x) => x.includes(`${path.basename(out)}.tmp 刪不掉`)),
+      `${labels.cleanup}（輸出檔沒被蓋掉；留下的暫存檔有點名）`, JSON.stringify(reasonsOf(c.out)));
+  }
+  restoreData();
+
+  section('總計（照 MealMate 的形狀：擋／碰巧擋下／沒擋）');
+  note(`矩陣共 ${tally.擋 + tally.碰巧擋下 + tally.沒擋} 格：擋 ${tally.擋}、碰巧擋下 ${tally.碰巧擋下}、沒擋 ${tally.沒擋}`);
+  for (const x of notBlocked) note(`  ${x}`);
 } finally {
   fs.rmSync(W, { recursive: true, force: true });
 }

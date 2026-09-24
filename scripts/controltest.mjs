@@ -15,6 +15,7 @@ import { controls as auditControls, chainOf, auditOrphans } from './auditjudge.m
 import { controls as sweepControls } from './sweepjudge.mjs';
 import { controls as liveControls, stageControls as liveStageControls, endpointsIn, endpointOrphans } from './livejudge.mjs';
 import { controls as routeControls, registeredRoutes, routeOrphans } from './routes.mjs';
+import { selftest as gateReasonSelftest } from './gatereason.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -105,6 +106,14 @@ expectEach('路由清單', routeControls(), {
   eq(o.missing, [], '路由孤兒：js/app.js 註冊的每一條路由，都在逐頁清單裡或寫了不巡的理由');
   eq(o.stale, [], '路由過期：逐頁清單裡的每一條都還註冊著');
   eq(o.skipStale, [], '路由理由過期：寫了不巡理由的每一條都還註冊著');
+}
+
+// 推送閘門驗法的「擋下理由」比對（補充說明（四）第 1 點）：gatetest 一分鐘、不是每版跑，比對程式一改壞，每版在這裡就看得到
+section('推送閘門驗法的理由比對（scripts/gatereason.mjs）：只在錯誤訊息的位置比，兩個方向');
+{
+  const r = gateReasonSelftest();
+  ok(r.length >= 10, `（前提）理由比對的對照有 ${r.length} 組`);
+  for (const c of r) ok(c.ok, `閘門理由比對：${c.name}`);
 }
 
 done('controltest');

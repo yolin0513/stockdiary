@@ -9,6 +9,7 @@
 // 問題一次列完（不是遇到第一個就停），每一條都點名是哪一份來源、哪一組。
 
 import fs from 'node:fs';
+import path from 'node:path';
 
 /** 收集寫檔前的問題；check() 在寫檔之前呼叫，有問題就拋錯（訊息開頭固定是「不寫檔：」）。 */
 export function guard(what) {
@@ -18,7 +19,7 @@ export function guard(what) {
     add(msg) { problems.push(msg); },
     check() {
       if (problems.length) {
-        throw new Error(`${what} 不寫檔：寫檔前的檢查沒過，輸出維持上一次成功的狀態\n  · ${problems.join('\n  · ')}`);
+        throw new BuildStop(`${what} 不寫檔：寫檔前的檢查沒過，輸出維持上一次成功的狀態\n  · ${problems.join('\n  · ')}`);
       }
     },
   };
@@ -44,8 +45,40 @@ export function readPrevious(file) {
 }
 
 /** 先寫到同一個目錄的暫存檔、寫完再換上：寫到一半中斷，也不會留下半份輸出。 */
+//
+// 寫不進去時（補充說明（四）第 5 點；Windows 上防毒或索引程式鎖檔就會這樣）：
+//   · 暫存檔名固定是「<輸出檔>.tmp」——那個位置被別的東西佔住（例如同名資料夾），**不動它**，照實講出來
+//   · **只清自己寫出的暫存檔**；清理本身也可能失敗，失敗就點名留下了哪個檔，**不中斷**、不吐堆疊
+//   · 停下的訊息跟寫檔前關卡同一個格式（「寫檔失敗：」後面一串「  · 單位：狀況」），輸出檔本身維持上一次成功的內容
 export function writeAtomic(dest, text) {
-  const tmp = `${dest}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, text, 'utf8');
-  fs.renameSync(tmp, dest);
+  const tmp = `${dest}.tmp`;
+  const unit = `輸出檔（${path.basename(dest)}）`;
+  const problems = [];
+  let wrote = false;
+  try {
+    fs.writeFileSync(tmp, text, 'utf8');
+    wrote = true;
+    fs.renameSync(tmp, dest);
+    return;
+  } catch (e) {
+    problems.push(wrote
+      ? `${unit}：換不上去（${e.code ?? e.message}）——新的內容寫在暫存檔裡，沒有蓋掉原本的輸出檔`
+      : `${unit}：暫存檔寫不進去（${e.code ?? e.message}：${path.basename(tmp)}）——那個位置原本的東西沒有動`);
+  }
+  if (wrote) {
+    try {
+      fs.rmSync(tmp, { force: true });
+      problems.push(`${unit}：已清掉這次寫出的暫存檔 ${path.basename(tmp)}`);
+    } catch (e) {
+      problems.push(`${unit}：清理也失敗——暫存檔 ${path.basename(tmp)} 刪不掉（${e.code ?? e.message}），留在輸出目錄裡，請手動刪除`);
+    }
+  }
+  throw new BuildStop(`寫檔失敗：輸出維持上一次成功的內容\n  · ${problems.join('\n  · ')}`);
+}
+
+/** 設計好的停下（寫檔前關卡沒過、寫檔失敗）：印訊息就好，不印堆疊。沒料到的例外才印堆疊。 */
+export class BuildStop extends Error {}
+export function reportAndExit(e) {
+  process.stderr.write(e instanceof BuildStop ? `✗ ${e.message}\n` : `✗ 沒料到的錯誤：${e?.stack ?? e}\n`);
+  process.exit(1);
 }

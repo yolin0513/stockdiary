@@ -48,6 +48,7 @@ eq(missingFromReadme, [],
 const DELIBERATELY_OUT = {
   workertest: '要 wrangler、會碰一次上游',
   upgradecheck: '要起兩次伺服器模擬換版，慢',
+  gateselftest: '推送閘門驗法的自我測試，要跑六次驗法、約 7 分鐘；改過閘門或驗法時跑',
 };
 const extraInReadme = inTable.filter((t) => !chain.includes(t));
 eq(extraInReadme.sort(), Object.keys(DELIBERATELY_OUT).sort(),

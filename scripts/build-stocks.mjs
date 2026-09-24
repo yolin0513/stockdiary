@@ -23,7 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseStockDayAll } from '../js/twse.js';
-import { guard, shrinkProblem, readPrevious, writeAtomic } from './buildguard.mjs';
+import { guard, shrinkProblem, readPrevious, writeAtomic, reportAndExit } from './buildguard.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GAP_MS = 2500; // 對同一個主機的連續請求間隔
@@ -269,5 +269,5 @@ async function main() {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('build-stocks.mjs')) {
-  main().catch((e) => { console.error('✗ ' + (e.stack || e.message)); process.exit(1); });
+  main().catch(reportAndExit);
 }
