@@ -67,6 +67,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run pathtest` | 真實使用路徑：第一次開啟、只有一檔、跨月、長假回補、併發更新、慢網路、離線、上游掛掉、賣出 |
 | `npm run doctest` | 文件與程式對齊：測試清單、突變條數、版本四處一致、禁用元件真的沒被用回去；凍結區（成本／損益的數學）跟快照一樣、禁用詞清單只有一份 |
 | `npm run checkmutations` | 突變清單的秒級檢查：判定邏輯（紅要紅在 `expect` 那一條）、每條 `expect` 都找得到、新突變一律帶 `expect` |
+| `npm run gatescan` | 推送閘門、公開前自查、閘門驗法有沒有已知的壞寫法（管線吞結束碼、`\|\| true`、空 catch、`+++` 濾檔頭、取 diff 卻不取訊息與作者……）；登記制，對照組含本 App 真的出過事的原文 |
 | `npm run mutationtest` | **突變測試**：把邏輯改壞，確認對應的測試真的會紅；帶 `expect` 的還要紅在含那段字的斷言上 |
 
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
