@@ -3364,6 +3364,17 @@ const MUTATIONS = [
     expect: '自查訊息與作者：單一 commit 兩個子指令都只看那一個',
   },
 
+  // ---- GS：壞寫法掃描新增的「閘門讀環境變數換東西」（2026-09-25）----
+  {
+    name: 'GS：env-switch 規則什麼都不抓',
+    why: '閘門或自查又加回 X="${X:-…}" 這種可以從外面換掉檢查器的開關，掃描不會報。',
+    file: 'scripts/gatescan.mjs',
+    find: '    line: (l) => !isComment(l) && readsEnvSwitch(l),',
+    replace: '    line: () => false,',
+    test: 'gatescan',
+    expect: 'env-switch',
+  },
+
   // ---- EV：一次性量測腳本的登記（scripts/evidencereg.mjs；2026-09-24 Dispatch：收進 repo、列進孤兒檢查的登記）----
   {
     name: 'EV：沒登記的量測腳本不報',

@@ -9,7 +9,7 @@
 #   · 推送被拒          → 假遠端放一個回傳 1 的 pre-receive
 #   · 推了卻沒更新      → 假遠端放一個把 main 退回舊值的 post-receive
 #   · 自查命中          → 在複本裡 commit 一個當場組出來的合成樣本
-#   · 對照組壞掉        → 把檢查器的對照樣本換掉的複本（放在複本 repo 底下，檢查器靠自己的位置推算根目錄）
+#   · 對照組壞掉        → 在複本的工作區直接把檢查器改壞，照改壞的內容重新登記第零關（閘門不讀環境變數換檢查器）
 #   · 改過沒重跑驗法    → 在複本裡改閘門一行並 commit（登記對不上）；或拿掉登記檔
 # 黑名單用一個**合成字面**的檔（真的黑名單是個資，不複製過去）。
 # 每一種都檢查三件事：閘門的回傳值、假遠端的 main 有沒有被動到、輸出裡講的是不是對的那一關。
@@ -55,11 +55,12 @@ die() { echo "  ✗ 驗法本身出錯：$1"; exit 1; }
 clean_commit() { printf '%s\n' "$1" >> gatetest-note.md; git add gatetest-note.md; git commit -q -m "gatetest：$1" || die "commit 失敗（$1）"; }
 # 每一種情境開頭都跑這個：拿掉假遠端的 hook、黑名單放回原位、重新登記、本機分支對齊假遠端、清掉上一種留下的檔
 prep() {
-  rm -f "$T/remote.git/hooks/pre-receive" "$T/remote.git/hooks/post-receive"
+  rm -f "$T/remote.git/hooks/pre-receive" "$T/remote.git/hooks/post-receive" "$T/remote-gone"
+  git config --unset-all remote.origin.uploadpack 2> /dev/null   # 情境 4b 設的；沒設時回非 0，不影響
   if [ -f .private/pii-blacklist.moved ]; then mv .private/pii-blacklist.moved .private/pii-blacklist.txt; fi
   reset_to_remote
   git clean -fdq -e .private -e .logs
-  rm -f .logs/precheck-broken.mjs .logs/piiscan-broken.mjs .logs/build-verified.txt
+  rm -f .logs/build-verified.txt
   register_work
   build_reg "$(remote_sha)"   # F9：每一種都先帶著「對起點」的 build 登記（13–18 各自再改）
 }
@@ -117,22 +118,32 @@ sc_1b() {
   run "1b. 命中在較早的 commit（HEAD 乾淨）" 1 沒動 "hit|(a) 金鑰／token|新增行|const k ="
 }
 # 2. 對照組壞掉（乾淨的 commit，讓對照組成為唯一的失敗原因）
-make_broken() {
+# 直接在複本的工作區把檢查器改壞，再照改壞的內容重新登記第零關（2026-09-25：閘門不再讀環境變數換檢查器——
+# 那個開關也能把自查換成一支直接回 0 的檔）。prep 會 reset --hard，下一種情境拿到的是原本的檢查器。
+register_now() {
+  local f h
+  : > .logs/gate-verified.txt
+  for f in $GATE_FILES; do h="$(git hash-object "$f")" || die "算不出 $f 的雜湊"; printf '%s %s\n' "$f" "$h" >> .logs/gate-verified.txt; done
+}
+make_broken() {   # make_broken pre｜pii
   node -e "
-const fs=require('fs');
-const a=fs.readFileSync('scripts/precheck.mjs','utf8');const x=\"a: ['+' + 'gh' + 'p_' + 'A1b2C3d4E5f6G7h8I9j0KLMN'],\";
-if(a.split(x).length!==2)process.exit(9);fs.writeFileSync('.logs/precheck-broken.mjs',a.split(x).join(\"a: ['+not-a-token'],\"));
-const b=fs.readFileSync('scripts/piiscan.mjs','utf8');const y='const ctrlLit = literalHits(';
-if(b.split(y).length!==2)process.exit(9);fs.writeFileSync('.logs/piiscan-broken.mjs',b.split(y).join('const ctrlLit = 0 * literalHits('));" \
-    || die "造不出壞掉的複本（錨點對不上）"
+const fs=require('fs');const w=process.argv[1];
+if(w==='pre'){const a=fs.readFileSync('scripts/precheck.mjs','utf8');const x=\"a: ['+' + 'gh' + 'p_' + 'A1b2C3d4E5f6G7h8I9j0KLMN'],\";
+if(a.split(x).length!==2)process.exit(9);fs.writeFileSync('scripts/precheck.mjs',a.split(x).join(\"a: ['+not-a-token'],\"));}
+else{const b=fs.readFileSync('scripts/piiscan.mjs','utf8');const y='const ctrlLit = literalHits(';
+if(b.split(y).length!==2)process.exit(9);fs.writeFileSync('scripts/piiscan.mjs',b.split(y).join('const ctrlLit = 0 * literalHits('));}" "$1" \
+    || die "造不出壞掉的檢查器（錨點對不上）"
+  register_now
 }
 sc_2a() {
-  clean_commit "對照組壞掉"; make_broken
-  run "2a. 四類自查的對照組壞掉" 1 沒動 "head|(a) 金鑰／token：對照組命中 0 ✘" PRECHECK=.logs/precheck-broken.mjs
+  clean_commit "對照組壞掉"; make_broken pre
+  [ -n "$(git status --porcelain -- scripts/precheck.mjs)" ] || die "情境 2a：自查沒改到，前提沒造成"
+  run "2a. 四類自查的對照組壞掉" 1 沒動 "head|(a) 金鑰／token：對照組命中 0 ✘"
 }
 sc_2b() {
-  clean_commit "對照組壞掉"; make_broken
-  run "2b. 第五類的對照組壞掉" 1 沒動 "head|判準 (1) 黑名單：對照組 正例 0" PIISCAN=.logs/piiscan-broken.mjs
+  clean_commit "對照組壞掉"; make_broken pii
+  [ -n "$(git status --porcelain -- scripts/piiscan.mjs)" ] || die "情境 2b：第五類沒改到，前提沒造成"
+  run "2b. 第五類的對照組壞掉" 1 沒動 "head|判準 (1) 黑名單：對照組 正例 0"
 }
 sc_2c() {
   clean_commit "黑名單檔拿走"
@@ -152,6 +163,19 @@ sc_4() {
   chmod +x "$T/remote.git/hooks/post-receive"
   clean_commit "推了卻沒更新"
   run "4. 推了卻沒更新（post-receive 退回舊值）" 3 沒動 "head|【第三關擋下】"
+}
+# 4b. 推送成功之後讀不到遠端（ls-remote 失敗）→ 仍要擋（2026-09-25，照統籌者的 P6）。
+# 這是**隱式的擋**：閘門沒有「讀不到就停」這一句，靠的是「讀到空的 ≠ 本機」。造法：讓假遠端的「讀取」（upload-pack）
+# 在推送完成之後一律失敗——推送前的 fetch 照常，post-receive 放一個記號，之後的 ls-remote 讀不到。只設在這個複本裡。
+sc_4b() {
+  printf '#!/bin/sh\n[ -e "%s" ] && exit 1\nexec git upload-pack "$@"\n' "$T/remote-gone" > "$T/upload-pack.sh"
+  git config remote.origin.uploadpack "sh $T/upload-pack.sh" || die "情境 4b：設不了 uploadpack"
+  printf '#!/bin/sh\ntouch "%s"\n' "$T/remote-gone" > "$T/remote.git/hooks/post-receive"
+  chmod +x "$T/remote.git/hooks/post-receive"
+  git ls-remote origin refs/heads/main > "$T/ls4b.txt" 2> /dev/null || die "情境 4b：推送之前就讀不到遠端，前提沒造成"
+  clean_commit "推送後讀不到遠端"
+  run "4b. 推送後讀不到遠端（ls-remote 失敗）" 3 等於本機 "head|【第三關擋下】推送回報成功，但 origin/main 是 （讀不到）"
+  [ -e "$T/remote-gone" ] || PRE_BAD="post-receive 沒有放記號，讀不到遠端的前提沒造成"
 }
 # 5. 全部正常
 sc_5() {
@@ -278,7 +302,9 @@ sc_16() {
   [ -n "$(git status --porcelain -- scripts/buildguard.mjs)" ] || die "情境 16：工作區沒有改動，前提沒造成"
   node scripts/buildverify.mjs > "$T/bv16.txt" 2>&1
   [ -e "$REG_B" ] && PRE_BAD="工作區有改動，卻寫入了新登記"
-  grep -q '^【不登記】工作區跟 HEAD 不一樣：scripts/buildguard.mjs' "$T/bv16.txt" || PRE_BAD="${PRE_BAD:-buildverify 沒有講明是工作區有改動而不登記}"
+  if ! grep -q '^【不登記】工作區跟 HEAD 不一樣：scripts/buildguard.mjs' "$T/bv16.txt" && [ -z "$PRE_BAD" ]; then
+    PRE_BAD="buildverify 沒有講明是工作區有改動而不登記"
+  fi
   NOT="head|(a) 金鑰／token"
   run "16. 工作區有改動時跑驗法、不登記" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildguard.mjs，但沒有 build 驗法登記——先跑 node scripts/buildverify.mjs"
 }
@@ -299,7 +325,7 @@ sc_18() {
   run "18. 前一個 commit 動到、最後一個乾淨" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildguard.mjs，但沒有 build 驗法登記——先跑 node scripts/buildverify.mjs"
 }
 
-ALL="1 1b 2a 2b 2c 3 4 6 7 7b 8 9 10 11 13 14 15 16 17 18 5"
+ALL="1 1b 2a 2b 2c 3 4 4b 6 7 7b 8 9 10 11 13 14 15 16 17 18 5"
 ORDER="${GATETEST_ORDER:-$ALL}"
 # 順序清單要恰好是每一種各一次：少一種就少驗一種，多一種就是打錯字
 SORTED_ALL="$(printf '%s\n' $ALL | sort)"

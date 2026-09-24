@@ -7,7 +7,7 @@
 // **逐行解析**每一種情境的結論，比對「不符的那幾種」**剛好等於**預期（多一種、少一種都算不符）；
 // 另外看驗法跑完登記檔在不在、跑到的是不是改壞的那一份（比雜湊）。
 //
-// 解析結論時**斷言剛好是 ALL 那幾種**（現在 21 種；2026-09-24 F9 的六種必備情境是 13–18）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
+// 解析結論時**斷言剛好是 ALL 那幾種**（現在 22 種；2026-09-24 F9 的六種必備情境是 13–18）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
 // 「兩邊相同」在母體是空的時候恆真（本 App 與統籌者各踩過一次）。
 //
 // 用法：node scripts/gateselftest.mjs      回傳 0＝每一種變體的結果都跟預期一樣
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '6', '7', '7b', '8', '9', '10', '11', '13', '14', '15', '16', '17', '18', '5'];
+const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '4b', '6', '7', '7b', '8', '9', '10', '11', '13', '14', '15', '16', '17', '18', '5'];
 const REVERSED = [...ALL].reverse();
 const STALE_REG = 'scripts/gatepush.sh 0000000000000000000000000000000000000000\n';
 
@@ -150,6 +150,14 @@ try {
   variant('突變 G9（第 4 條）：算不出工作區有改動（一律當成跟 HEAD 一樣）', [
     ['scripts/buildverify.mjs', '      if (want.status !== 0 || have.status !== 0 || want.stdout.trim() !== have.stdout.trim()) bad.push(f);', '      if (want.status !== 0) bad.push(f);'],
   ], { expectBad: ['16'], expectReg: false });
+  // 共同依靠的一環（2026-09-25，F9 對照表）：第 3、4、6 條最後都是「沒有登記檔就擋」
+  variant('突變 G11（共同依靠：沒有登記檔就擋）：沒有登記檔也往下比', [
+    ['scripts/buildverify.mjs', '  if (!fs.existsSync(REG)) stop(', '  if (false) stop('],
+  ], { expectBad: ['15', '16', '18'], expectReg: false });
+  // 隱式的擋（F10 第 5 點）：第三關沒有「讀不到就停」這一句，靠「讀到空的 ≠ 本機」——突變改成「讀不到當成一樣」
+  variant('突變 G12（隱式的擋）：ls-remote 讀不到時當成跟本機一樣', [
+    ['scripts/gatepush.sh', 'if [ "$REMOTE_SHA" != "$LOCAL" ]; then', 'if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" != "$LOCAL" ]; then'],
+  ], { expectBad: ['4b'], expectReg: false });
   variant('突變 G10（第 5 條）：沒動到被守的檔也要有登記檔', [
     ['scripts/buildverify.mjs', '  if (!touched.length) { say(', '  if (!touched.length && fs.existsSync(REG)) { say('],
   ], { expectBad: ['17'], expectReg: false });

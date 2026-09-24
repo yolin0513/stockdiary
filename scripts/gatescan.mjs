@@ -26,6 +26,8 @@ const FILES = ['scripts/gatepush.sh', 'scripts/precheck.mjs', 'scripts/piiscan.m
 // `precheck.mjs` 所以照樣全過，卻漏掉閘門裡真正會出現的寫法——把一行壞寫法放進 gatepush.sh 的突變才抓出來（2026-09-24）。
 const KEY_CMD = /(precheck|piiscan|gatepush|git\s+(?:-C\s+\S+\s+)?(?:push|fetch|ls-remote|log|diff|show))\b/i;
 const isComment = (l) => /^\s*#/.test(l) || /^\s*\/\//.test(l);
+/** X="${X:-預設}"（外面設了 X 就換掉），或讀 USERNAME／USER 以外的 process.env。 */
+const readsEnvSwitch = (l) => /\b([A-Z_][A-Z0-9_]*)="\$\{\1:-/.test(l) || /process\.env\.(?!(USERNAME|USER)\b)[A-Za-z_]/.test(l);
 const RULES = [
   {
     id: 'pipe', scope: 'sh',
@@ -58,6 +60,13 @@ const RULES = [
     },
   },
   {
+    id: 'env-switch', scope: 'all',
+    what: '閘門、自查、驗法讀環境變數來換掉東西（X="${X:-預設}"、process.env.X）——測試用的開關也能拿來繞過閘門',
+    // 2026-09-25：gatepush.sh 以前有 PRECHECK="${PRECHECK:-…}"，同一個開關能把自查換成一支直接回 0 的檔（TripQuest 同型）。
+    // 白名單只有 USERNAME／USER：自查 (c) 類要知道本機使用者名稱才找得到它。
+    line: (l) => !isComment(l) && readsEnvSwitch(l),
+  },
+  {
     id: 'absent-assert', scope: 'all', screen: true,
     what: '（初篩）斷言「不存在／不見了」——要逐條確認前面有沒有先確認它原本在',
     line: (l) => !isComment(l) && /!\s*(fs\.)?existsSync\(|\[\s*!\s*-[efsd]\s|不見|已刪/.test(l),
@@ -88,6 +97,14 @@ function shellCommands(text) {
 
 // ---- 登記的例外（初篩命中逐條看過之後才列進來，每一條要寫理由）----
 const EXCEPTIONS = [
+  {
+    file: 'scripts/buildverifytest.mjs', rule: 'env-switch', lineIncludes: "const mode = process.env.STUB_MODE || 'ok';",
+    why: '這一行在字串 STUB 裡：是測試寫出來的「假的 buildtest」，不是閘門或 buildverify 本身；正式的 buildverify 不讀任何環境變數。',
+  },
+  {
+    file: 'scripts/gateselftest.mjs', rule: 'absent-assert', lineIncludes: "['scripts/buildverify.mjs', '  if (!fs.existsSync(REG)) stop(',",
+    why: '初篩命中的是突變 G11 要改的原文（「沒有登記檔就擋」那一行），不是斷言「不存在」。',
+  },
   {
     file: 'scripts/buildverify.mjs', rule: 'absent-assert', lineIncludes: 'const missing = GUARDED.filter((f) => !fs.existsSync(',
     why: '檢查器自己的故障停下：登記清單上的檔不在就不登記。情境在 buildverifytest「清單上的檔不見了」（先 commit 過、再拿掉）。',
@@ -169,6 +186,19 @@ const CONTROLS = {
     miss: [
       "const raw = git(['log', '-p', '--format=', rev]);\nconst meta = git(['log', '--format=%B%n%an <%ae>', rev]);",
       'git show --numstat --format= HEAD > "$T/ns9.txt"',
+    ],
+  },
+  'env-switch': {
+    hit: [
+      // 真的出過事：gatepush.sh 換檢查器的開關（2026-09-25 拿掉）
+      'PRECHECK="${PRECHECK:-$HERE/precheck.mjs}"',
+      // 合成：TripQuest 那一型——用環境變數把一類搜尋式換掉
+      "const PATHS = process.env.PII_PATTERN ? new RegExp(process.env.PII_PATTERN) : DEFAULT;",
+    ],
+    miss: [
+      'PRECHECK="$HERE/precheck.mjs"',
+      "const USER = process.env.USERNAME || process.env.USER || '';",
+      'echo "是 ${REMOTE_SHA:-（讀不到）}"',
     ],
   },
   'absent-assert': {

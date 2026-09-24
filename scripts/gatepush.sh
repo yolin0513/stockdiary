@@ -25,14 +25,16 @@
 #   · 放在 repo、不放 Session 暫存目錄：防線不跟著 Session 生死。黑名單資料在 .private/（gitignore），見 STATUS「推送閘門」。
 #
 # 改過這支就重跑驗法：bash scripts/gatetest.sh（用本機假遠端製造每一關的失敗，不碰 GitHub）。
-# 驗閘門時可以換檢查器：PRECHECK=<檔> PIISCAN=<檔> bash scripts/gatepush.sh …
+# **不讀任何環境變數來換掉檢查器**（2026-09-25 拿掉）：以前可以 PRECHECK=<檔> PIISCAN=<檔> 換成別的程式，
+# 給驗法餵「壞掉的檢查器」用——但同一個開關也能把自查換成一支直接回 0 的檔，第一關就等於沒有。
+# 驗法改成在複本裡直接把檢查器改壞、重新登記雜湊（gatetest.sh 情境 2a、2b）。gatescan 掃這種寫法。
 set -u
 REMOTE="${1:-origin}"
 BRANCH="${2:-main}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-PRECHECK="${PRECHECK:-$HERE/precheck.mjs}"
-PIISCAN="${PIISCAN:-$HERE/piiscan.mjs}"
+PRECHECK="$HERE/precheck.mjs"
+PIISCAN="$HERE/piiscan.mjs"
 mkdir -p "$ROOT/.logs"
 OUT="$ROOT/.logs/gatepush-last.log"
 : > "$OUT"
