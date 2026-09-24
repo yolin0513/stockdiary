@@ -258,6 +258,14 @@ sc_12c() {
   build_reg "$(git rev-parse HEAD)"
   run "12c. 動到 build、登記對得上" 0 等於本機 "head|F9：這次要推的 commit 動到 scripts/buildguard.mjs，build 驗法登記相符"
 }
+# 12e. 已 commit 的版本跟登記對得上，工作區另有沒 commit 的改動 → 放行（比的是要推的 commit 裡的版本，不是工作區）
+sc_12e() {
+  touch_build "改 build、登記對得上，工作區另外再改"
+  build_reg "$(git rev-parse HEAD)"
+  printf '// gatetest：沒 commit 的改動\n' >> scripts/buildguard.mjs
+  [ -n "$(git status --porcelain -- scripts/buildguard.mjs)" ] || die "情境 12e：工作區沒有改動，前提沒造成"
+  run "12e. 登記對得上已 commit 的版本、工作區另有改動" 0 等於本機 "head|F9：這次要推的 commit 動到 scripts/buildguard.mjs，build 驗法登記相符"
+}
 # 12d. 沒動到 build、也沒有登記 → 不看登記，放行（不是每次推送都要跑 buildtest）
 sc_12d() {
   [ ! -e .logs/build-verified.txt ] || die "情境 12d：build 登記原本就在，前提沒造成"
@@ -265,7 +273,7 @@ sc_12d() {
   run "12d. 沒動到 build、沒有登記" 0 等於本機 "head|F9：這次要推的 1 個 commit 沒動到 build 與它的驗法，不看登記"
 }
 
-ALL="1 1b 2a 2b 2c 3 4 6 7 7b 8 9 10 11 12 12b 12c 12d 5"
+ALL="1 1b 2a 2b 2c 3 4 6 7 7b 8 9 10 11 12 12b 12c 12d 12e 5"
 ORDER="${GATETEST_ORDER:-$ALL}"
 # 順序清單要恰好是每一種各一次：少一種就少驗一種，多一種就是打錯字
 SORTED_ALL="$(printf '%s\n' $ALL | sort)"

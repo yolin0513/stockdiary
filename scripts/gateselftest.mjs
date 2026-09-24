@@ -7,7 +7,7 @@
 // **逐行解析**每一種情境的結論，比對「不符的那幾種」**剛好等於**預期（多一種、少一種都算不符）；
 // 另外看驗法跑完登記檔在不在、跑到的是不是改壞的那一份（比雜湊）。
 //
-// 解析結論時**斷言剛好是 ALL 那幾種**（現在 19 種；2026-09-24 F9 加了 12 系列）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
+// 解析結論時**斷言剛好是 ALL 那幾種**（現在 20 種；2026-09-24 F9 加了 12 系列）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
 // 「兩邊相同」在母體是空的時候恆真（本 App 與統籌者各踩過一次）。
 //
 // 用法：node scripts/gateselftest.mjs      回傳 0＝每一種變體的結果都跟預期一樣
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '6', '7', '7b', '8', '9', '10', '11', '12', '12b', '12c', '12d', '5'];
+const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '6', '7', '7b', '8', '9', '10', '11', '12', '12b', '12c', '12d', '12e', '5'];
 const REVERSED = [...ALL].reverse();
 const STALE_REG = 'scripts/gatepush.sh 0000000000000000000000000000000000000000\n';
 
@@ -33,7 +33,7 @@ const STALE_REG = 'scripts/gatepush.sh 0000000000000000000000000000000000000000\
 export function parseVerdicts(out) {
   const v = {};
   for (const line of String(out).split('\n')) {
-    const m = /^ {2}(✓|✗) (\d+[a-d]?)\. /.exec(line.replace(/\r$/, ''));
+    const m = /^ {2}(✓|✗) (\d+[a-e]?)\. /.exec(line.replace(/\r$/, ''));
     if (m) v[m[2]] = m[1] === '✓' ? 'ok' : 'bad';
   }
   return v;
@@ -47,7 +47,7 @@ export function parseVerdicts(out) {
     '  ✗ 10. 閘門改過、沒重跑驗法：回傳 0（預期 4）',
     '  ✓ 2c. 某一種情境：回傳 1',
     '  ✗ 12d. 帶字尾 d 的情境：回傳 5',
-    '  ✓ 12e. 字尾超出 a–d 的不算',
+    '  ✓ 12f. 字尾超出 a–e 的不算',
     '    ✓ 3. 縮排不對的不算',
   ].join('\n');
   const got = parseVerdicts(sample);
@@ -134,6 +134,13 @@ try {
   variant('突變 G4：F9 比對沒過也照樣往下推', [
     ['scripts/gatepush.sh', 'if [ "$V" -ne 0 ]; then', 'if false; then'],
   ], { expectBad: ['12', '12b'], expectReg: false });
+  variant('突變 G5：F9 比的是工作區、不是要推的已 commit 版本', [
+    ['scripts/buildverify.mjs', "    const have = git('rev-parse', `${ref}:${f}`);", "    const have = git('hash-object', path.join(ROOT, f));"],
+  ], { expectBad: ['12e'], expectReg: false });
+  variant('突變 G6：F9 只看最後一個 commit 有沒有動到', [
+    ['scripts/buildverify.mjs', '  const touched = [...new Set(lines.filter((l) => GUARDED.includes(l)))];',
+      "  const touched = [...new Set(lines.slice(0, lines.findIndex((l, i) => i > 0 && l.startsWith('commit ')) + 1 || lines.length).filter((l) => GUARDED.includes(l)))];"],
+  ], { expectBad: ['12b'], expectReg: false });
 
 } finally {
   fs.rmSync(T, { recursive: true, force: true });
