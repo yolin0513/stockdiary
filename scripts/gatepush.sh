@@ -8,7 +8,9 @@
 #           有命中、對照組壞了、黑名單檔不見、或取不到遠端狀態算不出要掃哪些 commit）
 #   回傳 2  第二關：推送本身失敗（被拒、連不上……）
 #   回傳 3  第三關：推送回報成功，但遠端的分支≠本機（「推了但沒成功」）
-#   回傳 4  第零關（最先跑）：閘門、自查或驗法改過之後還沒跑過驗法——五支檔案（含驗法用的 gatereason.mjs）目前的雜湊
+#   回傳 5  F9（fetch 之後、自查之前）：這次要推的 commit 動到三支 build 或它們的驗法，但 build 驗法登記
+#           （.logs/build-verified.txt）沒有、或跟要推的版本對不上。先跑 node scripts/buildverify.mjs
+#   回傳 4  第零關（最先跑）：閘門、自查或驗法改過之後還沒跑過驗法——六支檔案（含驗法用的 gatereason.mjs、F9 的 buildverify.mjs）目前的雜湊
 #           跟 .logs/gate-verified.txt 的登記不一致，或沒有登記檔（新 clone、剛改完）
 #
 # 第零關為什麼（2026-09-24，SPEC_檢查器修補 S7；共用慣例 §5.15）：「改過閘門就重跑驗法」以前靠人記得。
@@ -38,7 +40,7 @@ OUT="$ROOT/.logs/gatepush-last.log"
 # ---- 第零關：驗法登記（在 fetch 與自查之前）----
 # 登記檔一行一支：「路徑 雜湊」。雜湊用 git hash-object 算工作區的檔——有沒 commit 的改動，也對不上。
 REG="$ROOT/.logs/gate-verified.txt"
-GATE_FILES="scripts/gatepush.sh scripts/precheck.mjs scripts/piiscan.mjs scripts/gatetest.sh scripts/gatereason.mjs"
+GATE_FILES="scripts/gatepush.sh scripts/precheck.mjs scripts/piiscan.mjs scripts/gatetest.sh scripts/gatereason.mjs scripts/buildverify.mjs"
 if [ -s "$REG" ]; then
   REG_BAD=""
   for f in $GATE_FILES; do
@@ -67,6 +69,16 @@ if [ "$F" -ne 0 ]; then
   exit 1
 fi
 RANGE="FETCH_HEAD..refs/heads/$BRANCH"
+
+# ---- F9：這次要推的 commit 動到 build 或它的驗法，就要有對得上的 build 驗法登記（回 5）----
+# 逐個 commit 看有沒有動到；沒動到就不看登記。登記由 node scripts/buildverify.mjs 在驗法全部擋下時寫入。
+node "$HERE/buildverify.mjs" --check "$RANGE" "refs/heads/$BRANCH" > "$OUT.f9" 2>&1
+V=$?
+cat "$OUT.f9"
+if [ "$V" -ne 0 ]; then
+  echo "【第零關擋下】F9：build 驗法登記沒過（buildverify 回傳 $V），不推"
+  exit 5
+fi
 node "$PRECHECK" "$RANGE" >> "$OUT" 2>&1
 A=$?
 node "$PIISCAN" >> "$OUT" 2>&1

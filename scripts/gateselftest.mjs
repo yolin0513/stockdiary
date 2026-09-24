@@ -4,10 +4,10 @@
 //   · 沒有任何 S7 的突變：統籌者補跑「登記的雜湊對不上時不擋」，只有情境 10 紅，而且那個 commit 真的推了出去
 //   · 沒有「驗法沒全過要刪掉登記」的情境：驗法失敗卻留著上一次的登記，閘門照樣放行
 // 做法：在暫存複本裡把閘門或驗法改壞一處並 commit（gatetest.sh 驗的是已 commit 的內容），跑 gatetest.sh，
-// **逐行解析**十五種情境的結論，比對「不符的那幾種」**剛好等於**預期（多一種、少一種都算不符）；
+// **逐行解析**每一種情境的結論，比對「不符的那幾種」**剛好等於**預期（多一種、少一種都算不符）；
 // 另外看驗法跑完登記檔在不在、跑到的是不是改壞的那一份（比雜湊）。
 //
-// 解析結論時**斷言剛好 15 種**：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
+// 解析結論時**斷言剛好是 ALL 那幾種**（現在 19 種；2026-09-24 F9 加了 12 系列）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
 // 「兩邊相同」在母體是空的時候恆真（本 App 與統籌者各踩過一次）。
 //
 // 用法：node scripts/gateselftest.mjs      回傳 0＝每一種變體的結果都跟預期一樣
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '6', '7', '7b', '8', '9', '10', '11', '5'];
+const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '6', '7', '7b', '8', '9', '10', '11', '12', '12b', '12c', '12d', '5'];
 const REVERSED = [...ALL].reverse();
 const STALE_REG = 'scripts/gatepush.sh 0000000000000000000000000000000000000000\n';
 
@@ -33,7 +33,7 @@ const STALE_REG = 'scripts/gatepush.sh 0000000000000000000000000000000000000000\
 export function parseVerdicts(out) {
   const v = {};
   for (const line of String(out).split('\n')) {
-    const m = /^ {2}(✓|✗) (\d+b?|\d+[a-c]?)\. /.exec(line.replace(/\r$/, ''));
+    const m = /^ {2}(✓|✗) (\d+[a-d]?)\. /.exec(line.replace(/\r$/, ''));
     if (m) v[m[2]] = m[1] === '✓' ? 'ok' : 'bad';
   }
   return v;
@@ -46,11 +46,13 @@ export function parseVerdicts(out) {
     '  ✓ 1. 自查命中（HEAD 帶合成 token）：回傳 1（預期 1）',
     '  ✗ 10. 閘門改過、沒重跑驗法：回傳 0（預期 4）',
     '  ✓ 2c. 某一種情境：回傳 1',
+    '  ✗ 12d. 帶字尾 d 的情境：回傳 5',
+    '  ✓ 12e. 字尾超出 a–d 的不算',
     '    ✓ 3. 縮排不對的不算',
   ].join('\n');
   const got = parseVerdicts(sample);
-  eq(got, { 1: 'ok', 10: 'bad', '2c': 'ok' }, '（對照）解析驗法結論的程式：只抽情境那幾行，抽得到 ✓ 與 ✗');
-  eq(parseVerdicts(''), {}, '（對照）空的輸出抽到 0 種（下面每一次都另外斷言剛好 15 種）');
+  eq(got, { 1: 'ok', 10: 'bad', '2c': 'ok', '12d': 'bad' }, '（對照）解析驗法結論的程式：只抽情境那幾行，抽得到 ✓ 與 ✗');
+  eq(parseVerdicts(''), {}, '（對照）空的輸出抽到 0 種（下面每一次都另外斷言剛好是 ALL 那幾種）');
 }
 
 const T = fs.mkdtempSync(path.join(os.tmpdir(), 'gateselftest-'));
@@ -59,9 +61,9 @@ const git = (...args) => execFileSync('git', ['-C', W, ...args], { encoding: 'ut
 execFileSync('git', ['clone', '-q', '--no-local', ROOT, W]);
 git('config', 'user.name', execFileSync('git', ['-C', ROOT, 'config', 'user.name'], { encoding: 'utf8' }).trim());
 git('config', 'user.email', execFileSync('git', ['-C', ROOT, 'config', 'user.email'], { encoding: 'utf8' }).trim());
-// 用 repo **工作區**的四支閘門檔（不是已 commit 的）：mutationtest 改壞工作區的檔時，這裡才看得到。
+// 用 repo **工作區**的六支閘門檔（不是已 commit 的）：mutationtest 改壞工作區的檔時，這裡才看得到。
 // gatetest.sh 驗的是已 commit 的內容，所以在複本裡把它們 commit 成這一輪的起點。
-for (const f of ['scripts/gatepush.sh', 'scripts/gatetest.sh', 'scripts/precheck.mjs', 'scripts/piiscan.mjs', 'scripts/gatereason.mjs']) fs.copyFileSync(path.join(ROOT, f), path.join(W, f));
+for (const f of ['scripts/gatepush.sh', 'scripts/gatetest.sh', 'scripts/precheck.mjs', 'scripts/piiscan.mjs', 'scripts/gatereason.mjs', 'scripts/buildverify.mjs']) fs.copyFileSync(path.join(ROOT, f), path.join(W, f));
 if (git('status', '--porcelain')) git('commit', '-q', '-am', 'gateselftest：工作區的閘門檔');
 const BASE = git('rev-parse', 'HEAD');
 const REG = path.join(W, '.logs', 'gate-verified.txt');
@@ -97,7 +99,7 @@ function variant(name, patches, { expectBad, expectReg, order = ALL }) {
   const regNow = fs.existsSync(REG) ? fs.readFileSync(REG, 'utf8') : null;
   section(`變體：${name}`);
   ok(seeded, `（前提）${name}：跑之前先放了一份舊的登記檔`);
-  eq(Object.keys(v).sort(), [...ALL].sort(), `（前提）${name}：解析到剛好 15 種情境的結論`);
+  eq(Object.keys(v).sort(), [...ALL].sort(), `（前提）${name}：解析到剛好 ${ALL.length} 種情境的結論`);
   eq(ran, gateHash, `（前提）${name}：驗法跑到的閘門＝改過的那一份（雜湊）`);
   eq(bad, [...expectBad].sort(), `${name}：不符的情境剛好是 ${expectBad.length ? expectBad.join('、') : '（沒有）'}`);
   if (expectReg) {
@@ -112,7 +114,7 @@ function variant(name, patches, { expectBad, expectReg, order = ALL }) {
 try {
   const base = variant('原樣（對照）', [], { expectBad: [], expectReg: true });
   const rev = variant('原樣、倒過來的順序', [], { expectBad: [], expectReg: true, order: REVERSED });
-  eq(ALL.map((k) => rev[k]), ALL.map((k) => base[k]), '換順序（§5.11 第四層）：十五種的結論逐一相同（兩邊都已斷言剛好 15 種）');
+  eq(ALL.map((k) => rev[k]), ALL.map((k) => base[k]), `換順序（§5.11 第四層）：${ALL.length} 種的結論逐一相同（兩邊都已斷言剛好 ${ALL.length} 種）`);
 
   // ---- 閘門第零關的突變 ----
   variant('突變 G1：拿掉整個第零關', [
@@ -127,6 +129,11 @@ try {
     ['scripts/gatepush.sh', '  echo "【第零關擋下】沒有驗法登記', '  : echo "【第零關擋下】沒有驗法登記'],
     ['scripts/gatepush.sh', '先跑 bash scripts/gatetest.sh"\n  exit 4\nfi\n\nLOCAL=', '先跑 bash scripts/gatetest.sh"\nfi\n\nLOCAL='],
   ], { expectBad: ['11'], expectReg: false });
+
+  // ---- F9：閘門不理 build 驗法登記的比對結果（2026-09-24）----
+  variant('突變 G4：F9 比對沒過也照樣往下推', [
+    ['scripts/gatepush.sh', 'if [ "$V" -ne 0 ]; then', 'if false; then'],
+  ], { expectBad: ['12', '12b'], expectReg: false });
 
 } finally {
   fs.rmSync(T, { recursive: true, force: true });

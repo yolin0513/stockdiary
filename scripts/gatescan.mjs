@@ -18,7 +18,7 @@ import { ok, eq, section, done, note } from './tap.mjs';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 // ---- 登記：要掃的檔（§5.2 登記制，不是「scripts/ 全部扣掉例外」）----
-const FILES = ['scripts/gatepush.sh', 'scripts/precheck.mjs', 'scripts/piiscan.mjs', 'scripts/gatetest.sh', 'scripts/gateselftest.mjs', 'scripts/gatereason.mjs'];
+const FILES = ['scripts/gatepush.sh', 'scripts/precheck.mjs', 'scripts/piiscan.mjs', 'scripts/gatetest.sh', 'scripts/gateselftest.mjs', 'scripts/gatereason.mjs', 'scripts/buildverify.mjs', 'scripts/buildverifytest.mjs'];
 
 // ---- 規則 ----
 // 每一條：id、說明、scope（'sh'｜'mjs'｜'all'）、line(行) → 命中與否；或 file(全文) → 命中與否（檔案層級的規則）
@@ -88,6 +88,26 @@ function shellCommands(text) {
 
 // ---- 登記的例外（初篩命中逐條看過之後才列進來，每一條要寫理由）----
 const EXCEPTIONS = [
+  {
+    file: 'scripts/gatetest.sh', rule: 'absent-assert', lineIncludes: 'die "情境 12：build 登記原本就在，前提沒造成"',
+    why: '這是前提斷言「原本不在」（情境 12 要驗的是沒有登記時擋下），不是斷言「某個東西被刪掉了」；prep 每一種都先刪登記，這一行確認刪到了。',
+  },
+  {
+    file: 'scripts/gatetest.sh', rule: 'absent-assert', lineIncludes: 'die "情境 12d：build 登記原本就在，前提沒造成"',
+    why: '同上：情境 12d 的前提是「沒有登記」，這一行是確認前提成立，不是斷言被刪掉。',
+  },
+  {
+    file: 'scripts/buildverify.mjs', rule: 'absent-assert', lineIncludes: 'const missing = GUARDED.filter((f) => !fs.existsSync(',
+    why: '檢查器自己的故障停下：登記清單上的檔不在就不登記。情境在 buildverifytest「清單上的檔不見了」（先 commit 過、再拿掉）。',
+  },
+  {
+    file: 'scripts/buildverify.mjs', rule: 'absent-assert', lineIncludes: 'if (!fs.existsSync(REG)) stop(',
+    why: '沒有登記就擋（故障時停下，不放行）；情境在 buildverifytest「動到而沒有登記」與 gatetest 情境 12。',
+  },
+  {
+    file: 'scripts/buildverifytest.mjs', rule: 'absent-assert', lineIncludes: "refuse('F9 登記・清單上的檔不見了：'",
+    why: '初篩命中的是情境名稱裡的「不見」。前提「原本在」有明確斷言（下一行的 ls-files），再拿掉、commit。',
+  },
   {
     file: 'scripts/piiscan.mjs', rule: 'absent-assert', lineIncludes: 'if (!existsSync(LIST)) {',
     why: '這不是驗證斷言，是檢查器自己的故障停下：黑名單檔不在就擋。它的反面情境（先確認在、再拿走）在 gatetest 情境 2c。',

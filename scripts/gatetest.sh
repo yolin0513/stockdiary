@@ -15,7 +15,7 @@
 # 每一種都檢查三件事：閘門的回傳值、假遠端的 main 有沒有被動到、輸出裡講的是不是對的那一關。
 #
 # **驗法登記（閘門第零關，2026-09-24，SPEC_檢查器修補 S7）**：一開跑就刪掉本 repo 的 .logs/gate-verified.txt；
-# 全部符合，才把五支檔案**已 commit 版本**（＝複本裡驗的那一份）的雜湊寫回去。沒全過、中途出錯，登記就不在，閘門回 4。
+# 全部符合，才把六支檔案**已 commit 版本**（＝複本裡驗的那一份）的雜湊寫回去。沒全過、中途出錯，登記就不在，閘門回 4。
 #
 # 每一種情境是獨立的函式，開頭一律還原（假遠端的 hook、黑名單檔、登記、本機分支），所以順序可以換；
 # 以前情境 1b 疊在情境 1 的 commit 上、2a 與 2b 共用同一份壞掉的複本，換順序結論就會變。
@@ -40,8 +40,8 @@ mkdir -p .private .logs
 # 合成字面拆開寫：原樣寫在這支檔裡的話，第五類掃描會在複本裡掃到這一行，每一種情境都被它擋下
 printf '# 驗法用的合成黑名單（不是真的個資）\n%s%s\n' '7,6-5' ',4-3 合成字面' > .private/pii-blacklist.txt
 
-# 驗的是複本裡這五支（＝本 repo 已 commit 的版本）。先把雜湊記下來：全部符合時登記的就是這一份。
-GATE_FILES="scripts/gatepush.sh scripts/precheck.mjs scripts/piiscan.mjs scripts/gatetest.sh scripts/gatereason.mjs"
+# 驗的是複本裡這六支（＝本 repo 已 commit 的版本）。先把雜湊記下來：全部符合時登記的就是這一份。
+GATE_FILES="scripts/gatepush.sh scripts/precheck.mjs scripts/piiscan.mjs scripts/gatetest.sh scripts/gatereason.mjs scripts/buildverify.mjs"
 REG_CONTENT=""
 for f in $GATE_FILES; do
   h="$(git hash-object "$f")" || { echo "算不出 $f 的雜湊"; exit 1; }
@@ -59,7 +59,7 @@ prep() {
   if [ -f .private/pii-blacklist.moved ]; then mv .private/pii-blacklist.moved .private/pii-blacklist.txt; fi
   reset_to_remote
   git clean -fdq -e .private -e .logs
-  rm -f .logs/precheck-broken.mjs .logs/piiscan-broken.mjs
+  rm -f .logs/precheck-broken.mjs .logs/piiscan-broken.mjs .logs/build-verified.txt
   register_work
 }
 
@@ -226,7 +226,46 @@ sc_11() {
   run "11. 沒有登記檔" 4 沒動 "head|【第零關擋下】沒有驗法登記"
 }
 
-ALL="1 1b 2a 2b 2c 3 4 6 7 7b 8 9 10 11 5"
+# 12 系列：F9 的 build 驗法登記（2026-09-24，統籌者新訂）。這次要推的 commit 動到 build 或它的驗法 → 要有對得上的登記，否則回 5。
+# 登記直接照 buildverify.mjs 的格式寫（這裡驗的是閘門怎麼比對；登記怎麼寫由 scripts/buildverifytest.mjs 驗）。
+BUILD_FILES="$(node --input-type=module -e "import { GUARDED } from './scripts/buildverify.mjs'; console.log(GUARDED.join(' '))")" \
+  || { echo "讀不到 buildverify.mjs 的 GUARDED"; exit 1; }
+[ -n "$BUILD_FILES" ] || { echo "buildverify.mjs 的 GUARDED 是空的"; exit 1; }
+build_reg() {   # build_reg <commit>：把那一版被守的檔登記成驗過
+  local c="$1" f h
+  { echo "commit $c"; for f in $BUILD_FILES; do h="$(git rev-parse "$c:$f")" || die "算不出 $c:$f"; echo "$f $h"; done; } > .logs/build-verified.txt
+}
+touch_build() { printf '// gatetest：%s\n' "$1" >> scripts/buildguard.mjs; git add scripts/buildguard.mjs; git commit -q -m "gatetest：$1" || die "commit 失敗（$1）"; }
+# 12. 動到 build、沒有登記 → 回 5，停在自查之前
+sc_12() {
+  [ ! -e .logs/build-verified.txt ] || die "情境 12：build 登記原本就在，前提沒造成"
+  touch_build "改 build、沒有登記"
+  NOT="head|(a) 金鑰／token"
+  run "12. 動到 build、沒有 build 驗法登記" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildguard.mjs，但沒有 build 驗法登記"
+}
+# 12b. 前一個 commit 動到 build、最後一個乾淨，登記是改之前那一版 → 仍要擋（只看最後一個 commit 會漏；MealMate 補的）
+sc_12b() {
+  build_reg "$(git rev-parse HEAD)"
+  touch_build "改 build"
+  clean_commit "改 build 之後又疊一個乾淨的"
+  [ -z "$(git diff --name-only HEAD~1 HEAD -- $BUILD_FILES)" ] || die "情境 12b：最後一個 commit 也動到 build，前提沒造成"
+  NOT="head|(a) 金鑰／token"
+  run "12b. 前一個 commit 動到 build、最後一個乾淨、登記是舊版" 5 沒動 "head|【F9 擋下】build 驗法登記跟要推的版本對不上：scripts/buildguard.mjs"
+}
+# 12c. 動到 build、登記對得上要推的版本 → 放行
+sc_12c() {
+  touch_build "改 build、有對得上的登記"
+  build_reg "$(git rev-parse HEAD)"
+  run "12c. 動到 build、登記對得上" 0 等於本機 "head|F9：這次要推的 commit 動到 scripts/buildguard.mjs，build 驗法登記相符"
+}
+# 12d. 沒動到 build、也沒有登記 → 不看登記，放行（不是每次推送都要跑 buildtest）
+sc_12d() {
+  [ ! -e .logs/build-verified.txt ] || die "情境 12d：build 登記原本就在，前提沒造成"
+  clean_commit "沒動到 build"
+  run "12d. 沒動到 build、沒有登記" 0 等於本機 "head|F9：這次要推的 1 個 commit 沒動到 build 與它的驗法，不看登記"
+}
+
+ALL="1 1b 2a 2b 2c 3 4 6 7 7b 8 9 10 11 12 12b 12c 12d 5"
 ORDER="${GATETEST_ORDER:-$ALL}"
 # 順序清單要恰好是每一種各一次：少一種就少驗一種，多一種就是打錯字
 SORTED_ALL="$(printf '%s\n' $ALL | sort)"
@@ -245,7 +284,7 @@ echo "推送閘門驗法：$OK 種符合、$BAD 種不符合"
 set -- $ALL
 if [ "$BAD" -eq 0 ] && [ "$OK" -eq "$#" ]; then
   printf '%s' "$REG_CONTENT" > "$REG_ROOT" || { echo "寫不進驗法登記"; exit 1; }
-  echo "驗法登記：已寫入 .logs/gate-verified.txt（五支檔案已 commit 版本的雜湊）"
+  echo "驗法登記：已寫入 .logs/gate-verified.txt（六支檔案已 commit 版本的雜湊）"
   exit 0
 fi
 echo "驗法登記：沒有寫入（沒全部符合）——閘門第零關會擋下推送"
