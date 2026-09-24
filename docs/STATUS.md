@@ -26,6 +26,11 @@
   · `scripts/buildverify.mjs`：驗法（`buildtest`）全擋、被守的 9 支檔工作區＝HEAD 才登記 `.logs/build-verified.txt`，一開跑就刪舊登記；推送閘門在 fetch 之後逐個 commit 看有沒有動到被守的檔，動到了才比對登記（比的是要推的已 commit 版本），對不上回 5。
   · 情境：`buildverifytest`（進 `npm test`）與閘門驗法 12／12b／12c／12d／12e；閘門那一側的突變在 `gateselftest`（G4–G6）。
   · P0、P1（以及 S5、S6、S8、S9）留在 STATUS 的證據已逐字搬進證據檔（程式核對 10/10 段），STATUS 原處換成指標；v9 盤點表本身留在原處。
+- **等 Dispatch／統籌者的**（2026-09-24）：
+  · 統籌者的「F9 六種必備情境」原文還沒轉來。目前照 MealMate 證據檔對出來的那一組做，已補 12e；拿到原文逐條核對，**核對之前先不動**。
+  · Windows 上 F10 的造法：假的 `git` shell 腳本，`node` 的 `spawnSync('git')` 執行不到（這是判斷，沒實際試）。請統籌者裁決：認可替代做法，或給一個可行的造法。**等答覆，不要自己發明。**
+- **下一批：F10**（Dispatch 同意方向）：`assertaudit`、`sweep`、`livecheck` 入口的「對照組沒過就停」，把判斷抽成可以測的函式，入口只剩呼叫的那一行。
+- **量「修正前」的腳本收進 `scripts/evidence/`**（Dispatch 決定收）：本質一次性，保留供重做；不在測試鏈裡。
 - **突變整套**：照指示還沒跑，等四家 F1–F8 做完一起。帶 `expect` 的 118 條在判定改嚴後重跑：全部紅對，見證據檔。
 - **這一輪踩過的**：跑著突變時動了 repo（孤兒檢查當場點名新檔、整批作廢，已改成「改動全部做完、commit 之後才跑，跑的時候不碰 repo」）；heredoc 與 `node -e` 又改掉了兩次反斜線（`escscan` 就是為這個做的）；`mutationtest` 對每支測試 180 秒逾時，`gateselftest` 要 7 分鐘（改成逐支設定）。
 

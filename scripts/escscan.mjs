@@ -36,6 +36,15 @@ const EXCEPTIONS = [
     file: 'scripts/gatetest.sh', rule: 'E3', lineIncludes: "grep -m1 -E '^docs/",
     why: '情境 9 挑一個要刪的檔。樣式若被 shell 改壞而一個都抓不到，下一行的 [ -n \"$last\" ] || die 讓驗法中止——不會默默放行（gatescan 同一條例外）。',
   },
+  // scripts/evidence/：量「修正前」的一次性腳本（2026-09-24 收進 repo，保留供重做）。雙引號裡的 \[ 與 \s，bash 原樣交給 grep。
+  ...['f3ev.sh', 'f3evB.sh', 'f3evC.sh', 'f34ev.sh'].map((f) => ({
+    file: `scripts/evidence/${f}`, rule: 'E3', lineIncludes: 'grep -q "^const ROUTES = ',
+    why: '證明取到的是舊版（舊 sweep 自己寫死路由清單）。樣式若被 shell 改壞而抓不到，|| exit 1 讓整支停下、不讀後面的輸出——壞了是停，不是放行。',
+  })),
+  {
+    file: 'scripts/evidence/b5old.sh', rule: 'E3', lineIncludes: 'grep -E "^',
+    why: '只把失敗的斷言印出來給人看，不拿來判斷任何事；判斷看的是上一行的回傳值。',
+  },
 ];
 
 // ---------------------------------------------------------------------------
