@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, everyOf, noneOf, note } from './tap.mjs';
+import { controls, parseLive, versionProblems, cacheProblems, splitErrors } from './sweepjudge.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const SITE = process.argv[2] || 'https://yolin0513.github.io/stockdiary/';
@@ -34,16 +35,27 @@ const ROUTES = [
 const bust = () => `?cb=${Date.now()}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 先跑對照組（SPEC_檢查器修補 S4）：用錄好的合成回應，不打網路。判斷邏輯壞了，下面的「全過」就不可信——
+// 以前版本比對改成永遠成立，20 項照樣全過（線上版本剛好一致時看不出來）。
+process.stdout.write('對照組（判斷邏輯自己有沒有壞，合成樣本、不打網路）：\n');
+const ctrl = controls();
+for (const c of ctrl) process.stdout.write(`  ${c.ok ? '✓' : '✗'} （對照）${c.name}（${c.detail}）\n`);
+if (ctrl.some((c) => !c.ok)) {
+  process.stdout.write('對照組沒過：sweep 的判斷邏輯壞了，線上巡檢的結果不可信——停下，不巡檢。\n');
+  process.exit(1);
+}
+
 // ---------------------------------------------------------------------------
 section(`線上版本（${SITE}）`);
 const swText = await (await fetch(`${SITE}sw.js${bust()}`)).text();
-const liveSw = /const VERSION = '([^']+)';/.exec(swText)?.[1];
 const htmlText = await (await fetch(`${SITE}${bust()}`)).text();
-const liveHtml = /app\.js\?v=([^"]+)"/.exec(htmlText)?.[1];
+const live = parseLive(swText, htmlText);
+const vp = versionProblems({ ...live, local: LOCAL_VERSION });   // 跟對照組同一段程式（sweepjudge.mjs）
+const vpAt = (w) => vp.filter((p) => p.where === w);
 
-eq(liveSw, LOCAL_VERSION, `線上 sw.js 的版本跟工作目錄一致（${liveSw}）`);
-eq(liveHtml, LOCAL_VERSION, `線上 index.html 載入的 app.js 也是同一版`);
-ok(/^stockdiary-v\d+\.\d+\.\d+$/.test(String(liveSw)), '版本號格式正確');
+eq(vpAt('sw.js'), [], `線上 sw.js 的版本跟工作目錄一致（${live.sw}）`);
+eq(vpAt('index.html'), [], `線上 index.html 載入的 app.js 也是同一版`);
+eq(vpAt('格式'), [], '版本號格式正確');
 
 // ---------------------------------------------------------------------------
 section('新聞 Worker');
@@ -114,8 +126,9 @@ try {
     return { controlled: !!navigator.serviceWorker.controller, caches: await caches.keys() };
   });
   ok(sw.controlled, 'Service Worker 接手了這個頁面');
-  ok(sw.caches.some((c) => c.includes(LOCAL_VERSION)), `快取名稱帶著這一版（${sw.caches.join('、')}）`);
-  noneOf(sw.caches, (c) => !c.includes(LOCAL_VERSION), '沒有留下別版的快取');
+  const cp = cacheProblems(sw.caches, LOCAL_VERSION);   // 跟對照組同一段程式
+  ok(cp.hasCurrent, `快取名稱帶著這一版（${sw.caches.join('、')}）`);
+  noneOf(sw.caches, (c) => cp.stale.includes(c), '沒有留下別版的快取');
 
   section('離線也開得起來');
   await page.setOfflineMode(true);
@@ -148,15 +161,9 @@ try {
   //
   // 但**不可以靜默丟掉**：分開數、分開報，讓人看得出「忽略了幾筆、是哪一家」。
   // 兩邊的判準要一致（以前主控台排除了 502、失敗請求卻沒有，結果同一件事一邊過一邊紅）。
-  const isNewsUpstream = (t) => t.includes('stockdiary-news.') || /rss\?src=/.test(t);
-  const isNoise = (t) => /favicon/.test(t);
-
-  const realErrors = errors.filter((e) => !isNoise(e) && !(isNewsUpstream(e) || /502/.test(e)));
-  const newsErrors = errors.filter((e) => !isNoise(e) && (isNewsUpstream(e) || /502/.test(e)));
+  // 分類在 sweepjudge.mjs 的 splitErrors（跟對照組同一段程式）。
+  const { realErrors, newsErrors, realFailed, newsFailed } = splitErrors(errors, failed);
   eq(realErrors, [], '沒有未攔截的例外，也沒有主控台錯誤');
-
-  const realFailed = failed.filter((f) => !isNoise(f) && !isNewsUpstream(f));
-  const newsFailed = failed.filter((f) => !isNoise(f) && isNewsUpstream(f));
   eq(realFailed, [], '沒有失敗的請求（新聞上游另外算，見下）');
 
   // 這一條不是斷言「一定沒事」，是把忽略掉的東西攤開來講。

@@ -9,6 +9,7 @@
 
 import { ok, section, done } from './tap.mjs';
 import { controls as auditControls } from './auditjudge.mjs';
+import { controls as sweepControls } from './sweepjudge.mjs';
 
 const expectEach = (tool, results, labels) => {
   ok(results.length === Object.keys(labels).length,
@@ -25,6 +26,16 @@ expectEach('assertaudit', auditControls(), {
   empty: 'assertaudit 對照二：空母體的 noneOf，它那一筆要被母體 ≤ 2 挑出來',
   crash: 'assertaudit 對照三：寫出資料前就崩掉，要判成沒收到任何資料',
   clean: 'assertaudit 對照四（必過）：母體 3 的乾淨測試，要判成通過、不被挑出來',
+});
+
+section('sweep 的判斷邏輯（scripts/sweepjudge.mjs；合成回應，不打網路）');
+expectEach('sweep', sweepControls(), {
+  'sw-old': 'sweep 對照一：線上 sw.js 是舊版，版本比對要報 sw.js',
+  'html-old': 'sweep 對照二：線上 index.html 載入舊版，版本比對要報 index.html',
+  'sw-missing': 'sweep 對照三：sw.js 讀不到版本，要報、不能當成一致',
+  'cache-stale': 'sweep 對照四：還留著舊版的快取，要挑出那一個',
+  'real-error': 'sweep 對照五：不是新聞上游的錯誤，要算進真的錯誤',
+  clean: 'sweep 對照六（必過）：全部一致、只有新聞上游 502，什麼都不報',
 });
 
 done('controltest');
