@@ -2086,7 +2086,7 @@ const MUTATIONS = [
     replace: '',
     test: 'checkmutations',
     expect: '對照：紅了，但 expect 只出現在細節行、不在任何 ✗ 行',
-    alsoRed: ["對照：測試直接崩了","條突變都還有效（find 剛好一次"],
+    alsoRed: ["對照：測試直接崩了","對照：expect 寫錯成另一組存在的標籤","條突變都還有效（find 剛好一次"],
     alsoRedWhy: "判定一律回 red，「紅錯地方」的兩組對照都紅；checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
   },
   {
@@ -2097,7 +2097,7 @@ const MUTATIONS = [
     replace: '    const m = /^\\s+(?:✗ )?(.+)$/.exec(line.replace(/\\r$/, \'\'));',
     test: 'checkmutations',
     expect: '從輸出取出失敗的斷言訊息',
-    alsoRed: ["帶 expect、紅在含 expect 的那一條","對照：紅了，但 expect 只出現在細節行","只紅對應：紅在對的那一條、別組也一起紅","只紅對應（必過）：","條突變都還有效（find 剛好一次"],
+    alsoRed: ["帶 expect、紅在含 expect 的那一條","對照：紅了，但 expect 只出現在細節行","對照：expect 寫錯成另一組存在的標籤","只紅對應：紅在對的那一條、別組也一起紅","只紅對應（必過）：","條突變都還有效（find 剛好一次"],
     alsoRedWhy: "取失敗訊息的程式是每一個判定的基礎，改壞它，靠它的每一組判定對照都紅；checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
   },
   {
@@ -3181,6 +3181,44 @@ const MUTATIONS = [
     expect: '（前提）fixture 的除息日',
     alsoRed: ["ETF 看得到下一次除權息","而且有已公告的每股金額","標明那是公告值","明講不年化"],
     alsoRedWhy: "情境（未來的除息日）不在，前置紅了之後，依賴那個情境的四條斷言一起紅——前置就是為了讓人分得出是情境不在。",
+  },
+
+  // ---- EV：一次性量測腳本的登記（scripts/evidencereg.mjs；2026-09-24 Dispatch：收進 repo、列進孤兒檢查的登記）----
+  {
+    name: 'EV：沒登記的量測腳本不報',
+    why: 'scripts/evidence/ 多一支沒寫用途、比哪兩版、數字在哪的腳本，不會有人發現。',
+    file: 'scripts/evidencereg.mjs',
+    find: "  for (const f of files) if (!(f in registry)) out.push(`沒登記：scripts/evidence/${f}`);",
+    replace: '  // 突變：不報沒登記的',
+    test: 'doctest',
+    expect: '（對照）沒登記、登記了卻不在、檔頭不一樣、證據檔沒有那一段',
+  },
+  {
+    name: 'EV：登記了卻不在的不報',
+    why: '腳本被刪了，登記還說它在，證據檔指向一支不存在的腳本。',
+    file: 'scripts/evidencereg.mjs',
+    find: "  for (const f of Object.keys(registry)) if (!files.includes(f)) out.push(`登記了卻不在：scripts/evidence/${f}`);",
+    replace: '  // 突變：不報登記了卻不在的',
+    test: 'doctest',
+    expect: '（對照）沒登記、登記了卻不在、檔頭不一樣、證據檔沒有那一段',
+  },
+  {
+    name: 'EV：檔頭跟登記不一樣也不報',
+    why: '檔頭寫的用途、版本跟登記對不上，看檔頭的人被誤導。',
+    file: 'scripts/evidencereg.mjs',
+    find: '    if (headerLineOf(f, texts[f]) !== want) out.push(',
+    replace: '    if (false) out.push(',
+    test: 'doctest',
+    expect: '（對照）沒登記、登記了卻不在、檔頭不一樣、證據檔沒有那一段',
+  },
+  {
+    name: 'EV：證據檔裡沒有那一段也不報',
+    why: '「數字在證據檔哪一段」寫的段落不存在（改名或搬走了），指標就斷了。',
+    file: 'scripts/evidencereg.mjs',
+    find: '    if (!doc.includes(registry[f].section)) out.push(',
+    replace: '    if (false) out.push(',
+    test: 'doctest',
+    expect: '（對照）沒登記、登記了卻不在、檔頭不一樣、證據檔沒有那一段',
   },
 
   // ---- F9：build 驗法登記（scripts/buildverify.mjs；2026-09-24 統籌者新訂）----

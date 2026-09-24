@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 【本質一次性，保留供重做】範圍外第 3 件修正前（77b026d 的 upgradecheck）。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+# 【本質一次性，保留供重做】用途：範圍外第 3 件的修正前（upgradecheck 只看兩頁）｜比較：77b026d vs 2b4aa09｜數字在：docs/EVIDENCE_檢查器修補.md「**第 3、4 件已做**」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 # 第 3、4 件的證據（暫存複本、commit 之後）。舊版取明確的 77b026d。
 set -u
 ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"; OLD=77b026d

@@ -39,6 +39,9 @@ eq(judge({ code: 1, out: OUT_ELSEWHERE }, '目標斷言').verdict, 'wrong-place'
 eq(judge({ code: 1, out: OUT_CRASH }, '目標斷言').verdict, 'wrong-place',
   '對照：測試直接崩了（沒有 ✗ 行，expect 只出現在例外訊息裡）→ 判成「紅錯地方」');
 eq(judge({ code: 0, out: '' }, '目標斷言').verdict, 'not-red', '對照：完全沒紅 → 判成「沒紅」，跟「紅錯地方」分得開');
+// 2026-09-24 Dispatch：232 條沒寫 expect 的要分批補，先做這個對照——故意把一條的 expect 寫成**另一組真的存在的標籤**，判定必須報出來
+eq(judge({ code: 1, out: OUT_HIT }, '無關的那條').verdict, 'wrong-place',
+  '對照：expect 寫錯成另一組存在的標籤（那一組沒紅）→ 判成「紅錯地方」');
 eq(judge({ code: 1, out: OUT_ELSEWHERE }).verdict, 'red', '沒帶 expect 的照舊：只要紅就算');
 // 「只紅對應的那一種」（2026-09-24，統籌者驗收指出：以前只要有一條對上 expect 就判 red，不看別組有沒有一起紅）
 const OUT_BOTH = '\n— 某段 —\n  ✗ 目標斷言：數字對得上（檢查了 3 項）\n      命中 1 項\n  ✗ 另一組：也紅了\n\nx：0 項通過，2 項失敗';

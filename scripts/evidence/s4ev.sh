@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 【本質一次性，保留供重做】S4 修正前（84e3999 的 sweep）。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+# 【本質一次性，保留供重做】用途：S4 sweep 的修正前｜比較：84e3999 vs cb81089｜數字在：docs/EVIDENCE_檢查器修補.md「**S4 `sweep` 的合成對照組」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 # S4 三段證據：從真實入口（node scripts/sweep.mjs，打正式環境）在暫存複本（commit 之後）裡跑。
 # 盲點樣本：sweep 的版本比對改成永遠成立。
 set -u

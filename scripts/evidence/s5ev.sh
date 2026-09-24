@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 【本質一次性，保留供重做】S5 修正前（cb81089 的 gatescan／assertaudit）。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+# 【本質一次性，保留供重做】用途：S5 gatescan／assertaudit 孤兒檢查的修正前｜比較：cb81089 vs e8245a3｜數字在：docs/EVIDENCE_檢查器修補.md「**S5 兩份清單的孤兒檢查」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 # S5 三段證據，在暫存複本（commit 之後）從真實入口跑。
 set -u
 ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"

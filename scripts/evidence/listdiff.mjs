@@ -1,4 +1,4 @@
-// 【本質一次性，保留供重做】共用：比兩份清單（擴大母體沒少挑）。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+// 【本質一次性，保留供重做】用途：共用：比兩份清單（擴大母體沒有少挑）｜比較：不適用（共用的小工具，被同目錄的量測腳本呼叫）｜數字在：docs/EVIDENCE_檢查器修補.md「## 盤點：哪些有常設情境守著」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 // 在目前目錄比 assertaudit 舊清單（scripts/assertaudit-old.mjs 的 TESTS）與新清單（auditjudge.mjs 的 AUDIT_TESTS）
 import fs from 'node:fs';
 import path from 'node:path';

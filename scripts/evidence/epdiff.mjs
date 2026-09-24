@@ -1,4 +1,4 @@
-// 【本質一次性，保留供重做】範圍外第 2 件：新舊端點擷取比對。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+// 【本質一次性，保留供重做】用途：範圍外第 2 件：新舊兩種端點擷取樣式各跑一次｜比較：S9 盤點用的樣式 vs livejudge 的樣式｜數字在：docs/EVIDENCE_檢查器修補.md「**第 2 件已做**」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 // cwd＝暫存複本。新的 endpointsIn（livejudge.mjs）與 S9 盤點用的樣式，對同一批 app 檔各跑一次。
 import fs from 'node:fs';
 import path from 'node:path';

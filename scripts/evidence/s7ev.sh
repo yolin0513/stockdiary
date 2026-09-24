@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 【本質一次性，保留供重做】S7 修正前（cb81089 的 gatepush）。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+# 【本質一次性，保留供重做】用途：S7 閘門第零關的修正前｜比較：cb81089 vs 31cb4a9｜數字在：docs/EVIDENCE_檢查器修補.md「**S7 閘門第零關（驗法登記）與驗法可換順序」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 # S7 三段證據：在暫存複本裡把閘門換成「修正前」或「改壞的」版本並 commit，用新驗法（gatetest.sh）跑。
 set -u
 ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"

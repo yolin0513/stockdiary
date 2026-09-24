@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 【本質一次性，保留供重做】範圍外第 5 件（後來的 F8）修正前（77b026d）。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+# 【本質一次性，保留供重做】用途：範圍外第 5 件（後來的 F8）第一版的修正前｜比較：77b026d vs 3cf33ae｜數字在：docs/EVIDENCE_檢查器修補.md「**第 5 件已做**」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 # 第 5 件的「修正前」：暫存複本裡把三支 build 換成 77b026d 的版本，跑新的 buildtest。
 set -u
 ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"; OLD=77b026d

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 【本質一次性，保留供重做】F8 三個舊版（77b026d／3cf33ae／04b205e）配矩陣版 buildtest 的數字。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+# 【本質一次性，保留供重做】用途：F8 三支 build 的舊版矩陣數字｜比較：77b026d／3cf33ae／04b205e（修正前）vs 矩陣版 buildtest｜數字在：docs/EVIDENCE_檢查器修補.md「**F8：三支 build 資料變少照樣寫檔」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 # F8 的「修正前」：矩陣版 buildtest 配舊版的三支 build（明確的 commit），先證明是舊版。
 # 用法：bash f8old.sh <commit> <舊版必有的字串（檔名:字串）>...
 set -u

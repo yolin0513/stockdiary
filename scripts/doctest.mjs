@@ -230,4 +230,28 @@ section('凍結區：清單從 SPEC_全面優化 §0 讀，每個單位都跟快
     '（對照）改的是別的函式，這個函式的雜湊不變（函式層級的凍結不會誤殺同檔的其他程式）');
 }
 
+// ---------------------------------------------------------------------------
+section('一次性量測腳本（scripts/evidence/）：每一支都登記用途、比哪兩版、數字在證據檔哪一段');
+{
+  const { EVIDENCE_SCRIPTS, EVIDENCE_DOC, headerOf, evidenceProblems } = await import('./evidencereg.mjs');
+  const dir = path.join(ROOT, 'scripts', 'evidence');
+  const files = fs.readdirSync(dir).filter((f) => fs.statSync(path.join(dir, f)).isFile()).sort();
+  const texts = Object.fromEntries(files.map((f) => [f, fs.readFileSync(path.join(dir, f), 'utf8')]));
+  const doc = read(EVIDENCE_DOC);
+  ok(files.length >= 20, `（前提）scripts/evidence/ 裡有 ${files.length} 支（母體不是空的）`);
+  eq(evidenceProblems({ files, texts, doc }), [], '一次性量測腳本：每一支都登記了、登記的都在、檔頭＝登記、證據檔裡找得到那一段');
+  // 對照（§5.3）：合成的目錄，每一種問題各一個樣本，都要報；乾淨的樣本不能報
+  const reg = { 'a.sh': { what: '甲', compare: 'x vs y', section: '**甲段' }, 'b.mjs': { what: '乙', compare: 'x vs y', section: '**乙段' } };
+  const good = { 'a.sh': `#!/usr/bin/env bash\n${headerOf('a.sh', reg['a.sh'])}\necho\n`, 'b.mjs': `${headerOf('b.mjs', reg['b.mjs'])}\n` };
+  const gdoc = '**甲段 …\n**乙段 …\n';
+  eq(evidenceProblems({ files: ['a.sh', 'b.mjs'], texts: good, doc: gdoc, registry: reg }), [], '（對照）乾淨的合成目錄 → 沒有問題');
+  const bad = evidenceProblems({
+    files: ['a.sh', 'z.sh'], texts: { 'a.sh': '#!/usr/bin/env bash\n# 【本質一次性，保留供重做】用途：甲（跟登記不一樣）\n', 'z.sh': '' },
+    doc: '**乙段 …\n', registry: reg,
+  });
+  eq(bad, ['沒登記：scripts/evidence/z.sh', '登記了卻不在：scripts/evidence/b.mjs', '檔頭跟登記不一樣：scripts/evidence/a.sh', '證據檔裡找不到那一段：scripts/evidence/a.sh「**甲段」'],
+    '（對照）沒登記、登記了卻不在、檔頭不一樣、證據檔沒有那一段 → 四種都報');
+  ok(Object.keys(EVIDENCE_SCRIPTS).length === files.length, `登記 ${Object.keys(EVIDENCE_SCRIPTS).length} 支＝目錄裡 ${files.length} 支`);
+}
+
 done('doctest');

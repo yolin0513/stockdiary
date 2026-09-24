@@ -1,4 +1,4 @@
-// 【本質一次性，保留供重做】範圍外第 3、4 件：新舊路由清單比對。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+// 【本質一次性，保留供重做】用途：範圍外第 3、4 件：新舊路由清單比對｜比較：77b026d 的 sweep 清單 vs scripts/routes.mjs｜數字在：docs/EVIDENCE_檢查器修補.md「**第 3、4 件已做**」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 // cwd＝暫存複本。舊 sweep 寫死的清單 vs 新的 routes.mjs；舊 upgradecheck 換版後看的頁 vs 新的逐頁清單。
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 【本質一次性，保留供重做】S6 修正前（cb81089 的 livecheck）。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+# 【本質一次性，保留供重做】用途：S6 livecheck 的修正前｜比較：cb81089 vs 6734a22｜數字在：docs/EVIDENCE_檢查器修補.md「**S6 `livecheck` 用錄好的回應當合成對照」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 set -u
 ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
 OLDREV="${OLDREV:-cb81089}"   # 修正前（當時寫 origin/main，指的就是這個 commit；證據檔寫的明確雜湊）

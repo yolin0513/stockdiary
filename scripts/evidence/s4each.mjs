@@ -1,4 +1,4 @@
-// 【本質一次性，保留供重做】S4 逐條突變紅了哪幾組（s4ev.sh 呼叫）。對明確的舊 commit 量「修正前」，結果記在 docs/EVIDENCE_檢查器修補.md；不在任何測試鏈裡。
+// 【本質一次性，保留供重做】用途：S4 逐條突變紅了哪幾組（s4ev.sh 呼叫）｜比較：cb81089 上逐條套突變｜數字在：docs/EVIDENCE_檢查器修補.md「**S4 `sweep` 的合成對照組」｜不用守：對明確的舊 commit 量一次，舊版不會再變；新版由常設測試守著（證據檔「盤點」一節）
 // 在目前目錄（暫存複本）逐條套 S4 突變，跑 controltest，印出紅了哪幾組；每條之後還原並比雜湊。
 import fs from 'node:fs';
 import crypto from 'node:crypto';
