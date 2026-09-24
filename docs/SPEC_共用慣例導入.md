@@ -1,6 +1,7 @@
 # SPEC_共用慣例導入 — StockDiary（第 2 批）
 
 > 狀態：**已執行（2026-09-19）**。由 StockDiary 的 Opus 5 開發 Session 執行。執行完把這一行改成「已執行（日期）」——**不用寫 commit hash**（這份工單跟導入是同一個 commit，寫不進自己的 hash；要查就 `git log --oneline -- docs/SPEC_共用慣例導入.md`）。
+> 〔2026-09-24 註：本檔寫的推送做法已作廢，推送一律用本 App 的推送閘門（見 `CLAUDE.md`）。〕
 > 撰寫：Fable 統籌 Session，2026-09-19。依據：統籌工作區的 `SPEC_共用慣例.md` v2（Yolin 2026-09-19 拍板，七項全數照案；三代理投票 5 題 3:0）。第 1 批 TripQuest 已完成，全新 Session 的第一則回覆第一行自動出現了回執，機制有實據。
 > 這是 docs-only 的工作：**不 bump 版本（`npm run bump` 不要跑）、不部署 Worker、不算一版。完全不碰凍結區。**
 
