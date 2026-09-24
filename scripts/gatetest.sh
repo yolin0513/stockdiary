@@ -61,6 +61,7 @@ prep() {
   git clean -fdq -e .private -e .logs
   rm -f .logs/precheck-broken.mjs .logs/piiscan-broken.mjs .logs/build-verified.txt
   register_work
+  build_reg "$(remote_sha)"   # F9：每一種都先帶著「對起點」的 build 登記（13–18 各自再改）
 }
 
 OK=0
@@ -73,6 +74,7 @@ reason() { node scripts/gatereason.mjs "$1" "$2"; }
 node scripts/gatereason.mjs --selftest || { echo "  ✗ （對照）比對擋下理由的程式壞了 —— 後面每一種情境的「是誰擋的」都不可信"; exit 1; }
 
 NOT=""   # 設了的話：輸出裡**不能**出現這一句（run 用完就清掉）
+PRE_BAD=""   # 情境在推送之前就量到的不符（例：驗法沒全過，舊登記卻還在）；run 把它算進結論、用完就清掉
 run() {
   # run <情境> <預期回傳值> <假遠端應該：沒動|等於本機> <理由的規格（證明是「對的那一關、對的那一類」擋下；見 gatereason.mjs）> [環境變數…]
   # 只看回傳值不夠：第一版情境 1 回傳了 1，但擋下它的是第五類、不是該抓 token 的四類自查。
@@ -92,6 +94,8 @@ run() {
   local extra=""
   if [ -n "$NOT" ] && reason "$T/out.txt" "$NOT"; then good=0; extra="，輸出裡不該有「$NOT」卻有"; fi
   NOT=""
+  if [ -n "$PRE_BAD" ]; then good=0; extra="$extra，推送之前：$PRE_BAD"; fi
+  PRE_BAD=""
   local verdict
   verdict="$(grep -E '^【' "$T/out.txt")"
   if [ "$good" -eq 1 ]; then OK=$((OK + 1)); echo "  ✓ $name：回傳 $code（預期 $want），假遠端$moved｜$verdict"
@@ -226,54 +230,76 @@ sc_11() {
   run "11. 沒有登記檔" 4 沒動 "head|【第零關擋下】沒有驗法登記"
 }
 
-# 12 系列：F9 的 build 驗法登記（2026-09-24，統籌者新訂）。這次要推的 commit 動到 build 或它的驗法 → 要有對得上的登記，否則回 5。
-# 登記直接照 buildverify.mjs 的格式寫（這裡驗的是閘門怎麼比對；登記怎麼寫由 scripts/buildverifytest.mjs 驗）。
+# 13–18：F9 的六種必備情境（統籌者 2026-09-24 原文，一種一個情境；編號對照：13＝第 1 條 … 18＝第 6 條）。
+# 每一種靠**不同的機制**擋下或放行，所以每一種都有一條只紅它的突變（gateselftest 的 G5–G10）：
+#   prep 每一種都先放一份「對起點」的 build 登記——沒動到被守的檔的情境都帶著登記，只有 17 專門拿掉它。
+# 15、16、14 在複本裡真的跑 node scripts/buildverify.mjs（14 跑完整的 buildtest，約 1 分鐘）；其餘直接照 buildverify 的格式寫登記。
 BUILD_FILES="$(node --input-type=module -e "import { GUARDED } from './scripts/buildverify.mjs'; console.log(GUARDED.join(' '))")" \
   || { echo "讀不到 buildverify.mjs 的 GUARDED"; exit 1; }
 [ -n "$BUILD_FILES" ] || { echo "buildverify.mjs 的 GUARDED 是空的"; exit 1; }
-build_reg() {   # build_reg <commit>：把那一版被守的檔登記成驗過
+build_reg() {   # build_reg <commit>：把那一版被守的檔登記成驗過（格式同 buildverify.mjs；buildverifytest 驗它寫出來的就是這個格式）
   local c="$1" f h
   { echo "commit $c"; for f in $BUILD_FILES; do h="$(git rev-parse "$c:$f")" || die "算不出 $c:$f"; echo "$f $h"; done; } > .logs/build-verified.txt
 }
 touch_build() { printf '// gatetest：%s\n' "$1" >> scripts/buildguard.mjs; git add scripts/buildguard.mjs; git commit -q -m "gatetest：$1" || die "commit 失敗（$1）"; }
-# 12. 動到 build、沒有登記 → 回 5，停在自查之前
-sc_12() {
-  [ ! -e .logs/build-verified.txt ] || die "情境 12：build 登記原本就在，前提沒造成"
-  touch_build "改 build、沒有登記"
+REG_B=.logs/build-verified.txt
+# 13（第 1 條）：改一支被守的檔、commit、沒跑驗法就推 → 擋下、點名驗法。登記是改之前那一版（跑過、後來又改）。
+sc_13() {
+  [ -s "$REG_B" ] || die "情境 13：起點的登記原本就不在，前提沒造成"
+  touch_build "改 build、沒重跑驗法"
   NOT="head|(a) 金鑰／token"
-  run "12. 動到 build、沒有 build 驗法登記" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildguard.mjs，但沒有 build 驗法登記"
+  run "13. 改了被守的檔、沒跑驗法就推" 5 沒動 "head|【F9 擋下】build 驗法登記跟要推的版本對不上：scripts/buildguard.mjs（這次動到 scripts/buildguard.mjs）——先跑 node scripts/buildverify.mjs"
 }
-# 12b. 前一個 commit 動到 build、最後一個乾淨，登記是改之前那一版 → 仍要擋（只看最後一個 commit 會漏；MealMate 補的）
-sc_12b() {
-  build_reg "$(git rev-parse HEAD)"
+# 14（第 2 條）：同一個改動，真的跑過驗法（全過）之後 → 推得出去。之後工作區再改一行、不 commit：比的是要推的版本，不是工作區。
+sc_14() {
+  touch_build "改 build、跑過驗法"
+  node scripts/buildverify.mjs > "$T/bv14.txt" 2>&1 || die "情境 14：驗法在乾淨的複本上沒過，前提沒造成（$(tail -1 "$T/bv14.txt")）"
+  [ "$(head -1 "$REG_B")" = "commit $(git rev-parse HEAD)" ] || die "情境 14：登記的不是 HEAD，前提沒造成"
+  printf '// gatetest：驗法跑完之後、沒 commit 的改動\n' >> scripts/buildguard.mjs
+  [ -n "$(git status --porcelain -- scripts/buildguard.mjs)" ] || die "情境 14：工作區沒有改動，前提沒造成"
+  run "14. 跑過驗法之後同一個改動（工作區另有改動）" 0 等於本機 "head|F9：這次要推的 commit 動到 scripts/buildguard.mjs，build 驗法登記相符"
+}
+# 15（第 3 條）：驗法沒全過 → 登記被刪（先放一份舊登記再跑、跑完它不在）→ 動到被守的檔就推不出去。
+sc_15() {
+  [ -s "$REG_B" ] || die "情境 15：舊登記原本就不在，前提沒造成"
+  printf 'gatetest：故意讓驗法壞掉 (\n' >> scripts/buildtest.mjs
+  git add scripts/buildtest.mjs; git commit -q -m "gatetest：驗法壞掉" || die "commit 失敗（情境 15）"
+  node scripts/buildverify.mjs > "$T/bv15.txt" 2>&1 && die "情境 15：驗法壞了，buildverify 卻回 0"
+  grep -q '^【不登記】驗法沒過' "$T/bv15.txt" || die "情境 15：buildverify 不是因為驗法沒過而停（$(grep '^【不登記】' "$T/bv15.txt")）"
+  [ -e "$REG_B" ] && PRE_BAD="驗法沒全過，先放的舊登記還在"
+  NOT="head|(a) 金鑰／token"
+  run "15. 驗法沒全過、登記被刪" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildtest.mjs，但沒有 build 驗法登記——先跑 node scripts/buildverify.mjs"
+}
+# 16（第 4 條）：被守的檔工作區有改動時跑驗法 → 不登記（不能寫入新的）→ 推不出去。先拿掉起點的登記，讓「刪或不動」都不影響結論。
+sc_16() {
+  rm -f "$REG_B"
+  touch_build "改 build"
+  printf '// gatetest：沒 commit 的改動\n' >> scripts/buildguard.mjs
+  [ -n "$(git status --porcelain -- scripts/buildguard.mjs)" ] || die "情境 16：工作區沒有改動，前提沒造成"
+  node scripts/buildverify.mjs > "$T/bv16.txt" 2>&1
+  [ -e "$REG_B" ] && PRE_BAD="工作區有改動，卻寫入了新登記"
+  grep -q '^【不登記】工作區跟 HEAD 不一樣：scripts/buildguard.mjs' "$T/bv16.txt" || PRE_BAD="${PRE_BAD:-buildverify 沒有講明是工作區有改動而不登記}"
+  NOT="head|(a) 金鑰／token"
+  run "16. 工作區有改動時跑驗法、不登記" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildguard.mjs，但沒有 build 驗法登記——先跑 node scripts/buildverify.mjs"
+}
+# 17（第 5 條）：沒動到被守的檔、也沒有登記 → 照常推得出去（專用情境：其他沒動到的情境都帶著登記）。
+sc_17() {
+  [ -s "$REG_B" ] || die "情境 17：起點的登記原本就不在，拿掉它的前提沒造成"
+  rm "$REG_B"
+  clean_commit "沒動到 build、也沒有登記"
+  run "17. 沒動到被守的檔、沒有登記" 0 等於本機 "head|F9：這次要推的 1 個 commit 沒動到 build 與它的驗法，不看登記"
+}
+# 18（第 6 條）：前一個 commit 動到被守的檔、最後一個乾淨 → 仍要擋（範圍算這次要推的每一個 commit）。沒有登記。
+sc_18() {
+  rm -f "$REG_B"
   touch_build "改 build"
   clean_commit "改 build 之後又疊一個乾淨的"
-  [ -z "$(git diff --name-only HEAD~1 HEAD -- $BUILD_FILES)" ] || die "情境 12b：最後一個 commit 也動到 build，前提沒造成"
+  [ -z "$(git diff --name-only HEAD~1 HEAD -- $BUILD_FILES)" ] || die "情境 18：最後一個 commit 也動到 build，前提沒造成"
   NOT="head|(a) 金鑰／token"
-  run "12b. 前一個 commit 動到 build、最後一個乾淨、登記是舊版" 5 沒動 "head|【F9 擋下】build 驗法登記跟要推的版本對不上：scripts/buildguard.mjs"
-}
-# 12c. 動到 build、登記對得上要推的版本 → 放行
-sc_12c() {
-  touch_build "改 build、有對得上的登記"
-  build_reg "$(git rev-parse HEAD)"
-  run "12c. 動到 build、登記對得上" 0 等於本機 "head|F9：這次要推的 commit 動到 scripts/buildguard.mjs，build 驗法登記相符"
-}
-# 12e. 已 commit 的版本跟登記對得上，工作區另有沒 commit 的改動 → 放行（比的是要推的 commit 裡的版本，不是工作區）
-sc_12e() {
-  touch_build "改 build、登記對得上，工作區另外再改"
-  build_reg "$(git rev-parse HEAD)"
-  printf '// gatetest：沒 commit 的改動\n' >> scripts/buildguard.mjs
-  [ -n "$(git status --porcelain -- scripts/buildguard.mjs)" ] || die "情境 12e：工作區沒有改動，前提沒造成"
-  run "12e. 登記對得上已 commit 的版本、工作區另有改動" 0 等於本機 "head|F9：這次要推的 commit 動到 scripts/buildguard.mjs，build 驗法登記相符"
-}
-# 12d. 沒動到 build、也沒有登記 → 不看登記，放行（不是每次推送都要跑 buildtest）
-sc_12d() {
-  [ ! -e .logs/build-verified.txt ] || die "情境 12d：build 登記原本就在，前提沒造成"
-  clean_commit "沒動到 build"
-  run "12d. 沒動到 build、沒有登記" 0 等於本機 "head|F9：這次要推的 1 個 commit 沒動到 build 與它的驗法，不看登記"
+  run "18. 前一個 commit 動到、最後一個乾淨" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildguard.mjs，但沒有 build 驗法登記——先跑 node scripts/buildverify.mjs"
 }
 
-ALL="1 1b 2a 2b 2c 3 4 6 7 7b 8 9 10 11 12 12b 12c 12d 12e 5"
+ALL="1 1b 2a 2b 2c 3 4 6 7 7b 8 9 10 11 13 14 15 16 17 18 5"
 ORDER="${GATETEST_ORDER:-$ALL}"
 # 順序清單要恰好是每一種各一次：少一種就少驗一種，多一種就是打錯字
 SORTED_ALL="$(printf '%s\n' $ALL | sort)"

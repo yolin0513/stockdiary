@@ -89,14 +89,6 @@ function shellCommands(text) {
 // ---- 登記的例外（初篩命中逐條看過之後才列進來，每一條要寫理由）----
 const EXCEPTIONS = [
   {
-    file: 'scripts/gatetest.sh', rule: 'absent-assert', lineIncludes: 'die "情境 12：build 登記原本就在，前提沒造成"',
-    why: '這是前提斷言「原本不在」（情境 12 要驗的是沒有登記時擋下），不是斷言「某個東西被刪掉了」；prep 每一種都先刪登記，這一行確認刪到了。',
-  },
-  {
-    file: 'scripts/gatetest.sh', rule: 'absent-assert', lineIncludes: 'die "情境 12d：build 登記原本就在，前提沒造成"',
-    why: '同上：情境 12d 的前提是「沒有登記」，這一行是確認前提成立，不是斷言被刪掉。',
-  },
-  {
     file: 'scripts/buildverify.mjs', rule: 'absent-assert', lineIncludes: 'const missing = GUARDED.filter((f) => !fs.existsSync(',
     why: '檢查器自己的故障停下：登記清單上的檔不在就不登記。情境在 buildverifytest「清單上的檔不見了」（先 commit 過、再拿掉）。',
   },
