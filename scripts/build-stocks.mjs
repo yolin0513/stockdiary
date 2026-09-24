@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseStockDayAll } from '../js/twse.js';
+import { guard, shrinkProblem, readPrevious, writeAtomic } from './buildguard.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GAP_MS = 2500; // 對同一個主機的連續請求間隔
@@ -129,13 +130,50 @@ async function main() {
   const args = process.argv.slice(2);
   const cacheDir = args.includes('--cache') ? args[args.indexOf('--cache') + 1] : null;
 
+  // ---- 寫檔前關卡（scripts/buildguard.mjs）：六份來源每一份都要有、不是空的、欄位對得上 ----
+  // 以前：上櫃公司基本資料是空的照樣寫檔、回 0；上市公司基本資料空了或欄位改名，只會被「產業別太少」
+  // 碰巧擋下、講不出是哪一份來源（S8 盤點實測）。現在六份逐一點名，有任何一份不過就一個檔都不寫。
+  const g = guard('build-stocks');
   console.log('抓資料來源：');
-  const twseCompanies = JSON.parse(await load('twseCompanies', { cacheDir }));
-  const tpexCompanies = JSON.parse(await load('tpexCompanies', { cacheDir }));
-  const stockDayAllCsv = await load('stockDayAll', { cacheDir });
-  const isinListed = parseIsinTable(await load('isinListed', { cacheDir, decode: 'big5' }));
-  const isinOtc = parseIsinTable(await load('isinOtc', { cacheDir, decode: 'big5' }));
-  const isinEmerging = parseIsinTable(await load('isinEmerging', { cacheDir, decode: 'big5' }));
+  const raw = {};
+  for (const name of Object.keys(SOURCES)) {
+    try {
+      raw[name] = await load(name, { cacheDir, decode: name.startsWith('isin') ? 'big5' : undefined });
+    } catch (e) {
+      g.add(`${name}：取不到（${e.message}）`);
+      raw[name] = null;
+    }
+  }
+  const jsonRows = (name, keys) => {
+    if (raw[name] == null) return [];
+    let rows;
+    try { rows = JSON.parse(raw[name]); } catch (e) { g.add(`${name}：解析不了（${e.message}）`); return []; }
+    if (!Array.isArray(rows)) { g.add(`${name}：來源不是陣列`); return []; }
+    if (rows.length === 0) { g.add(`${name}：來源 0 筆`); return []; }
+    for (const k of keys) {
+      const miss = rows.filter((r) => !r || typeof r !== 'object' || !(k in r)).length;
+      if (miss) g.add(`${name}：欄位對不上，${miss}／${rows.length} 筆找不到「${k}」`);
+    }
+    return rows.filter((r) => r && typeof r === 'object');
+  };
+  const isinRows = (name) => {
+    if (raw[name] == null) return [];
+    const rows = parseIsinTable(raw[name]);
+    if (rows.length === 0) g.add(`${name}：ISIN 表解析出 0 列（空的，或表格格式變了）`);
+    return rows;
+  };
+  const twseCompanies = jsonRows('twseCompanies', ['公司代號', '產業別']);
+  const tpexCompanies = jsonRows('tpexCompanies', ['SecuritiesCompanyCode', 'SecuritiesIndustryCode']);
+  const isinListed = isinRows('isinListed');
+  const isinOtc = isinRows('isinOtc');
+  const isinEmerging = isinRows('isinEmerging');
+  let sda = { date: null, rows: [] };
+  if (raw.stockDayAll != null) {
+    try { sda = parseStockDayAll(raw.stockDayAll); } catch (e) { g.add(`stockDayAll：解析不了（${e.message}）`); }
+    if (sda.rows.length === 0 && g.problems.every((p) => !p.startsWith('stockDayAll：'))) g.add('stockDayAll：解析出 0 檔');
+  }
+  // 來源本身有問題，後面的 join 與檢查都沒有意義：先停
+  g.check();
 
   // ---- 產業別代碼 → 名稱 ----
   const codeToIndustryCode = new Map();
@@ -170,7 +208,6 @@ async function main() {
   addIsin(isinListed, '上市');   // 上市最後寫，轉上市的公司以上市為準
 
   // STOCK_DAY_ALL 是「今天真的在集中市場成交的證券」，對「是不是上市」最有權威。
-  const sda = parseStockDayAll(stockDayAllCsv);
   let addedFromSda = 0;
   for (const row of sda.rows) {
     const prev = stocks[row.code];
@@ -200,10 +237,19 @@ async function main() {
   if (Object.keys(industries).length < 20) bad.push(`產業別只有 ${Object.keys(industries).length} 個，太少`);
   const noName = Object.entries(stocks).filter(([, s]) => !s.name);
   if (noName.length) bad.push(`${noName.length} 檔沒有名稱`);
-  if (bad.length) throw new Error(`產出的代號表不合格，不寫檔：\n  ${bad.join('\n  ')}`);
+  for (const b of bad) g.add(`產出的代號表不合格：${b}`);
 
   const byMarket = {};
   for (const s of Object.values(stocks)) byMarket[s.market] = (byMarket[s.market] || 0) + 1;
+
+  // 每一個市場都跟上一次成功的比：少一半以上就停（以前少了一整份上櫃來源也照樣寫檔）
+  const dest = path.join(ROOT, 'data', 'stocks.json');
+  const prevCounts = readPrevious(dest)?.counts?.byMarket ?? {};
+  for (const m of Object.keys(prevCounts)) {
+    const p = shrinkProblem(`${m}的檔數`, byMarket[m] ?? 0, prevCounts[m]);
+    if (p) g.add(p);
+  }
+  g.check();
 
   const out = {
     generatedAt: new Date().toISOString(),
@@ -214,9 +260,8 @@ async function main() {
     stocks: Object.fromEntries(Object.keys(stocks).sort().map((k) => [k, stocks[k]])),
   };
 
-  const dest = path.join(ROOT, 'data', 'stocks.json');
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(dest, JSON.stringify(out, null, 0), 'utf8');
+  writeAtomic(dest, JSON.stringify(out, null, 0));
   const kb = (fs.statSync(dest).size / 1024).toFixed(0);
   console.log(`\n寫出 ${dest}（${kb} KB）`);
   console.log(`共 ${out.counts.total} 檔：${Object.entries(byMarket).map(([m, n]) => `${m} ${n}`).join('、')}；ETF ${etfCount} 檔`);

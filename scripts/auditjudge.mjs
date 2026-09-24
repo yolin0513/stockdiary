@@ -37,6 +37,8 @@ export const AUDIT_TESTS = [
   'checkmutations',
   // 2026-09-24（S5）孤兒檢查抓到的：v9 之後接進鏈、當時沒補進來的三支
   'taptest', 'controltest', 'gatescan',
+  // 2026-09-24：三支 build 的寫檔前關卡（孤兒檢查一接進鏈就點名它）
+  'buildtest',
 ];
 /** npm test 鏈上、刻意不收的：名稱 → 理由。 */
 export const AUDIT_SKIP = {

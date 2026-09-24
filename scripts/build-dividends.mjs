@@ -20,6 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guard, shrinkProblem, readPrevious, writeAtomic } from './buildguard.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const URL_SRC = 'https://openapi.twse.com.tw/v1/opendata/t187ap45_L';
@@ -60,15 +61,22 @@ async function main() {
   const res = await fetch(URL_SRC, { signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error(`來源回 ${res.status}`);
   const rows = await res.json();
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error('來源回的不是陣列或是空的');
 
-  const first = rows[0];
+  // ---- 寫檔前關卡（scripts/buildguard.mjs）：有任何一項不過，就一個檔都不寫 ----
+  // 以前：只看第一筆的欄位；代號全部不合格式、或現金股利欄全空，照樣寫出「0 檔、0 筆」的 dividends.json；
+  // 只給 40 筆裡的 2 筆也照樣寫（S8 盤點實測）。
+  const g = guard('build-dividends');
+  if (!Array.isArray(rows)) g.add(`股利分派情形（t187ap45_L）：來源不是陣列（${typeof rows}）`);
+  else if (rows.length === 0) g.add('股利分派情形（t187ap45_L）：來源 0 筆');
+  const list = Array.isArray(rows) ? rows : [];
   for (const k of ['公司代號', '股利年度', '股東配發-盈餘分配之現金股利(元/股)']) {
-    if (!(k in first)) throw new Error(`來源欄位與預期不同：找不到「${k}」。欄位變了就不要硬解。`);
+    const miss = list.filter((r) => !r || typeof r !== 'object' || !(k in r)).length;
+    if (miss) g.add(`股利分派情形（t187ap45_L）：欄位對不上，${miss}／${list.length} 筆找不到「${k}」`);
   }
 
   const byCode = new Map();
-  for (const r of rows) {
+  for (const r of list) {
+    if (!r || typeof r !== 'object') continue;   // 上面的欄位檢查已經記下這一筆
     const code = String(r['公司代號'] ?? '').trim();
     if (!/^\d{4,6}[A-Z]?$/.test(code)) continue;
     const rec = {
@@ -84,19 +92,26 @@ async function main() {
     byCode.set(code, [...(byCode.get(code) ?? []), rec]);
   }
 
+  // 收進來的檔數：0 就停（以前照樣寫出 0 檔的輸出）；比上一次成功的少一半以上也停
+  if (list.length > 0 && byCode.size === 0) g.add(`股利分派情形（t187ap45_L）：收進來 0 檔（${list.length} 筆裡，代號都不合格式，或都沒有配發）`);
+  const prev = readPrevious(OUT);
+  const shrink = shrinkProblem('股利分派情形（t187ap45_L）收進來的檔數', byCode.size, prev ? Object.keys(prev.codes ?? {}).length : null);
+  if (shrink) g.add(shrink);
+  g.check();
+
   // 每檔照期間新到舊
-  for (const list of byCode.values()) list.sort((a, b) => String(b.range).localeCompare(String(a.range)));
+  for (const recs of byCode.values()) recs.sort((a, b) => String(b.range).localeCompare(String(a.range)));
 
   const out = {
     source: 't187ap45_L',
     sourceUrl: URL_SRC,
     // 出表日期是**資料的日期**，不是我們抓的日期。畫面要顯示這個。
-    reportDate: String(rows[0]['出表日期'] ?? '').trim(),
+    reportDate: String(list[0]['出表日期'] ?? '').trim(),
     generatedAt: new Date().toISOString(),
     codes: Object.fromEntries([...byCode].sort((a, b) => a[0].localeCompare(b[0]))),
   };
 
-  fs.writeFileSync(OUT, JSON.stringify(out), 'utf8');
+  writeAtomic(OUT, JSON.stringify(out));
   const kb = (fs.statSync(OUT).size / 1024).toFixed(0);
   const counts = [...byCode.values()].map((l) => l.length);
   process.stdout.write(
