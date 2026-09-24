@@ -8,6 +8,12 @@
 #           有命中、對照組壞了、黑名單檔不見、或取不到遠端狀態算不出要掃哪些 commit）
 #   回傳 2  第二關：推送本身失敗（被拒、連不上……）
 #   回傳 3  第三關：推送回報成功，但遠端的分支≠本機（「推了但沒成功」）
+#   回傳 4  第零關（最先跑）：閘門、自查或驗法改過之後還沒跑過驗法——四支檔案目前的雜湊
+#           跟 .logs/gate-verified.txt 的登記不一致，或沒有登記檔（新 clone、剛改完）
+#
+# 第零關為什麼（2026-09-24，SPEC_檢查器修補 S7；共用慣例 §5.15）：「改過閘門就重跑驗法」以前靠人記得。
+# 現在驗法（scripts/gatetest.sh）全部符合時才登記四支檔案的雜湊，沒跑過或跑了沒全過，就推不出去。
+# 做法照 MealMate 的登記制。**新 Session 第一次推送前，先跑一次 bash scripts/gatetest.sh（約 1 分鐘）。**
 #
 # 為什麼長這樣（2026-09-23）：
 #   · 以前推送那一行是 `node precheck.mjs HEAD | tail -1 && git push …`：管線的回傳值是最後一個指令的，
@@ -28,6 +34,26 @@ PIISCAN="${PIISCAN:-$HERE/piiscan.mjs}"
 mkdir -p "$ROOT/.logs"
 OUT="$ROOT/.logs/gatepush-last.log"
 : > "$OUT"
+
+# ---- 第零關：驗法登記（在 fetch 與自查之前）----
+# 登記檔一行一支：「路徑 雜湊」。雜湊用 git hash-object 算工作區的檔——有沒 commit 的改動，也對不上。
+REG="$ROOT/.logs/gate-verified.txt"
+GATE_FILES="scripts/gatepush.sh scripts/precheck.mjs scripts/piiscan.mjs scripts/gatetest.sh"
+if [ -s "$REG" ]; then
+  REG_BAD=""
+  for f in $GATE_FILES; do
+    want="$(awk -v f="$f" '$1 == f { print $2 }' "$REG")"
+    have="$(git -C "$ROOT" hash-object "$ROOT/$f")"
+    if [ -z "$want" ] || [ -z "$have" ] || [ "$want" != "$have" ]; then REG_BAD="$REG_BAD $f"; fi
+  done
+  if [ -n "$REG_BAD" ]; then
+    echo "【第零關擋下】改過之後還沒跑過驗法：${REG_BAD# }（雜湊跟 .logs/gate-verified.txt 的登記不一致）。先跑 bash scripts/gatetest.sh，全部符合才會重新登記"
+    exit 4
+  fi
+else
+  echo "【第零關擋下】沒有驗法登記（.logs/gate-verified.txt）——新 clone、剛改完、或上次驗法沒全過。先跑 bash scripts/gatetest.sh"
+  exit 4
+fi
 
 LOCAL="$(git -C "$ROOT" rev-parse --verify -q "refs/heads/$BRANCH")"
 if [ -z "$LOCAL" ]; then echo "【第一關擋下】本機沒有分支 $BRANCH"; exit 1; fi

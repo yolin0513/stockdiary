@@ -14,7 +14,7 @@
 
 **2026-09-24 進行中：`docs/SPEC_檢查器修補.md`**（已核可；順序 P0 → P1〔S3、S4〕→ P2〔S5、S6、S7、S9、S8〕，每件一個 commit，訊息寫編號）。
 P0（S1、S2）已驗收（`84e3999`）。**S3 已做**：`assertaudit` 的判斷邏輯抽到 `scripts/auditjudge.mjs`，開頭先跑四組對照（一定失敗的斷言、空母體、寫出資料前就崩、必過的乾淨測試），沒過就回傳 1、不產報告；
-同一組對照由新的 `scripts/controltest.mjs` 每版在 `npm test` 裡跑（每組用寫死的標籤點名，少一組也會紅），突變清單加了以 `S3：` 開頭的四條。**S4 已做**：`sweep` 的判斷抽到 `scripts/sweepjudge.mjs`，開頭用錄好的合成回應跑六組對照（不打網路），`controltest` 每版跑同一組，突變清單加了以 `S4：` 開頭的六條。**S5 已做**：兩份清單各配孤兒檢查（`assertaudit` 的清單對 `npm test` 鏈、`gatescan` 的 `FILES` 對整個 repo 裡像閘門的腳本），都在每版會跑的那一組。**S6 已做**：`livecheck` 的判斷抽到 `scripts/livejudge.mjs`，開頭用錄好的回應跑九組對照（不打證交所），`controltest` 每版跑。**下一件是 S7**（§5.15 機器擋：驗法全過時登記被驗檔的雜湊，閘門第零關比對；`gatetest` 換順序跑一次）。
+同一組對照由新的 `scripts/controltest.mjs` 每版在 `npm test` 裡跑（每組用寫死的標籤點名，少一組也會紅），突變清單加了以 `S3：` 開頭的四條。**S4 已做**：`sweep` 的判斷抽到 `scripts/sweepjudge.mjs`，開頭用錄好的合成回應跑六組對照（不打網路），`controltest` 每版跑同一組，突變清單加了以 `S4：` 開頭的六條。**S5 已做**：兩份清單各配孤兒檢查（`assertaudit` 的清單對 `npm test` 鏈、`gatescan` 的 `FILES` 對整個 repo 裡像閘門的腳本），都在每版會跑的那一組。**S6 已做**：`livecheck` 的判斷抽到 `scripts/livejudge.mjs`，開頭用錄好的回應跑九組對照（不打證交所），`controltest` 每版跑。**S7 已做**：閘門第零關（回 4）比對驗法登記，`gatetest.sh` 全部符合才登記；情境改成獨立函式、可換順序。**下一件是 S9**（補齊 v9 盤點表沒實測的格子），最後 S8（三支 build 只盤點）。
 每件三段證據（修正前放行／修正後擋而且理由對／拿掉判斷的突變只紅對應那一條）；突變整套等 F1–F7 全部做完、四家一起跑。線上仍是 v0.7.23（這一輪沒有 bump）。
 
 **2026-09-23 做完的兩件（都已 push）**：
@@ -205,7 +205,7 @@ P0（S1、S2）已驗收（`84e3999`）。**S3 已做**：`assertaudit` 的判�
 6. **不得出現任何投資建議、目標價、買賣建議**——AI 輸出、UI 文案、試算器預設值、說明文字全部適用。
 7. **不規劃也不實作任何券商帳密、下單、轉帳功能。**
 8. 沿用 JLPT_App／TripQuest 技術路線：原生 JS ES Modules ＋ IndexedDB ＋ Service Worker，無框架、無打包；`h()` 全 textNode、URL 屬性白名單；CSP `script-src 'self'`；外部請求一律 `AbortSignal.timeout` ＋ 降級。
-9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變＋**`npm run checkmutations`（每版必跑，不到一秒：突變有沒有過期、`expect` 找不找得到）**＋**`npm run gatescan`（每版必跑，不到一秒：閘門、自查、驗法有沒有已知的壞寫法）**（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit → **`bash scripts/gatepush.sh`**（推送閘門，見「推送閘門」那一節；**回傳 0 才往下**，1／2／3 都停下來查，不要接著等線上換版或跑 `sweep`——推送沒成功的話，那是對著舊版在驗，看起來還是綠的）→ `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。（2026-09-23 共用慣例 v7 §2.5：以前這裡寫的是直接 push。）
+9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變＋**`npm run checkmutations`（每版必跑，不到一秒：突變有沒有過期、`expect` 找不找得到）**＋**`npm run gatescan`（每版必跑，不到一秒：閘門、自查、驗法有沒有已知的壞寫法）**（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit → **`bash scripts/gatepush.sh`**（推送閘門，見「推送閘門」那一節；**回傳 0 才往下**，1／2／3／4 都停下來查（4＝改過閘門、自查或驗法之後還沒跑過驗法：先跑 `bash scripts/gatetest.sh`），不要接著等線上換版或跑 `sweep`——推送沒成功的話，那是對著舊版在驗，看起來還是綠的）→ `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。（2026-09-23 共用慣例 v7 §2.5：以前這裡寫的是直接 push。）
    （2026-09-18 更新：以前寫「bump sw.js VERSION → npm test」，那是 v0.7.10 測試範圍政策之前的做法。）
 10. 打真網路的測試（TWSE、RSS、Anthropic）**不進 `npm test`**，另開 `npm run livecheck`；TWSE 請求 ≥ 2 秒間隔，測試也一樣，**不要連打**（社群共識 3 次／5 秒會被封 IP）。
 11. 不動 `../TripQuest`、`../JLPT_App`、`../MealMate` 的任何檔案（可讀，用來抄慣例與對照同一種 bug）。
@@ -1290,6 +1290,7 @@ email 類原本拿 git 歷史的作者信箱當對照組，改用 noreply 之後
 ### 推送閘門：自查沒過，推送指令就不能執行（2026-09-23）
 
 **推送一律走閘門**：`bash scripts/gatepush.sh`（預設推 `origin main`；也可以 `bash scripts/gatepush.sh <遠端> <分支>`）。**三關**（共用慣例 v7 §2.5），**每一步的輸出都寫到 `.logs/`、不接任何管線**，回傳值分得出是哪一關：
+- **回傳 4｜第零關・驗法登記**（2026-09-24，`SPEC_檢查器修補` S7，共用慣例 §5.15；做法照 MealMate 的登記制，驗證自己做）：`gatepush.sh`、`precheck.mjs`、`piiscan.mjs`、`gatetest.sh` 四支目前的雜湊（`git hash-object`，工作區的檔）要跟 `.logs/gate-verified.txt`（被 ignore）的登記一致；沒有登記檔或對不上就停，**在 fetch 與自查之前**，並講出是哪一支。登記由 `gatetest.sh` 寫：一開跑就刪掉登記，全部符合才寫回（寫的是複本裡驗的那一份，也就是已 commit 的版本）。以前「改過閘門就重跑驗法」靠人記得。**新 Session（或新 clone）第一次推送前，先跑一次 `bash scripts/gatetest.sh`（約 1 分鐘）。**
 - **回傳 1｜第一關・自查**：四類（`scripts/precheck.mjs`）與第五類（`scripts/piiscan.mjs`）。有命中、**對照組沒命中（檢查器壞了）**、黑名單檔不見，或取不到遠端狀態（算不出要掃哪些 commit）都擋。**掃的是「遠端分支..本機」的全部 commit**，逐個 commit 取新增行（2026-09-23 以前只掃 HEAD：一次推好幾個 commit 時，前面的沒被掃到）。
 - **回傳 2｜第二關・推送本身**：`git push` 失敗（被拒、連不上）就停。
 - **回傳 3｜第三關・推送後**：推送回報成功，但 `git ls-remote` 讀到的遠端分支≠本機，也停——堵住「推了但沒成功」（TripQuest 被咬過：推送失敗被吞掉，後面的線上確認對著舊版驗，看起來還是綠的）。
@@ -1298,7 +1299,8 @@ email 類原本拿 git 歷史的作者信箱當對照組，改用 noreply 之後
 **驗法在 repo 裡：`bash scripts/gatetest.sh`**。本機 bare repo 當假遠端（`pre-receive` 回 1＝推送被拒、`post-receive` 把 main 退回舊值＝推了卻沒更新），**完全不碰 GitHub**；它複製的是本 repo **已 commit 的內容**，所以改過閘門要先在本機 commit、再跑它。8 種情境（自查命中在 HEAD／在較早的 commit、四類對照組壞掉、第五類對照組壞掉、黑名單檔不見、推送被拒、推了卻沒更新、全部正常）各自比對三件事：回傳值、假遠端有沒有被動到、**是不是對的那一關、對的那一支擋下的**。
 · 最後一件是實際踩到才加的：驗法的第一版只看回傳值，情境 1 回傳了 1，但擋下它的是第五類、不是該抓 token 的四類——複本沒有作者設定、合成 token 的 commit 根本沒做成，而驗法用的合成黑名單字面原樣寫在驗法自己的原始碼裡、被第五類掃到。只看回傳值的驗法，就是 §5.2 的假斷言。
 · **驗法自己的對照組**（2026-09-23 實測）：拿掉第三關的閘門 → 情境 4 被抓到（回 0，預期 3）；推送後接管線的閘門 → 情境 3 被抓到（回 3，預期 2——第三關照樣攔住，只是回傳值錯了，跟統籌者看到的一樣）。還原後 8 種全部符合。
-· **改過 `gatepush.sh`、`precheck.mjs`、`piiscan.mjs` 就重跑 `gatetest.sh`**（§2.5）。
+· **改過 `gatepush.sh`、`precheck.mjs`、`piiscan.mjs`、`gatetest.sh` 就重跑 `gatetest.sh`**（§2.5）——2026-09-24 起不必記得：沒重跑，第零關擋下（回 4）。
+· **情境 10、11（2026-09-24，S7）**：10＝在複本裡改閘門一行並 commit、沒重跑驗法 → 回 4、假遠端沒動，而且輸出裡**不能**有自查的輸出（連自查都沒跑）；11＝拿掉登記檔（先確認它原本在）→ 回 4。**情境改成獨立函式**，每一種開頭一律還原（假遠端的 hook、黑名單檔、登記、本機分支），順序用 `GATETEST_ORDER` 換；清單不是恰好每一種各一次就停。以前 1b 疊在 1 的 commit 上、2a 與 2b 共用同一份壞掉的複本。
 · **情境 6（2026-09-24，v8 §2.5）「本機以為已推上去、遠端其實沒有」**：帶命中的 commit 繞過閘門推上假遠端、抓回來，再把假遠端倒退，然後疊一個乾淨的 commit。**因果**：第三關攔到「推了沒更新」之後，本機的追蹤分支與 `FETCH_HEAD` 都已經指著那個 commit；自查範圍若照本機的認定算，它落在範圍外，下一次推送就不經檢查被帶出去——新加的第三關，製造了這個洞的前提。本閘門推送前當場 `fetch`、用 `FETCH_HEAD` 算範圍，所以只撥本機追蹤分支造不出前提，要用這種造法。好的閘門：回傳 1，四類抓到那個命中，假遠端沒動。
 · **§5.11 第二層**：比對「輸出裡有沒有這一句」的那段程式（`has`）開頭先用已知的輸出跑對照——它若抓空，「比對是誰擋的」會默默退化成只剩回傳值。
 · **§5.11 第三層**：驗法會印出被執行的那一份閘門的內容雜湊；驗壞閘門時拿它跟改壞那一份比，確認跑的真的是改壞的那一版。
