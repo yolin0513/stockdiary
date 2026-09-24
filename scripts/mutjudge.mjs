@@ -26,13 +26,21 @@ export function failedAssertions(out) {
  *   'not-red'     測試還是綠的 —— 對應的斷言沒有在檢查這件事
  *   'wrong-place' 測試紅了，但沒有任何一條失敗的斷言含 expect —— 紅的是別條（或測試直接崩了），
  *                 不能證明它想守的那一條有效
+ *   'extra-red'   紅在含 expect 的那一條，**但別組也一起紅了**（extra 列出多紅的那幾條）——
+ *                 保證不了「只紅對應的那一種」。這條突變若本來就該連帶紅別組（例如整道關卡失效），
+ *                 要在突變上用 alsoRed 明列那幾組的固定標籤，並在 why 講清楚為什麼。
  * 沒帶 expect 的突變照舊：只看 exit code。
+ *
+ * 2026-09-24 以前只要「有一條」對上 expect 就判 red，不看別組有沒有一起紅（統籌者驗收指出）：
+ * 負責判斷「過了沒」的這一層，自己不夠嚴。
  */
-export function judge({ code, out }, expect) {
-  if (code === 0) return { verdict: 'not-red', failed: [] };
+export function judge({ code, out }, expect, alsoRed = []) {
+  if (code === 0) return { verdict: 'not-red', failed: [], extra: [] };
   const failed = failedAssertions(out);
-  if (!expect) return { verdict: 'red', failed };
-  return { verdict: failed.some((f) => f.includes(expect)) ? 'red' : 'wrong-place', failed };
+  if (!expect) return { verdict: 'red', failed, extra: [] };
+  if (!failed.some((f) => f.includes(expect))) return { verdict: 'wrong-place', failed, extra: [] };
+  const extra = failed.filter((f) => !f.includes(expect) && !alsoRed.some((a) => f.includes(a)));
+  return { verdict: extra.length ? 'extra-red' : 'red', failed, extra };
 }
 
 /** find 在內容裡出現幾次。突變只在「剛好 1 次」時才有意義。 */
@@ -70,7 +78,20 @@ export function expectProblems(mut, read) {
   if (typeof mut.expect !== 'string' || mut.expect.trim() === '') return ['expect 是空的'];
   const testSrc = read(`scripts/${mut.test}.mjs`);
   if (testSrc == null) return [`指定的測試 scripts/${mut.test}.mjs 不存在`];
-  return testSrc.includes(mut.expect) ? [] : [`expect「${mut.expect}」在 scripts/${mut.test}.mjs 裡找不到`];
+  const probs = testSrc.includes(mut.expect) ? [] : [`expect「${mut.expect}」在 scripts/${mut.test}.mjs 裡找不到`];
+  // alsoRed 同理：每一條都要是測試原始碼裡的字面，而且不能是空字串（空字串會讓每一條都算「宣告過」）
+  if (mut.alsoRed != null) {
+    // 連帶紅要講得出為什麼：沒有理由的 alsoRed，等於把「只紅對應」的檢查關掉
+    if (typeof mut.alsoRedWhy !== 'string' || mut.alsoRedWhy.trim().length < 6) probs.push('有 alsoRed 就要寫 alsoRedWhy（為什麼會連帶紅別組）');
+    if (!Array.isArray(mut.alsoRed) || mut.alsoRed.length === 0) probs.push('alsoRed 要是非空的陣列');
+    else {
+      for (const a of mut.alsoRed) {
+        if (typeof a !== 'string' || a.trim() === '') probs.push('alsoRed 裡有空的一條');
+        else if (!testSrc.includes(a)) probs.push(`alsoRed「${a}」在 scripts/${mut.test}.mjs 裡找不到`);
+      }
+    }
+  }
+  return probs;
 }
 
 /**

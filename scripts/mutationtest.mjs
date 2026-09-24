@@ -1529,6 +1529,8 @@ const MUTATIONS = [
     replace: "    h('p', { class: 'muted sm', dataset: { note: 'gone' } },",
     test: 'uikittest',
     expect: '未實現損益卡片上有說明',
+    alsoRed: ["講出「我們沒加手續費、券商有加」：「","而且講出方向（券商的成本會比較高）","講出「成本沒有算進手續費」","講出「各家券商的算法不一樣」","講出「沒辦法一模一樣，差一點是正常的」","而且點名損益與報酬率是約略值"],
+    alsoRedWhy: "說明整段拿掉，說明裡的每一句各有一條斷言，一起紅。",
   },
   {
     name: '未實現損益的標題不標「約略值」',
@@ -1539,6 +1541,8 @@ const MUTATIONS = [
     replace: "    h('h2', { class: 'card-title' }, '未實現損益'),",
     test: 'uikittest',
     expect: '未實現損益卡的標題帶著',
+    alsoRed: ["整個首頁只有一張卡的標題帶這個詞"],
+    alsoRedWhy: "「只有一張卡帶這個詞」數的就是這張卡的標題，它不標，數量變成 0。",
   },
   {
     name: '把「約略值」也標到市值上',
@@ -1549,6 +1553,8 @@ const MUTATIONS = [
     replace: "    h('h2', { class: 'card-title' }, '持股市值（約略值）'),",
     test: 'uikittest',
     expect: '當日損益、持股市值這些卡的標題都沒有被標成約略值',
+    alsoRed: ["整個首頁只有一張卡的標題帶這個詞","市值那張卡沒有被標成約略值"],
+    alsoRedWhy: "多標一張卡，同時違反「只有一張」與「市值卡不標」。",
   },
   {
     name: '市值改講今天的日期，不是結算那天',
@@ -1559,6 +1565,8 @@ const MUTATIONS = [
     replace: "        `用 ${fmtDate(new Date().toLocaleDateString('sv'))} 的收盤價計算`)",
     test: 'uikittest',
     expect: '而且那個日期是結算日',
+    alsoRed: ["（對照）它不是直接印今天 "],
+    alsoRedWhy: "改成印今天，「不是直接印今天」那條對照同時紅。",
   },
   {
     name: '新的成本說明裡放一個禁用詞',
@@ -1568,6 +1576,8 @@ const MUTATIONS = [
     replace: "      + '損益和報酬率是用這個成本算的，建議當成約略值。'),",
     test: 'uikittest',
     expect: '成本說明沒有任何「建議」意味的字',
+    alsoRed: ["（對照）同一個判準抓得到含禁用詞的句子，也不會誤殺現在這段說明"],
+    alsoRedWhy: "對照組的反例用的就是現在這段說明；放進禁用詞，反例變成會被抓，那條對照一起紅。",
   },
   {
     name: '拿掉「主畫面 App 與 Safari 不共用」的警告',
@@ -2072,10 +2082,12 @@ const MUTATIONS = [
     name: 'A：判定忽略 expect，紅了就算',
     why: '這就是 A 項要修的洞：改壞之後「某處」紅了，就被當成證明了它想守的那一條有效。',
     file: 'scripts/mutjudge.mjs',
-    find: "  return { verdict: failed.some((f) => f.includes(expect)) ? 'red' : 'wrong-place', failed };",
-    replace: "  return { verdict: 'red', failed };",
+    find: "  if (!failed.some((f) => f.includes(expect))) return { verdict: 'wrong-place', failed, extra: [] };\n",
+    replace: '',
     test: 'checkmutations',
     expect: '對照：紅了，但 expect 只出現在細節行、不在任何 ✗ 行',
+    alsoRed: ["對照：測試直接崩了","條突變都還有效（find 剛好一次"],
+    alsoRedWhy: "判定一律回 red，「紅錯地方」的兩組對照都紅；checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
   },
   {
     name: 'A：細節行也被當成失敗的斷言',
@@ -2085,15 +2097,19 @@ const MUTATIONS = [
     replace: '    const m = /^\\s+(?:✗ )?(.+)$/.exec(line.replace(/\\r$/, \'\'));',
     test: 'checkmutations',
     expect: '從輸出取出失敗的斷言訊息',
+    alsoRed: ["帶 expect、紅在含 expect 的那一條","對照：紅了，但 expect 只出現在細節行","只紅對應：紅在對的那一條、別組也一起紅","只紅對應（必過）：","條突變都還有效（find 剛好一次"],
+    alsoRedWhy: "取失敗訊息的程式是每一個判定的基礎，改壞它，靠它的每一組判定對照都紅；checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
   },
   {
     name: 'A2：expect 打錯字也放行',
     why: '打錯字的 expect 永遠不會命中，那條突變每次都會判成「紅錯地方」—— 而且要等整套才看得到。',
     file: 'scripts/mutjudge.mjs',
-    find: '  return testSrc.includes(mut.expect) ? [] : [',
-    replace: '  return true ? [] : [',
+    find: '  const probs = testSrc.includes(mut.expect) ? [] : [',
+    replace: '  const probs = true ? [] : [',
     test: 'checkmutations',
     expect: 'expect 檢查抓得到打錯字',
+    alsoRed: ["條突變都還有效（find 剛好一次"],
+    alsoRedWhy: "checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
   },
   {
     name: 'A：新突變不帶 expect 也放行',
@@ -2103,6 +2119,8 @@ const MUTATIONS = [
     replace: "  return (src.match(/^\\s+find:/gm) || []).length;",
     test: 'checkmutations',
     expect: '對照：標記在第 2 條之後',
+    alsoRed: ["條突變都還有效（find 剛好一次","標記以下的 "],
+    alsoRedWhy: "「標記以下的都帶 expect」是同一個判斷在真實清單上的結果；checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
   },
   {
     name: '套用突變改回 String.replace(字串, 字串)',
@@ -2112,6 +2130,8 @@ const MUTATIONS = [
     replace: 'export const applyMutation = (body, find, replace) => body.replace(find, replace);',
     test: 'checkmutations',
     expect: '原樣寫進去（String.replace(字串, 字串) 會把它們當特殊序列）',
+    alsoRed: ["條突變都還有效（find 剛好一次"],
+    alsoRedWhy: "checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
   },
   {
     name: 'B：挑舊版基準改回「上一個 commit」',
@@ -2121,6 +2141,8 @@ const MUTATIONS = [
     replace: '    if (commits[1]) return { rev: commits[1].rev, version: commits[1].version, skipped: 1 };',
     test: 'shelltest',
     expect: '最近三個都是文件 commit（版本一樣）',
+    alsoRed: ["工作目錄 bump 了還沒 commit","整段歷史都是同一版","實際挑到 "],
+    alsoRedWhy: "挑舊版的函式改成「上一個 commit」，每一種歷史情境（bump 未 commit、整段同版、真實歷史）都挑錯。",
   },
   {
     name: 'B：沒有可比的舊版時亂挑一個',
@@ -2130,6 +2152,8 @@ const MUTATIONS = [
     replace: "  return { rev: commits[0]?.rev ?? 'HEAD', version: null, reason:",
     test: 'shelltest',
     expect: '整段歷史都是同一版',
+    alsoRed: ["空的歷史（全新的 repo）"],
+    alsoRedWhy: "空的歷史與整段同版走的是同一個「沒得挑」的分支。",
   },
   {
     name: 'B：upgradecheck 又直接用 HEAD~1',
@@ -2139,6 +2163,8 @@ const MUTATIONS = [
     replace: "const PICKED = process.argv[2] ? { rev: process.argv[2], manual: true } : { rev: 'HEAD~1', version: '?', skipped: 0 };",
     test: 'upgradecheck',
     expect: '確實不同版',
+    alsoRed: ["第一次開的確實是舊版（"],
+    alsoRedWhy: "舊版挑錯（跟新版同版），「第一次開的是舊版」那條前提同時不成立。",
   },
   {
     name: 'C：過期檢查永遠放行（find 出現幾次都算有效）',
@@ -2175,6 +2201,8 @@ const MUTATIONS = [
     replace: '  const notHistory = () => true;',
     test: 'doctest',
     expect: '前面有「當時」的是歷史紀錄，跳過',
+    alsoRed: ["文件裡每一處寫的突變條數都等於實際的 ","文件裡每一處寫的測試支數都等於實際的 "],
+    alsoRedWhy: "歷史紀錄不再跳過，文件裡「當時 N 條／支」的舊數字被當成現在的總數，兩條總數比對一起紅。",
   },
   {
     name: 'D2：遮罩多露出金鑰中間五個字',
@@ -2235,6 +2263,8 @@ const MUTATIONS = [
       + "      + '券商 App 的成本通常把買進手續費算進去，所以會比這裡高一點點，報酬率也會低一點點。'),",
     test: 'uikittest',
     expect: '講出「各家券商的算法不一樣」',
+    alsoRed: ["講出「沒辦法一模一樣，差一點是正常的」","而且點名損益與報酬率是約略值"],
+    alsoRedWhy: "舊文字少了這兩句，對應的兩條斷言一起紅。",
   },
   {
     name: '缺口 2（A1）：說明拿掉「沒有算進手續費」',
@@ -2382,6 +2412,8 @@ const MUTATIONS = [
     replace: '/node scripts\\/(\\w+)\\.mjs/g',
     test: 'controltest',
     expect: 'assertaudit 對照八（必過）：',
+    alsoRed: ["assertaudit 對照六：","assertaudit 過期："],
+    alsoRedWhy: "secret-leak-test 取不到：對照組的合成鏈少一支（對照六），真實的清單也對不上（過期）——同一個錯在三處都看得到。",
   },
   {
     name: 'S5：gatescan 不看腳本內容，只看檔名',
@@ -2391,6 +2423,8 @@ const MUTATIONS = [
     replace: '  || false;',
     test: 'gatescan',
     expect: 'gatescan 孤兒對照一：',
+    alsoRed: ["gatescan 理由過期："],
+    alsoRedWhy: "gatescan.mjs 自己只靠內容被認出；不看內容，它那條「不收的理由」就變成過期。",
   },
   {
     name: 'S5：gatescan 不看檔名',
@@ -2409,6 +2443,8 @@ const MUTATIONS = [
     replace: "const WALK_SKIP = new Set(['.git', '.logs', '.private']);",
     test: 'gatescan',
     expect: 'gatescan 孤兒對照三（必過）：',
+    alsoRed: ["gatescan 孤兒：repo 裡看起來是推送"],
+    alsoRedWhy: "本機 repo 的 node_modules 裡真的有檔名帶 push 的檔，真實的孤兒檢查也一起紅（node_modules 是 junction 的複本裡不會被走訪，那裡不紅）。",
   },
   {
     name: 'S5：gatescan 不報過期的不收理由',
@@ -2419,42 +2455,134 @@ const MUTATIONS = [
     test: 'gatescan',
     expect: 'gatescan 孤兒對照四：',
   },
-  // ---- BG：三支 build 的寫檔前關卡（buildguard.mjs）——以前資料變少照樣寫檔、會寫出「0 檔」的 dividends.json ----
+  // ---- 判定：判定要「只紅對應的那一種」（2026-09-24，統籌者驗收指出 mutjudge 只要有一條對上就判 red）----
+  {
+    name: '判定：多紅了別組也判紅',
+    why: '修正前的寫法：只要有一條對上 expect 就算紅對，別組一起紅也看不出來。',
+    file: 'scripts/mutjudge.mjs',
+    find: "  return { verdict: extra.length ? 'extra-red' : 'red', failed, extra };",
+    replace: "  return { verdict: 'red', failed, extra };",
+    test: 'checkmutations',
+    expect: '只紅對應：紅在對的那一條、別組也一起紅',
+    alsoRed: ["只紅對應：alsoRed 列的是別的標籤","條突變都還有效（find 剛好一次"],
+    alsoRedWhy: "判定一律回 red，「alsoRed 列錯標籤要判多紅」那組對照也紅；checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
+  },
+  {
+    name: '判定：alsoRed 被忽略',
+    why: '明列過的連帶紅也被當成多紅，本來就該整類紅的突變（整道關卡失效）永遠過不了。',
+    file: 'scripts/mutjudge.mjs',
+    find: '  const extra = failed.filter((f) => !f.includes(expect) && !alsoRed.some((a) => f.includes(a)));',
+    replace: '  const extra = failed.filter((f) => !f.includes(expect));',
+    test: 'checkmutations',
+    expect: '只紅對應（必過）：',
+    alsoRed: ["條突變都還有效（find 剛好一次"],
+    alsoRedWhy: "checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
+  },
+  {
+    name: '判定：alsoRed 打錯字也放行',
+    why: '打錯字的 alsoRed 永遠對不到任何一條，等於沒宣告；要等跑那條突變才看得出來。',
+    file: 'scripts/mutjudge.mjs',
+    find: '        else if (!testSrc.includes(a)) probs.push(',
+    replace: '        else if (false) probs.push(',
+    test: 'checkmutations',
+    expect: 'alsoRed：有一條在測試原始碼裡找不到',
+    alsoRed: ["條突變都還有效（find 剛好一次"],
+    alsoRedWhy: "checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
+  },
+  {
+    name: '判定：alsoRed 不寫理由也放行',
+    why: '沒有理由的 alsoRed 等於把「只紅對應」關掉——看不出那幾組是真的連帶，還是被順手寫進去掩蓋問題。',
+    file: 'scripts/mutjudge.mjs',
+    find: "    if (typeof mut.alsoRedWhy !== 'string' || mut.alsoRedWhy.trim().length < 6) probs.push(",
+    replace: '    if (false) probs.push(',
+    test: 'checkmutations',
+    expect: 'alsoRed：有連帶紅卻沒寫理由',
+    alsoRed: ['條突變都還有效（find 剛好一次'],
+    alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。',
+  },
+  // ---- GV：推送閘門的驗法本身（gatetest.sh）——統籌者驗收 S7 指出：沒有「驗法沒全過要刪掉登記」的情境 ----
+  // 由 scripts/gateselftest.mjs 驗（它用工作區的閘門檔，這裡改壞工作區的 gatetest.sh 它就看得到）。約 7 分鐘一條。
+  {
+    name: 'GV：驗法一開跑不刪舊登記',
+    why: '驗法沒全過時，上一次的登記還留著，閘門第零關照樣放行——改過的閘門不必重跑驗法就推得出去。',
+    file: 'scripts/gatetest.sh',
+    find: 'rm -f "$REG_ROOT"   # 這一次沒全過，就不能留著上一次的登記',
+    replace: ':   # 突變：不刪上一次的登記',
+    test: 'gateselftest',
+    expect: '驗法沒全過，先放的舊登記要被刪掉',
+  },
+  {
+    name: 'GV：驗法沒全過也寫登記',
+    why: '驗法有情境不符，卻照樣登記雜湊：第零關就等於沒有。',
+    file: 'scripts/gatetest.sh',
+    find: 'if [ "$BAD" -eq 0 ] && [ "$OK" -eq "$#" ]; then',
+    replace: 'if true; then',
+    test: 'gateselftest',
+    expect: '驗法沒全過，先放的舊登記要被刪掉',
+    alsoRed: ['gatetest.sh 的回傳值'],
+    alsoRedWhy: '寫了登記的那一段最後 exit 0，所以驗法沒全過時回傳值也變成 0。',
+  },
+  // ---- BG：三支 build 的寫檔前關卡（buildguard.mjs；F8）——以前資料變少照樣寫檔、會寫出「0 檔」的 dividends.json ----
+  // expect 對到矩陣裡逐字寫出的那一格；本來就會連帶紅的格子用 alsoRed 明列，理由寫在 why。
   {
     name: 'BG：關卡永遠放行',
-    why: '整道關卡失效：空的、缺的、變少的全部照樣寫檔。',
+    why: '整道關卡失效：每一個單位、每一種情境都照樣寫檔——整張矩陣都該紅，所以三支的格子都明列在 alsoRed。',
     file: 'scripts/buildguard.mjs',
     find: '      if (problems.length) {',
     replace: '      if (false) {',
     test: 'buildtest',
-    expect: 'build-calendar 空的：',
+    expect: 'build-calendar 矩陣：holidaySchedule × empty',
+    alsoRed: ['build-calendar ', 'build-dividends ', 'build-stocks '],
+    alsoRedWhy: "整道關卡失效，每一個單位、每一種情境都照樣寫檔——整張矩陣都該紅。",
   },
   {
     name: 'BG：「少一半以上」永遠不成立',
-    why: 'S8 實測的那一種：27 筆只給 1 筆、40 檔只剩 2 檔，照樣寫檔。',
+    why: 'S8 實測的那一種：27 筆只給 1 筆、40 檔只剩 2 檔，照樣寫檔。三支的「變少」都靠這一段，所以五格一起紅。',
     file: 'scripts/buildguard.mjs',
     find: '  if (now * 2 < before) return',
     replace: '  if (false) return',
     test: 'buildtest',
-    expect: 'build-calendar 資料變少：',
+    expect: 'build-calendar 矩陣：holidaySchedule × shrink',
+    alsoRed: ['build-calendar 新的一年變少：', 'build-dividends 矩陣：t187ap45_L × shrink', 'build-stocks 矩陣：上市 × shrink', 'build-stocks 矩陣：上櫃 × shrink', 'build-stocks 矩陣：興櫃 × shrink'],
+    alsoRedWhy: "三支的「變少」都靠這一段，五格一起紅。",
   },
   {
     name: 'BG：上一次的輸出壞掉被當成第一次產',
-    why: '壞掉的 dividends.json 讀不出檔數，「少一半」就比不了，等於沒有這道檢查。',
+    why: '壞掉的輸出檔讀不出筆數，「少一半」就比不了，等於沒有這道檢查。三支都讀它，所以三格一起紅。',
     file: 'scripts/buildguard.mjs',
     find: "  return JSON.parse(fs.readFileSync(file, 'utf8'));",
     replace: "  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }",
     test: 'buildtest',
-    expect: 'build-dividends 上一次的輸出壞掉：',
+    expect: 'build-calendar 上一次的輸出壞掉：',
+    alsoRed: ['build-dividends 上一次的輸出壞掉：', 'build-stocks 上一次的輸出壞掉：'],
+    alsoRedWhy: "三支都用 readPrevious 讀上一次的輸出，三格一起紅。",
   },
   {
     name: 'BG：日曆不檢查 0 筆',
-    why: '空的公告只會被「沒有這一年」碰巧擋下，講不出真正的原因（S8 實測）。',
+    why: '空的公告只會被「沒有這一年」碰巧擋下，講不出真正的原因（S8 實測）——依 F8 算沒擋。',
     file: 'scripts/build-calendar.mjs',
-    find: "  else if (list.length === 0) g.add('休市日公告（holidaySchedule）：來源 0 筆');\n",
+    find: '  else if (list.length === 0) g.add(`${U}：來源 0 筆`);\n',
     replace: '',
     test: 'buildtest',
-    expect: 'build-calendar 空的：',
+    expect: 'build-calendar 矩陣：holidaySchedule × empty',
+  },
+  {
+    name: 'BG：日曆取不到時直接拋錯',
+    why: '修正前的寫法：讀檔失敗就丟 ENOENT，理由沒有點名單位。',
+    file: 'scripts/build-calendar.mjs',
+    find: "    try { text = fs.readFileSync(fromArg, 'utf8'); } catch (e) { g.add(`${U}：取不到（${e.code ?? e.message}：${fromArg}）`); }",
+    replace: "    text = fs.readFileSync(fromArg, 'utf8');",
+    test: 'buildtest',
+    expect: 'build-calendar 矩陣：holidaySchedule × missing',
+  },
+  {
+    name: 'BG：日曆解析不了時直接拋錯',
+    why: '修正前的寫法：JSON 壞掉就丟 SyntaxError，理由沒有點名單位。',
+    file: 'scripts/build-calendar.mjs',
+    find: '    try { list = JSON.parse(text); } catch (e) { g.add(`${U}：解析不了（${e.message}）`); }',
+    replace: '    list = JSON.parse(text);',
+    test: 'buildtest',
+    expect: 'build-calendar 矩陣：holidaySchedule × unparsable',
   },
   {
     name: 'BG：日曆不檢查欄位',
@@ -2463,14 +2591,14 @@ const MUTATIONS = [
     find: '    if (missing.length) {',
     replace: '    if (false) {',
     test: 'buildtest',
-    expect: 'build-calendar 欄位對不上：',
+    expect: 'build-calendar 矩陣：holidaySchedule × renamed',
   },
   {
     name: 'BG：日曆不檢查這一年有沒有公告',
     why: '還沒公布的年份會產出一份「整年都開市」的假日曆。',
     file: 'scripts/build-calendar.mjs',
-    find: '    g.add(`${yearArg} 年：公告裡沒有這一年的休市日',
-    replace: '    void (`${yearArg} 年：公告裡沒有這一年的休市日',
+    find: '    g.add(`${U}：${yearArg} 年沒有這一年的休市日',
+    replace: '    void (`${U}：${yearArg} 年沒有這一年的休市日',
     test: 'buildtest',
     expect: 'build-calendar 沒有這一年：',
   },
@@ -2482,6 +2610,42 @@ const MUTATIONS = [
     replace: ': null;',
     test: 'buildtest',
     expect: 'build-calendar 新的一年變少：',
+  },
+  {
+    name: 'BG：日曆上一次的輸出壞掉時當成第一次產',
+    why: '把 readPrevious 的錯誤吞掉：舊日曆壞了，這一年的「變少」就比不了。',
+    file: 'scripts/build-calendar.mjs',
+    find: '  try { existing = readPrevious(dest) ?? {}; } catch (e) { g.add(',
+    replace: '  try { existing = readPrevious(dest) ?? {}; } catch (e) { void (',
+    test: 'buildtest',
+    expect: 'build-calendar 上一次的輸出壞掉：',
+  },
+  {
+    name: 'BG：股利不看 HTTP 狀態',
+    why: '來源回 500 時，錯誤頁的內容照樣被當成資料解析、寫檔。（原本寫的「直接拋錯」是等價突變：外層的 try 接得住、照樣記成取不到，§5.12。）',
+    file: 'scripts/build-dividends.mjs',
+    find: '    if (!res.ok) g.add(`${U}：取不到（HTTP ${res.status}）`);',
+    replace: '    if (false) g.add(`${U}：取不到（HTTP ${res.status}）`);',
+    test: 'buildtest',
+    expect: 'build-dividends 矩陣：t187ap45_L × missing',
+  },
+  {
+    name: 'BG：股利解析不了時直接拋錯',
+    why: '修正前的寫法：回應不是 JSON 就丟 SyntaxError，理由沒有點名單位。',
+    file: 'scripts/build-dividends.mjs',
+    find: '      try { rows = JSON.parse(text); } catch (e) { g.add(`${U}：解析不了（${e.message}）`); }',
+    replace: '      rows = JSON.parse(text);',
+    test: 'buildtest',
+    expect: 'build-dividends 矩陣：t187ap45_L × unparsable',
+  },
+  {
+    name: 'BG：股利不檢查 0 筆',
+    why: '空的來源只會被「少一半」碰巧擋下，講不出是來源 0 筆——依 F8 算沒擋。',
+    file: 'scripts/build-dividends.mjs',
+    find: '  else if (rows.length === 0) g.add(`${U}：來源 0 筆`);',
+    replace: '  else if (false) g.add(`${U}：來源 0 筆`);',
+    test: 'buildtest',
+    expect: 'build-dividends 矩陣：t187ap45_L × empty',
   },
   {
     name: 'BG：股利只看第一筆的欄位',
@@ -2502,40 +2666,68 @@ const MUTATIONS = [
     expect: 'build-dividends 收進來 0 檔：',
   },
   {
+    name: 'BG：股利上一次的輸出壞掉時當成第一次產',
+    why: '把 readPrevious 的錯誤吞掉：舊的 dividends.json 壞了，「變少」就比不了。',
+    file: 'scripts/build-dividends.mjs',
+    find: '  try { prev = readPrevious(OUT); } catch (e) { g.add(',
+    replace: '  try { prev = readPrevious(OUT); } catch (e) { void (',
+    test: 'buildtest',
+    expect: 'build-dividends 上一次的輸出壞掉：',
+  },
+  {
     name: 'BG：代號表來源 0 筆不擋',
-    why: 'S8 實測的那一種：上櫃公司基本資料是空的照樣寫檔。',
+    why: 'S8 實測的那一種：上櫃公司基本資料是空的照樣寫檔。兩份 JSON 來源共用這一行，所以兩格一起紅。',
     file: 'scripts/build-stocks.mjs',
     find: "    if (rows.length === 0) { g.add(`${name}：來源 0 筆`); return []; }\n",
     replace: '',
     test: 'buildtest',
-    expect: 'build-stocks 空的：',
+    expect: 'build-stocks 矩陣：twseCompanies × empty',
+    alsoRed: ['build-stocks 矩陣：tpexCompanies × empty'],
+    alsoRedWhy: "兩份 JSON 來源共用這一行。",
+  },
+  {
+    name: 'BG：代號表 JSON 來源解析不了時直接拋錯',
+    why: '修正前的寫法：來源不是 JSON 就丟 SyntaxError，講不出是哪一份。兩份 JSON 來源共用這一行。',
+    file: 'scripts/build-stocks.mjs',
+    find: '    try { rows = JSON.parse(raw[name]); } catch (e) { g.add(`${name}：解析不了（${e.message}）`); return []; }',
+    replace: '    rows = JSON.parse(raw[name]);',
+    test: 'buildtest',
+    expect: 'build-stocks 矩陣：twseCompanies × unparsable',
+    alsoRed: ['build-stocks 矩陣：tpexCompanies × unparsable'],
+    alsoRedWhy: "兩份 JSON 來源共用這一行。",
   },
   {
     name: 'BG：代號表取不到時不點名來源',
-    why: '取不到就直接崩，講不出是六份裡的哪一份，也不會把其他份的問題一起列出來。',
+    why: '取不到就直接崩，講不出是六份裡的哪一份。六份共用這一段，所以六格一起紅。',
     file: 'scripts/build-stocks.mjs',
     find: '      g.add(`${name}：取不到（${e.message}）`);',
     replace: '      throw e;',
     test: 'buildtest',
-    expect: 'build-stocks 缺檔：',
+    expect: 'build-stocks 矩陣：twseCompanies × missing',
+    alsoRed: ['build-stocks 矩陣：tpexCompanies × missing', 'build-stocks 矩陣：stockDayAll × missing', 'build-stocks 矩陣：isinListed × missing', 'build-stocks 矩陣：isinOtc × missing', 'build-stocks 矩陣：isinEmerging × missing'],
+    alsoRedWhy: "六份來源共用這一段。",
   },
   {
     name: 'BG：ISIN 表 0 列不擋',
-    why: 'ISIN 表格式變了、一列都解析不出來，照樣往下算。',
+    why: 'ISIN 表空了、格式變了、根本不是表格，都只會表現成解析出 0 列；三份 ISIN 表共用這一行，所以九格一起紅。',
     file: 'scripts/build-stocks.mjs',
     find: '    if (rows.length === 0) g.add(`${name}：ISIN 表解析出 0 列',
     replace: '    if (false) g.add(`${name}：ISIN 表解析出 0 列',
     test: 'buildtest',
-    expect: 'build-stocks 空的：',
+    expect: 'build-stocks 矩陣：isinListed × empty',
+    alsoRed: ['build-stocks 矩陣：isinListed × renamed', 'build-stocks 矩陣：isinListed × unparsable', 'build-stocks 矩陣：isinOtc × ', 'build-stocks 矩陣：isinEmerging × '],
+    alsoRedWhy: "三份 ISIN 表的空的、格式變了、不是表格，都只表現成 0 列，共用這一行。",
   },
   {
     name: 'BG：代號表不檢查欄位',
-    why: '公司代號欄改名時只會被「產業別太少」碰巧擋下，講不出是哪一份來源的欄位變了（S8 實測）。',
+    why: '公司代號欄改名時只會被「產業別太少」碰巧擋下（S8 實測）。兩份 JSON 來源共用這一段。',
     file: 'scripts/build-stocks.mjs',
     find: '      if (miss) g.add(`${name}：欄位對不上',
     replace: '      if (false) g.add(`${name}：欄位對不上',
     test: 'buildtest',
-    expect: 'build-stocks 欄位對不上：',
+    expect: 'build-stocks 矩陣：twseCompanies × renamed',
+    alsoRed: ['build-stocks 矩陣：tpexCompanies × renamed'],
+    alsoRedWhy: "兩份 JSON 來源共用這一段。",
   },
   {
     name: 'BG：STOCK_DAY_ALL 解析出 0 檔不擋',
@@ -2544,16 +2736,38 @@ const MUTATIONS = [
     find: "    if (sda.rows.length === 0 && g.problems.every((p) => !p.startsWith('stockDayAll：'))) g.add(",
     replace: '    if (false) g.add(',
     test: 'buildtest',
-    expect: 'build-stocks 解析出 0 檔：',
+    expect: 'build-stocks 矩陣：stockDayAll × empty',
+  },
+  {
+    name: 'BG：STOCK_DAY_ALL 解析不了時直接拋錯',
+    why: '標題改名、根本不是 CSV，解析器都會拋錯；直接丟出去就講不出是哪一份。兩格共用這一行。',
+    file: 'scripts/build-stocks.mjs',
+    find: '    try { sda = parseStockDayAll(raw.stockDayAll); } catch (e) { g.add(`stockDayAll：解析不了（${e.message}）`); }',
+    replace: '    sda = parseStockDayAll(raw.stockDayAll);',
+    test: 'buildtest',
+    expect: 'build-stocks 矩陣：stockDayAll × renamed',
+    alsoRed: ['build-stocks 矩陣：stockDayAll × unparsable'],
+    alsoRedWhy: "標題改名與不是 CSV 都是解析器拋錯，共用這一行。",
   },
   {
     name: 'BG：代號表不跟上一次的各市場檔數比',
-    why: '上櫃從上千檔掉到一檔，照樣寫檔。',
+    why: '上櫃從上千檔掉到一檔，照樣寫檔。三個市場共用這一段，所以三格一起紅。',
     file: 'scripts/build-stocks.mjs',
     find: '  for (const m of Object.keys(prevCounts)) {',
     replace: '  for (const m of []) {',
     test: 'buildtest',
-    expect: 'build-stocks 資料變少：',
+    expect: 'build-stocks 矩陣：上市 × shrink',
+    alsoRed: ['build-stocks 矩陣：上櫃 × shrink', 'build-stocks 矩陣：興櫃 × shrink'],
+    alsoRedWhy: "三個市場共用這一段。",
+  },
+  {
+    name: 'BG：代號表上一次的輸出壞掉時當成第一次產',
+    why: '把 readPrevious 的錯誤吞掉：舊的 stocks.json 壞了，各市場的「變少」就比不了。',
+    file: 'scripts/build-stocks.mjs',
+    find: '  try { prevCounts = readPrevious(dest)?.counts?.byMarket ?? {}; } catch (e) { g.add(',
+    replace: '  try { prevCounts = readPrevious(dest)?.counts?.byMarket ?? {}; } catch (e) { void (',
+    test: 'buildtest',
+    expect: 'build-stocks 上一次的輸出壞掉：',
   },
   // ---- EP：livecheck 的端點登記（第 2 件）——以前 app 在用的 FMTQIK 從來沒被檢查過 ----
   {
@@ -2591,6 +2805,8 @@ const MUTATIONS = [
     replace: '/\\/(?:exchangeReport)\\/([A-Z0-9_]+)(?=[?\'"`\\s]|$)/g',
     test: 'controltest',
     expect: 'livecheck 對照十三：',
+    alsoRed: ["（前提）app 端 ","端點沒打："],
+    alsoRedWhy: "樣式抽不到 rwd 底下的端點：真實檢查的母體從 5 個掉到 3 個（前提），livecheck 打的 FMTQIK、STOCK_DAY_ALL 也抽不到（端點沒打）。",
   },
   {
     name: 'EP：FMTQIK 的格式錯誤被吞掉',
@@ -2646,6 +2862,8 @@ const MUTATIONS = [
     replace: "/route\\('([^']+)'/gm",
     test: 'controltest',
     expect: '路由對照一（必過）：',
+    alsoRed: ["路由對照二："],
+    alsoRedWhy: "對照組的合成 app.js 裡那條註解掉的 /commented 被當成註冊的，「多註冊一條沒登記的」那組就多報一條、對不上。",
   },
   // ---- LC：livecheck 崩在日曆段（第 1 件）——以前一崩，後面兩段從來沒跑到 ----
   {
@@ -2775,6 +2993,8 @@ const MUTATIONS = [
     replace: "  if (false) out.push({ where: 'sw.js', got: sw });",
     test: 'controltest',
     expect: 'sweep 對照一：',
+    alsoRed: ["sweep 對照三："],
+    alsoRedWhy: "「sw.js 讀不到版本」那組也靠同一行比對。",
   },
   {
     name: 'S4：index.html 的版本比對永遠成立',
@@ -2829,6 +3049,8 @@ const MUTATIONS = [
     replace: '  const UPCOMING_IN_DAYS = -14;',
     test: 'divrecordtest',
     expect: '（前提）fixture 的除息日',
+    alsoRed: ["ETF 看得到下一次除權息","而且有已公告的每股金額","標明那是公告值","明講不年化"],
+    alsoRedWhy: "情境（未來的除息日）不在，前置紅了之後，依賴那個情境的四條斷言一起紅——前置就是為了讓人分得出是情境不在。",
   },
 ];
 
@@ -2952,7 +3174,10 @@ const CHANGED = (() => {
 
 const readRel = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
+// 只跑帶 expect 的：node scripts/mutationtest.mjs --expect-only（除錯用；判定「只紅對應的那一種」時用它盤點）
+const EXPECT_ONLY = process.argv.includes('--expect-only');
 const SELECTED = (() => {
+  if (EXPECT_ONLY) return MUTATIONS.filter((m) => m.expect);
   if (ONLY) {
     return MUTATIONS.filter((m) => m.name.includes(ONLY) || m.test.includes(ONLY) || m.file.includes(ONLY));
   }
@@ -2961,6 +3186,12 @@ const SELECTED = (() => {
   }
   return MUTATIONS;
 })();
+
+if (EXPECT_ONLY) {
+  section('只跑帶 expect 的突變');
+  ok(SELECTED.length > 0, `挑出 ${SELECTED.length} 條（全部 ${MUTATIONS.length} 條）`);
+  note(`**這不是全綠**：這次只驗了 ${SELECTED.length}/${MUTATIONS.length} 條，其餘沒有跑。`);
+}
 
 if (ONLY) {
   section(`只跑符合「${ONLY}」的突變`);
@@ -3023,7 +3254,7 @@ for (const mut of SELECTED) {
   }
 
   // 判定：沒帶 expect 只看 exit code；帶了的，還要紅在含 expect 的那一條（mutjudge.mjs）
-  const { verdict, failed } = judge(r, mut.expect);
+  const { verdict, failed, extra } = judge(r, mut.expect, mut.alsoRed);
   const label = mut.expect ? `${mut.name} → ${mut.test} 紅在「${mut.expect}」` : `${mut.name} → ${mut.test} 變紅`;
   ok(verdict === 'red', label,
     verdict === 'not-red'
@@ -3033,7 +3264,10 @@ for (const mut of SELECTED) {
         ? `【紅錯地方】${mut.test} 紅了，但沒有任何一條失敗的斷言含「${mut.expect}」。` +
           `實際紅的是：${failed.length ? failed.slice(0, 3).join('／') : '（沒有 ✗ 行 —— 測試直接崩了）'}\n      ` +
           '→ 這只證明改壞之後「某處」會紅，不能證明它想守的那一條有效。'
-        : '');
+        : verdict === 'extra-red'
+          ? `【多紅了別組】紅在「${mut.expect}」，但別組也一起紅：${extra.slice(0, 4).join('／')}${extra.length > 4 ? ` 等 ${extra.length} 條` : ''}\n      ` +
+            '→ 保證不了「只紅對應的那一種」。本來就該連帶紅的，在突變上用 alsoRed 明列、並在 why 講理由。'
+          : '');
 }
 
 section('突變清單本身');

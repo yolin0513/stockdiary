@@ -26,6 +26,7 @@
     "taptest": "node scripts/taptest.mjs",
     "controltest": "node scripts/controltest.mjs",
     "buildtest": "node scripts/buildtest.mjs",
+    "gateselftest": "node scripts/gateselftest.mjs",
     "mutationtest": "node scripts/mutationtest.mjs",
     "checkmutations": "node scripts/checkmutations.mjs",
     "gatescan": "node scripts/gatescan.mjs",

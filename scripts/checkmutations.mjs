@@ -40,6 +40,28 @@ eq(judge({ code: 1, out: OUT_CRASH }, '目標斷言').verdict, 'wrong-place',
   '對照：測試直接崩了（沒有 ✗ 行，expect 只出現在例外訊息裡）→ 判成「紅錯地方」');
 eq(judge({ code: 0, out: '' }, '目標斷言').verdict, 'not-red', '對照：完全沒紅 → 判成「沒紅」，跟「紅錯地方」分得開');
 eq(judge({ code: 1, out: OUT_ELSEWHERE }).verdict, 'red', '沒帶 expect 的照舊：只要紅就算');
+// 「只紅對應的那一種」（2026-09-24，統籌者驗收指出：以前只要有一條對上 expect 就判 red，不看別組有沒有一起紅）
+const OUT_BOTH = '\n— 某段 —\n  ✗ 目標斷言：數字對得上（檢查了 3 項）\n      命中 1 項\n  ✗ 另一組：也紅了\n\nx：0 項通過，2 項失敗';
+{
+  const both = judge({ code: 1, out: OUT_BOTH }, '目標斷言');
+  ok(both.verdict === 'extra-red' && both.extra.length === 1 && both.extra[0] === '另一組：也紅了',
+    '只紅對應：紅在對的那一條、別組也一起紅 → 判成「多紅了別組」，並列出多紅的那一條', JSON.stringify(both));
+  eq(judge({ code: 1, out: OUT_BOTH }, '目標斷言', ['另一組：']).verdict, 'red',
+    '只紅對應（必過）：多紅的那一組有用 alsoRed 明列 → 合格');
+  eq(judge({ code: 1, out: OUT_BOTH }, '目標斷言', ['不相干的標籤：']).verdict, 'extra-red',
+    '只紅對應：alsoRed 列的是別的標籤 → 照樣判「多紅了別組」');
+}
+{
+  const fakeRead = (rel) => (rel === 'scripts/t.mjs' ? "ok(x, '目標斷言：…'); ok(y, '另一組：…');" : null);
+  eq(expectProblems({ test: 't', expect: '目標斷言：', alsoRed: ['另一組：'], alsoRedWhy: '同一行比對，兩組一起紅' }, fakeRead), [],
+    'alsoRed（必過）：每一條都是測試原始碼裡的字面 → 沒問題');
+  ok(expectProblems({ test: 't', expect: '目標斷言：', alsoRed: ['另一組：'] }, fakeRead).some((p) => p.includes('alsoRedWhy')),
+    'alsoRed：有連帶紅卻沒寫理由（alsoRedWhy）→ 報出來');
+  ok(expectProblems({ test: 't', expect: '目標斷言：', alsoRed: ['打錯的標籤：'], alsoRedWhy: '同一行比對，兩組一起紅' }, fakeRead).some((p) => p.includes('打錯的標籤：')),
+    'alsoRed：有一條在測試原始碼裡找不到 → 報出來');
+  ok(expectProblems({ test: 't', expect: '目標斷言：', alsoRed: [''] }, fakeRead).some((p) => p.includes('空的')),
+    'alsoRed：空字串（會讓每一條都算宣告過）→ 報出來');
+}
 
 // ---------------------------------------------------------------------------
 section('套用突變不會偷改替換字串（接手者第 40 條）');

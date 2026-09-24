@@ -244,9 +244,10 @@ async function main() {
 
   // 每一個市場都跟上一次成功的比：少一半以上就停（以前少了一整份上櫃來源也照樣寫檔）
   const dest = path.join(ROOT, 'data', 'stocks.json');
-  const prevCounts = readPrevious(dest)?.counts?.byMarket ?? {};
+  let prevCounts = {};
+  try { prevCounts = readPrevious(dest)?.counts?.byMarket ?? {}; } catch (e) { g.add(`上一次的輸出（stocks.json）：解析不了（${e.message}）——不能當成第一次產而跳過比對`); }
   for (const m of Object.keys(prevCounts)) {
-    const p = shrinkProblem(`${m}的檔數`, byMarket[m] ?? 0, prevCounts[m]);
+    const p = shrinkProblem(`${m}：檔數`, byMarket[m] ?? 0, prevCounts[m]);
     if (p) g.add(p);
   }
   g.check();
