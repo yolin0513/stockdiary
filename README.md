@@ -69,6 +69,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run taptest` | `tap.mjs` 自己的測試：空母體的 `noneOf`／`everyOf`、只有正例或只有反例的 `detects` 都必須紅（在子程序裡跑探針），乾淨的斷言要放行 |
 | `npm run buildtest` | 三支 build（`build-calendar`、`build-dividends`、`build-stocks`）的寫檔前關卡與寫檔（F8）：母體是逐字寫出的「單位 × 情境」矩陣——每一份來源空的、取不到、欄位對不上、解析不了、比上一次成功的少一半以上，上一次的輸出壞掉，寫檔那一步出事（暫存檔的位置被佔住、換不上去、清理也失敗）；每一格要回非 0、理由點名那個單位、`data/` 雜湊不變、不吐堆疊，並分「擋／碰巧擋下／沒擋」統計（在暫存複本裡從真實入口跑，`fetch` 換成 `scripts/testfetch.mjs`，不打網路） |
 | `npm run buildverifytest` | F9 的 build 驗法登記（`scripts/buildverify.mjs`）：驗法全部擋下、而且被守的檔工作區＝HEAD 才登記，否則舊登記被刪；推送前這次要推的 commit 動到被守的檔（逐個 commit 看）才比對登記，對不上就擋。在暫存的小 repo 裡用假的 buildtest 跑，幾秒 |
+| `npm run entrygatetest` | F10：`assertaudit`、`sweep`、`livecheck` 三支入口的「對照組沒過就停」，從真實入口驗——在 `.logs/` 的複本裡把判斷模組或錄好的回應真的弄壞，確認回 1、理由是對照組、沒有往下做（網路用預先載入的模組記錄，一律不打）；依賴沒壞時要過得去（對照） |
 | `npm run escscan` | 跳脫掃描：repo 裡所有腳本（`.mjs`／`.js`／`.cjs`／`.sh`，拿 git 追蹤清單核對一支不漏）有沒有 regex 被多跳脫一次、字串少跳脫一次、shell 樣式帶反斜線——語法正確卻默默空轉的那一種，寫的當下攔不到 |
 | `npm run controltest` | 不在 `npm test` 裡的檢查器，它們的判斷邏輯每版在這裡用合成樣本驗（不打網路）：`assertaudit`（一定失敗的斷言、空母體、寫出資料前就崩掉，都要判對；必過的乾淨測試不能被挑出來）、`sweep`（線上版本是舊的、讀不到版本、留著舊快取、真的錯誤被當成新聞上游雜訊，都要報；全部一致時什麼都不報）、`livecheck`（用 `scripts/fixtures/` 錄好的證交所回應，每個判斷一對：好的錄音不能報、故意改壞的錄音要報，不打證交所）；另做兩道孤兒檢查：`npm test` 鏈上的每一支都要在 `assertaudit` 的清單裡，或寫明不收的理由；`js/app.js` 註冊的每一條路由都要在 `scripts/routes.mjs` 的逐頁清單裡（`sweep` 與 `upgradecheck` 共用），或寫明不巡的理由 |
 | `npm run checkmutations` | 突變清單的秒級檢查：判定邏輯（紅要紅在 `expect` 那一條）、每條 `expect` 都找得到、新突變一律帶 `expect` |
@@ -79,7 +80,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
 
 ```
-— 365 條突變：每一條都必須讓對應的測試變紅 —
+— 372 條突變：每一條都必須讓對應的測試變紅 —
   ✓ 把「沒成交」的漲跌價差照抄成 0 → parsetest 變紅
   ✓ 不認得除權息的 "X0.00" 標記 → parsetest 變紅
   ✓ 除權息日拿不到參考價時，退回用前一日收盤當基準 → settletest 變紅

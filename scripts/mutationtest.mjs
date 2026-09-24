@@ -3183,6 +3183,77 @@ const MUTATIONS = [
     alsoRedWhy: "情境（未來的除息日）不在，前置紅了之後，依賴那個情境的四條斷言一起紅——前置就是為了讓人分得出是情境不在。",
   },
 
+  // ---- F10：三支入口的「對照組沒過就停」（scripts/entrygatetest.mjs 從真實入口驗，讓真的依賴失敗）----
+  {
+    name: 'F10：assertaudit 對照組沒過也照樣往下跑',
+    why: '判斷邏輯壞了，照樣跑測試、產出一份不可信的報告（以前篩選條件改壞，報告只寫「（沒有）」、回傳 0）。',
+    file: 'scripts/assertaudit.mjs',
+    find: 'if (ctrl.some((c) => !c.ok)) {',
+    replace: 'if (false) {',
+    test: 'entrygatetest',
+    expect: 'F10 assertaudit・依賴壞了：',
+  },
+  {
+    name: 'F10：sweep 對照組沒過也照樣巡檢',
+    why: '判斷邏輯壞了，照樣對線上巡檢，印出不可信的「全過」（以前版本比對改成恆真，20 項照樣全過）。',
+    file: 'scripts/sweep.mjs',
+    find: 'if (ctrl.some((c) => !c.ok)) {',
+    replace: 'if (false) {',
+    test: 'entrygatetest',
+    expect: 'F10 sweep・依賴壞了：',
+  },
+  {
+    name: 'F10：livecheck 對照組沒過也照樣打證交所',
+    why: '判斷邏輯或錄音壞了，照樣去打證交所，對著真實回應印出不可信的結果。',
+    file: 'scripts/livecheck.mjs',
+    find: 'if (ctrl.some((c) => !c.ok)) {',
+    replace: 'if (false) {',
+    test: 'entrygatetest',
+    expect: 'F10 livecheck・依賴壞了：',
+  },
+
+  // ---- PC：公開前自查取 commit 訊息與作者欄（precheck.mjs 的 commitMeta；2026-09-24，MealMate 與統籌者各中一次的位置）----
+  {
+    name: 'PC：有 commit 卻取不到作者欄也放行',
+    why: '取訊息與作者欄的 git 回了空的（或少了），自查當成 0 行、0 命中通過——姓名與信箱那道防線無聲失效。',
+    file: 'scripts/precheck.mjs',
+    find: '  if (authors !== count || committers !== count) {',
+    replace: '  if (false) {',
+    test: 'controltest',
+    expect: '自查訊息與作者：有 commit 卻取到空的',
+    alsoRed: ['自查訊息與作者：只取到一部分'],
+    alsoRedWhy: '「全部取不到」與「只取到一部分」靠的是同一道核對（作者欄數＝commit 數），拿掉它兩種一起放行。',
+  },
+  {
+    name: 'PC：git 失敗被吞掉、當成空的',
+    why: '隱式的擋（例外往外丟、整支崩掉）改成明寫之後，「把例外吞掉」就是對應的突變（Dispatch 2026-09-24）：吞掉之後當成 0 個 commit、放行。',
+    file: 'scripts/precheck.mjs',
+    find: "    return { lines: [], problem: `取不到 commit 數或訊息與作者欄（git 失敗：${String(e?.message ?? e).split('\\n')[0]}）` };",
+    replace: '    return { lines: [], problem: null };',
+    test: 'controltest',
+    expect: '自查訊息與作者：取訊息的 git 失敗',
+    alsoRed: ['自查訊息與作者：數 commit 的 git 失敗', '自查訊息與作者：真的 git 失敗'],
+    alsoRedWhy: '三種失敗（取訊息的 git、數 commit 的 git、真的 git 因 GIT_DIR 失敗）都落在同一個 catch。',
+  },
+  {
+    name: 'PC：commit 數算不出來也往下比',
+    why: '算不出 commit 數時沒有先講明，後面的核對拿 NaN 去比，照樣會擋，但理由變成「取到幾個作者欄」，看不出真正壞的是哪裡。',
+    file: 'scripts/precheck.mjs',
+    find: "  if (!Number.isInteger(count)) return { lines: [], problem: '算不出這次有幾個 commit' };",
+    replace: '  // 突變：不檢查 commit 數算不算得出來',
+    test: 'controltest',
+    expect: '自查訊息與作者：commit 數算不出來',
+  },
+  {
+    name: 'PC：單一 commit 沒有限定 -1',
+    why: '自查單一 commit 時，數 commit 與取訊息都沒限定 -1，會把整段歷史的訊息與作者都掃進來（數量兩邊剛好一致，核對看不出來）。',
+    file: 'scripts/precheck.mjs',
+    find: "  const range = rev.includes('..') ? [rev] : ['-1', rev];",
+    replace: "  const range = rev.includes('..') ? [rev] : [rev];",
+    test: 'controltest',
+    expect: '自查訊息與作者：單一 commit 兩個子指令都只看那一個',
+  },
+
   // ---- EV：一次性量測腳本的登記（scripts/evidencereg.mjs；2026-09-24 Dispatch：收進 repo、列進孤兒檢查的登記）----
   {
     name: 'EV：沒登記的量測腳本不報',

@@ -16,6 +16,39 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn <%ce>';
+
+/**
+ * 取這次每個 commit 的訊息、作者、提交者（每一行前面加「+」，跟新增行走同一套搜尋式）。
+ * git：執行 git 的函式（參數陣列 → 輸出字串，失敗就丟例外）——當參數傳進來，測試才能只讓其中一個子指令失敗（F10 第 1b 點）。
+ * **有 commit 卻取不到作者欄與提交者欄，就是檢查器壞了**（2026-09-24，MealMate 與統籌者各中一次同一個位置）：
+ * 以前這裡取到空的就當成「0 行、0 命中」通過，姓名與信箱那道防線無聲失效。現在拿 rev-list 數出的 commit 數核對：
+ * 作者欄、提交者欄各要剛好那麼多行；git 本身失敗也講明，不丟給外層當成崩潰。
+ * 回傳 { lines, problem }；problem 不是 null 就要擋。
+ */
+export function commitMeta(git, rev) {
+  const range = rev.includes('..') ? [rev] : ['-1', rev];
+  let count;
+  let raw;
+  try {
+    count = Number(git(['rev-list', '--count', ...range]).trim());
+    raw = git(['log', `--format=${META_FMT}`, ...range]);
+  } catch (e) {
+    return { lines: [], problem: `取不到 commit 數或訊息與作者欄（git 失敗：${String(e?.message ?? e).split('\n')[0]}）` };
+  }
+  if (!Number.isInteger(count)) return { lines: [], problem: '算不出這次有幾個 commit' };
+  const lines = raw.split('\n').filter((l) => l.trim() !== '').map((l) => '+' + l);
+  const authors = lines.filter((l) => l.startsWith('+作者：')).length;
+  const committers = lines.filter((l) => l.startsWith('+提交者：')).length;
+  if (authors !== count || committers !== count) {
+    return { lines, problem: `有 ${count} 個 commit，卻取到 ${authors} 個作者欄、${committers} 個提交者欄` };
+  }
+  return { lines, problem: null };
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+
+function main() {
 const rev = process.argv[2] || 'HEAD';
 
 // 單一 commit（`HEAD`）或一段範圍（`<遠端>..HEAD`，閘門給的），都用 git log **逐個 commit** 取新增行 ——
@@ -62,11 +95,12 @@ if (addedLines.length !== gitAdded) {
 // commit 訊息、作者與提交者的名字與信箱也會公開（共用慣例 v8 §2.5「自查的範圍」）。
 // 2026-09-24 以前只掃新增行：一個把合成 token 放在 commit 訊息裡的 commit，自查回傳 0（實測）。
 // 每一行前面加「+」，跟新增行走同一套搜尋式；另外記住它是哪一種，命中時講得出來源。
-const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn <%ce>';
-const metaRaw = execFileSync('git', rev.includes('..')
-  ? ['-C', ROOT, 'log', `--format=${META_FMT}`, rev]
-  : ['-C', ROOT, 'log', '-1', `--format=${META_FMT}`, rev], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-const metaLines = metaRaw.split('\n').filter((l) => l.trim() !== '').map((l) => '+' + l);
+const meta = commitMeta((args) => execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }), rev);
+if (meta.problem) {
+  console.log(`四類自查：${rev}，${meta.problem}（檢查器壞了）—— 擋下`);
+  process.exit(1);
+}
+const metaLines = meta.lines;
 const SOURCE = new Map([...addedLines.map((l) => [l, '新增行']), ...metaLines.map((l) => [l, 'commit 訊息／作者'])]);
 const added = [...addedLines, ...metaLines];
 
@@ -121,3 +155,4 @@ console.log(`(d) 第二道（真實檔案，只印不判）：${second.join('、
 
 console.log(bad === 0 ? '四類自查：通過' : '四類自查：未通過');
 process.exit(bad === 0 ? 0 : 1);
+}

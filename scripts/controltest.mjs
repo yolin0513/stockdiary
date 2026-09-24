@@ -116,4 +116,37 @@ section('推送閘門驗法的理由比對（scripts/gatereason.mjs）：只在�
   for (const c of r) ok(c.ok, `閘門理由比對：${c.name}`);
 }
 
+// ---------------------------------------------------------------------------
+section('公開前自查取 commit 訊息與作者欄（scripts/precheck.mjs 的 commitMeta）：有 commit 卻取不到就是檢查器壞了');
+{
+  // 2026-09-24：MealMate 與統籌者的自查各中一次——有 commit 卻取不到訊息與作者欄，被當成「0 命中、通過」。
+  // 「執行 git」的函式當參數傳進去（F10 第 1b 點第 2 種），才能只讓其中一個子指令失敗、或只回空的。
+  const { commitMeta } = await import('./precheck.mjs');
+  const { execFileSync } = await import('node:child_process');
+  const two = '訊息一\n作者：甲 <a@x>\n提交者：甲 <a@x>\n\n訊息二\n作者：乙 <b@x>\n提交者：乙 <b@x>\n';
+  const fake = (count, log) => (args) => {
+    if (args[0] === 'rev-list') { if (count instanceof Error) throw count; return `${count}\n`; }
+    if (args[0] === 'log') { if (log instanceof Error) throw log; return log; }
+    throw new Error(`沒料到的 git 指令：${args.join(' ')}`);
+  };
+  const r = (count, log, rev = 'a..b') => commitMeta(fake(count, log), rev);
+  ok(r(2, two).problem === null && r(2, two).lines.length === 6, '自查訊息與作者（必過）：2 個 commit、取到 2 組作者與提交者 → 放行、6 行', JSON.stringify(r(2, two)));
+  ok(r(0, '').problem === null, '自查訊息與作者（必過）：範圍裡 0 個 commit、取到空的 → 放行（沒有東西要推）', JSON.stringify(r(0, '')));
+  ok(/有 2 個 commit，卻取到 0 個作者欄/.test(r(2, '').problem ?? ''), '自查訊息與作者：有 commit 卻取到空的 → 擋（檢查器壞了）', JSON.stringify(r(2, '')));
+  ok(/有 2 個 commit，卻取到 1 個作者欄/.test(r(2, '訊息\n作者：甲 <a@x>\n提交者：甲 <a@x>\n').problem ?? ''), '自查訊息與作者：只取到一部分 → 擋', '');
+  ok(/git 失敗/.test(r(2, new Error('log 壞了')).problem ?? ''), '自查訊息與作者：取訊息的 git 失敗 → 擋並講明（不丟給外層當崩潰）', JSON.stringify(r(2, new Error('x'))));
+  ok(/git 失敗/.test(r(new Error('rev-list 壞了'), two).problem ?? ''), '自查訊息與作者：數 commit 的 git 失敗 → 擋', '');
+  ok(/算不出/.test(r('不是數字', two).problem ?? ''), '自查訊息與作者：commit 數算不出來 → 擋', '');
+  {
+    const seen = [];
+    commitMeta((args) => { seen.push(args.join(' ')); return args[0] === 'rev-list' ? '1' : '作者：甲 <a@x>\n提交者：甲 <a@x>\n'; }, 'HEAD');
+    ok(seen.length === 2 && seen.every((s) => s.includes('-1 HEAD')), '自查訊息與作者：單一 commit 兩個子指令都只看那一個（-1）', JSON.stringify(seen));
+  }
+  // 真的 git（F10 第 1b 點第 1 種）：正常的 HEAD 放行；GIT_DIR 指向不存在的目錄，真的 git 失敗，要擋
+  const realGit = (env) => (args) => execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  eq(commitMeta(realGit({}), 'HEAD').problem, null, '自查訊息與作者（必過）：真的 git、真的 HEAD → 放行');
+  ok(/git 失敗/.test(commitMeta(realGit({ GIT_DIR: path.join(ROOT, '.logs', 'no-such-git-dir') }), 'HEAD').problem ?? ''),
+    '自查訊息與作者：真的 git 失敗（GIT_DIR 指向不存在的目錄）→ 擋', '');
+}
+
 done('controltest');

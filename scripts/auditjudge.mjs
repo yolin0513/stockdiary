@@ -40,6 +40,7 @@ export const AUDIT_TESTS = [
   // 2026-09-24：三支 build 的寫檔前關卡（孤兒檢查一接進鏈就點名它）
   'buildtest',
   'buildverifytest',
+  'entrygatetest',
   // 2026-09-24：跳脫掃描（補充說明（四）第 4 點）
   'escscan',
 ];
