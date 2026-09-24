@@ -39,6 +39,9 @@ const MUTATIONS = [
     find: 'change: traded ? num(r[9]) : null,',
     replace: 'change: num(r[9]),',
     test: 'parsetest',
+    expect: "漲跌是 null —— 原始回應寫",
+    alsoRed: ["**12 檔沒成交的，價格與漲跌全部是 null**","沒成交的列裡沒有任何一個 0"],
+    alsoRedWhy: "沒成交那一列的漲跌變成 0：單看那一檔、看全部 12 檔、看「沒有任何一個 0」三條，看的是同一批值。",
   },
   {
     name: '把空字串的數字當成 0',
@@ -47,6 +50,9 @@ const MUTATIONS = [
     find: "if (t === '' || t === '--' || t === '---') return null;",
     replace: "if (t === '' || t === '--' || t === '---') return 0;",
     test: 'parsetest',
+    expect: "空字串不能變成 0",
+    alsoRed: ["非數字一律 null","\"--\" 不能變成 0","01010T 當天沒有成交","收盤價是 null","開盤價是 null","漲跌是 null —— 原始回應寫","沒成交的檔數有被數出來","**12 檔沒成交的，價格與漲跌全部是 null**","沒成交的列裡沒有任何一個 0","有成交股數但沒有收盤價的，一律算沒成交","有成交的列都有正的收盤價","（對照）有成交 ","指數是 \"--\" 時解成 null"],
+    alsoRedWhy: "num() 是所有欄位共用的解析：空字串與 -- 變成 0 之後，收盤價、開盤價、漲跌、「有沒有成交」的判斷、大盤指數都從它來，一起錯。",
   },
   {
     name: '不認得除權息的 "X0.00" 標記',
@@ -55,6 +61,7 @@ const MUTATIONS = [
     find: 'const exMark = /X/i.test(rawChange);',
     replace: 'const exMark = false;',
     test: 'parsetest',
+    expect: "這個月有一天除權息",
   },
   {
     name: '欄位順序變了還硬解',
@@ -63,6 +70,7 @@ const MUTATIONS = [
     find: 'throw new Error(`STOCK_DAY_ALL 欄位與預期不同：第 ${i + 1} 欄是「${r[i].trim()}」，預期「${SDA_HEADER[i]}」`);',
     replace: 'continue;',
     test: 'parsetest',
+    expect: "代號與名稱對調 → 丟錯",
   },
   {
     name: '民國年換算差一年',
@@ -71,6 +79,9 @@ const MUTATIONS = [
     find: 'const ROC_OFFSET = 1911;',
     replace: 'const ROC_OFFSET = 1912;',
     test: 'roctest',
+    expect: "民國 99 年（7 碼補零）",
+    alsoRed: ["STOCK_DAY_ALL 的 7 碼格式","民國 99 年（6 碼）","STOCK_DAY 的斜線格式","月日沒補零也要能解","中文年月日格式","anyRocToISO 認得中文格式","anyRocToISO 認得斜線格式","anyRocToISO 認得緊湊格式","2024 是閏年，2/29 存在","ISO → 7 碼民國","ISO → 斜線民國"],
+    alsoRedWhy: "ROC_OFFSET 是每一種格式、兩個方向共用的常數，差一年，每一條換算都差一年。",
   },
   {
     name: '忽略「今日資料公布門檻」，盤中就去抓今天',
@@ -79,6 +90,9 @@ const MUTATIONS = [
     find: 'if (isTd && mins >= threshold) return today;',
     replace: 'if (isTd) return today;',
     test: 'roctest',
+    expect: "交易日盤中 → 最新應有收盤是昨天",
+    alsoRed: ["門檻前一分鐘 → 還是昨天"],
+    alsoRedWhy: "兩條都是門檻之前的時刻：盤中與門檻前一分鐘。",
   },
   {
     name: '把每一天都當成交易日',
@@ -87,6 +101,9 @@ const MUTATIONS = [
     find: 'return cal.set.has(iso);',
     replace: 'return true;',
     test: 'roctest',
+    expect: "9/12 週六不是交易日",
+    alsoRed: ["9/25 中秋節不是交易日","休市判斷有對照組","週六晚上 → 最後一個交易日是週五","中秋節晚上 → 9/24","週六不是「今日收盤尚未公布」，是休市","中秋節不是「尚未公布」，是休市","2027-01-01 不是（元旦）"],
+    alsoRedWhy: "「是不是交易日」是每一條日期推算的基礎：週末、國定假日、跨年、最後一個交易日、「尚未公布」與「休市」的區分都靠它。",
   },
   {
     name: '用 toISOString 取今天（時區差一天）',
@@ -95,6 +112,9 @@ const MUTATIONS = [
     find: "return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;",
     replace: 'return d.toISOString().slice(0, 10);',
     test: 'roctest',
+    expect: "早上七點半仍然是 9/11",
+    alsoRed: ["（對照）toISOString() 在這個時刻確實會給出不同的日期"],
+    alsoRedWhy: "對照組證明 toISOString 在這個時刻會給出不同的日期；突變把取今天改成它，兩條看的是同一個時刻。",
   },
   {
     name: '讓上櫃代號也「支援報價」',
@@ -127,6 +147,9 @@ const MUTATIONS = [
     find: "    if (k === 'class') el.className = v;",
     replace: "    if (k === 'html') { el.innerHTML = v; }\n    else if (k === 'class') el.className = v;",
     test: 'shelltest',
+    expect: "html: prop 沒有生出 <img> 節點",
+    alsoRed: ["html: prop 沒有生出任何子元素","html: prop 連文字都沒有進來","整個頁面沒有多出 <img>"],
+    alsoRedWhy: "h() 一接受 html:，同一段注入從四個角度都看得到：生出 <img>、生出子元素、字串不再只是屬性、整頁多了一個 <img>。",
   },
   {
     name: '網址屬性不過白名單',
@@ -135,6 +158,7 @@ const MUTATIONS = [
     find: '      if (SAFE_URL.test(String(v).trim())) el.setAttribute(k, v);',
     replace: '      el.setAttribute(k, v);',
     test: 'shelltest',
+    expect: "危險的協定全部被丟掉（href 屬性根本不存在）",
   },
   {
     name: 'SHELL 清單漏掉一個 view',
@@ -143,6 +167,9 @@ const MUTATIONS = [
     find: "  './js/views/settings.js',\n",
     replace: '',
     test: 'shelltest',
+    expect: "每條路由的 view 檔都在 SHELL 清單裡",
+    alsoRed: ["每一個會被載到的模組都在 SHELL 清單裡","（對照）清單少了 views/home.js 時","稽核器只管 JS 模組，抽掉非模組資產不會誤報"],
+    alsoRedWhy: "四條共用同一份 sw.js 的 SHELL 清單當母體：少一支 view，它同時是「路由的 view」與「會被載到的模組」；兩條對照是拿這份清單再抽掉一項，母體先少了一支，對照的預期也跟著對不上。",
   },
   {
     name: 'Service Worker 連跨網域回應也快取',
@@ -151,6 +178,7 @@ const MUTATIONS = [
     find: '  if (url.origin !== self.location.origin) return;',
     replace: '  if (url.origin !== self.location.origin) { /* 照樣往下走 */ }',
     test: 'shelltest',
+    expect: "跨網域請求直接走網路，不進快取（拿舊收盤價冒充今天比拿不到更糟）",
   },
   {
     name: '拿不到的金額顯示 0',
@@ -159,6 +187,9 @@ const MUTATIONS = [
     find: "  if (n == null || !Number.isFinite(n)) return NO_VALUE;\n  const rounded = Math.round(n);",
     replace: '  if (n == null || !Number.isFinite(n)) return \'0\';\n  const rounded = Math.round(n);',
     test: 'fmttest',
+    expect: "fmtMoney 對所有「沒有值」回「—」",
+    alsoRed: ["「沒有值」的輸出裡不含任何數字","「沒有值」與「值是 0」分得開"],
+    alsoRedWhy: "沒有值改回傳 '0'：回「—」、不含數字、跟 0 分得開，三條從三個角度看同一個回傳值。",
   },
   // ---- M1：結算、金額運算、節流、持股 ----
   {
@@ -251,6 +282,9 @@ const MUTATIONS = [
     find: "  let total = 0;\n  for (const c of changes) {\n    if (c.status !== 'confirmed') continue;\n    total += Number(c.deltaShares) || 0;\n  }\n  return total;",
     replace: '  let total = 0;\n  for (const c of changes) {\n    total += Number(c.deltaShares) || 0;\n  }\n  return total;',
     test: 'changestest',
+    expect: "沒有把未確認的 400 股算進去",
+    alsoRed: ["1000 + 500 + 300 − 200 = 1600","全部都未確認 → 0 股","時間線最後一天的股數等於「已確認總和」"],
+    alsoRedWhy: "加總不再跳過未確認的，所有用到確認股數的數字（總和、全部未確認、時間線最後一天）一起錯。",
   },
   {
     name: '回推某一天的股數時忽略日期',
@@ -259,6 +293,9 @@ const MUTATIONS = [
     find: '    if (c.date > date) continue;',
     replace: '',
     test: 'changestest',
+    expect: "買進前一天：0 股",
+    alsoRed: ["買進當天就算進去","第二次扣款前：1000 股","第二次扣款當天：1500 股","六月底：1800 股","（前提）時間線上的股數真的有變動過："],
+    alsoRedWhy: "不看日期就是每一天都拿總和：時間線上每一個時點、以及「股數真的有變動」那條前提，都變成同一個數。",
   },
   {
     name: '持股頁把不支援報價的持股當成一般持股畫',
@@ -523,6 +560,7 @@ const MUTATIONS = [
     find: `<script type="module" src="./js/app.js?v=${APP_VERSION}"></script>`,
     replace: '<script type="module" src="./js/app.js"></script>',
     test: 'shelltest',
+    expect: "index.html 每個 .js 引用的網址都跟模組圖實際請求的一致（該帶版本的帶 ?v=",
   },
   {
     name: '版本號三個地方不一致（sw.js 忘了跟上）',
@@ -531,6 +569,9 @@ const MUTATIONS = [
     find: `const VERSION = '${APP_VERSION}';`,
     replace: "const VERSION = 'stockdiary-v0.0.0-mutant';",
     test: 'shelltest',
+    expect: "sw.js 的 VERSION 與 js/version.js 一致",
+    alsoRed: ["VERSION 格式正常："],
+    alsoRedWhy: "突變把 sw.js 的版本換成 stockdiary-v0.0.0-mutant，格式檢查與一致性檢查讀的是同一個值。",
   },
   {
     name: '動態 import 不帶版本參數',
@@ -539,6 +580,9 @@ const MUTATIONS = [
     find: "route('/plans', async () => (await import(`./views/plans.js${V}`)).default());",
     replace: "route('/plans', async () => (await import('./views/plans.js')).default());",
     test: 'shelltest',
+    expect: "每一個動態 import 都帶 ${V} 版本參數",
+    alsoRed: ["沒有任何一個是沒帶版本的字面字串"],
+    alsoRedWhy: "拿掉版本參數後，那一行同時「沒帶 ${V}」而且「是沒帶版本的字面字串」，兩條從正反兩面看同一行。",
   },
   {
     name: 'SW 快取比對不忽略查詢字串',
@@ -557,6 +601,9 @@ const MUTATIONS = [
     find: "    if (v == null || String(v).trim() === '') { errors[key] = `請填${label}`; return; }",
     replace: "    if (v == null || String(v).trim() === '') { values[key] = 0; return; }",
     test: 'calctest',
+    expect: "空白輸入時，沒有任何必填欄位被填上預設值",
+    alsoRed: [" 留空時不會被當成 0"," 留空 → 報錯「","成長率空白 → undefined，**不是 0%**","股數法沒填股價 → 不合法","輸入檢查有對照組","成長率沒填 → compareScenarios 回 null","simulate 也回 null","每個必填欄位都有自己的錯誤訊息"],
+    alsoRedWhy: "驗證的那一行被改成「空白就填 0」，所有必填欄位（金額、年數、成長率、配息率、股價）與依賴驗證結果的 compareScenarios、simulate 都一起放行。",
   },
   {
     name: '股數法把湊不滿一股的餘額丟掉',
@@ -565,6 +612,9 @@ const MUTATIONS = [
     find: '        cash -= bought * priceMicro;\n      } else {\n        value += usableEach;',
     replace: '        cash = 0n;\n      } else {\n        value += usableEach;',
     test: 'calctest',
+    expect: "餘額 300 元結轉著，沒有被丟掉",
+    alsoRed: ["買到 51 股","期末 51 × 700 + 300 = 36,000 元","餘額有算進期末市值","零成長時金額法與股數法期末差距是 0","股數法與金額法的差距小於一股："],
+    alsoRedWhy: "餘額被歸零，之後每一期能買的股數、期末市值、以及拿金額法當基準的兩條差距比較，都從同一個少掉的餘額算出來。",
   },
   {
     name: '股利扣費開關關閉時照樣扣',
@@ -573,6 +623,9 @@ const MUTATIONS = [
     find: '  if (!applyFees || grossMicro <= 0n) return grossMicro;',
     replace: '  if (grossMicro <= 0n) return grossMicro;',
     test: 'calctest',
+    expect: "關閉自動扣費：領到 50,000 元",
+    alsoRed: ["配息再投入十年對得上手算：","領現累積 500,000 元","領現手上總共 1,500,000 元"],
+    alsoRedWhy: "扣費開關被忽略，配息那一步每一次都多扣一筆，再投入與領現兩條路的累積金額都從同一個配息算出來。",
   },
   {
     name: '年化成長率用「除以 12」而不是複利換算',
@@ -581,6 +634,9 @@ const MUTATIONS = [
     find: '  return BigInt(Math.round(Math.pow(annual, 1 / 12) * 1e12));',
     replace: '  return BigInt(Math.round((1 + (annual - 1) / 12) * 1e12));',
     test: 'calctest',
+    expect: "月成長倍數連乘 12 次剛好回到 12%",
+    alsoRed: ["純複利十年對得上手算："],
+    alsoRedWhy: "月成長倍數換錯，十年期末市值是它連乘 120 次的結果，對不上手算。",
   },
   {
     name: '股數法的期末市值不含未投入的現金',
@@ -589,6 +645,9 @@ const MUTATIONS = [
     find: '    ? BigInt(shares) * priceMicro + cash',
     replace: '    ? BigInt(shares) * priceMicro',
     test: 'calctest',
+    expect: "餘額有算進期末市值",
+    alsoRed: ["期末 51 × 700 + 300 = 36,000 元","零成長時金額法與股數法期末差距是 0"],
+    alsoRedWhy: "期末市值少了那 300 元餘額，逐元對帳與「零成長時兩種算法一樣」都看得到。",
   },
   {
     name: '試算器不扣扣款手續費',
@@ -597,6 +656,9 @@ const MUTATIONS = [
     find: '  const usableEach = contribEach - mulRate(contribEach, BigInt(Math.round(v.feeRate * 1e12)));',
     replace: '  const usableEach = contribEach;',
     test: 'calctest',
+    expect: "差額剛好是 120 次 × 14.25 元",
+    alsoRed: ["期末市值 1,198,290 元（扣掉 1,710 元手續費）"],
+    alsoRedWhy: "不扣手續費，期末市值與「差額剛好是手續費總和」是同一件事的兩種寫法。",
   },
   {
     name: '試算器的欄位有預設值',
@@ -621,6 +683,7 @@ const MUTATIONS = [
     find: "  if (!m) return NO_VALUE;\n  return `${Number(m[2])}/${Number(m[3])}`;",
     replace: "  if (!m) { const t = new Date(); return `${t.getMonth() + 1}/${t.getDate()}`; }\n  return `${Number(m[2])}/${Number(m[3])}`;",
     test: 'fmttest',
+    expect: "壞掉的日期顯示「—」，不顯示今天",
   },
   {
     name: '開機自動更新回來時，自己 import 首頁畫上去',
@@ -661,6 +724,7 @@ const MUTATIONS = [
     replace: `  mount(document.getElementById('view'), [
     fontSection(),`,
     test: 'shelltest',
+    expect: "每一頁都透過 app.js 的 render() 上畫面（那裡才有「畫面過期就不畫」的守門）",
   },
   {
     name: '過期的畫面還是可以把使用者轉去別頁',
@@ -1220,6 +1284,7 @@ const MUTATIONS = [
     find: 'change: traded ? num(r[9]) : null,',
     replace: 'change: traded && num(r[9]) !== 0 ? num(r[9]) : null,',
     test: 'parsetest',
+    expect: "真正的持平解成 0，不是 null",
   },
   {
     name: '用成交股數判斷「有沒有成交」',
@@ -1229,6 +1294,9 @@ const MUTATIONS = [
     find: 'const traded = close != null;',
     replace: 'const traded = num(r[3]) > 0;',
     test: 'parsetest',
+    expect: "有成交股數但沒有收盤價的，一律算沒成交",
+    alsoRed: ["沒成交的檔數有被數出來","有成交的列都有正的收盤價"],
+    alsoRedWhy: "判斷改成看成交股數，同一批「有股數、沒收盤價」的列被當成有成交，沒成交的檔數與「有成交的都有收盤價」一起錯。",
   },
   {
     name: '大盤漲跌％拿當日指數當分母',
@@ -1238,6 +1306,7 @@ const MUTATIONS = [
     find: 'const prev = index - changePoints;',
     replace: 'const prev = index;',
     test: 'parsetest',
+    expect: "漲跌％由點數與前一日指數算出來",
   },
   {
     name: '大盤算不出百分比時給 0',
@@ -1246,6 +1315,7 @@ const MUTATIONS = [
     find: '    let changePct = null;',
     replace: '    let changePct = 0;',
     test: 'parsetest',
+    expect: "算不出百分比時是 null，不是 0",
   },
   {
     name: '大盤挑回應裡的第一列，不是指定的那一天',
@@ -1280,6 +1350,7 @@ const MUTATIONS = [
     find: 'const sameVersion = (v) => v === appVersion;',
     replace: 'const sameVersion = (v) => String(v).trim().toLowerCase().startsWith(String(appVersion).slice(0, 12).toLowerCase());',
     test: 'shelltest',
+    expect: "版本比對是嚴格字串相等：多一個空白、少一個字、只差一個 patch 都算不同",
   },
   {
     name: '除權息日拿不到參考價就退回前一日收盤',
@@ -1419,6 +1490,9 @@ const MUTATIONS = [
     find: "  values.feeRate = optionalNumber(raw.feeRate, errors, 'feeRate', { min: 0, max: MAX_FEE_RATE, label: '扣款手續費率' }) ?? 0;",
     replace: "  values.feeRate = optionalNumber(raw.feeRate, errors, 'feeRate', { min: 0, max: 0.999, label: '扣款手續費率' }) ?? 0;",
     test: 'calctest',
+    expect: "把百分比當比例填會被擋，真的比例放行",
+    alsoRed: ["訊息講得出「你填的等於幾 %」與「應該填什麼」"],
+    alsoRedWhy: "上限放寬後 0.1425 不再被擋、沒有錯誤訊息，檢查訊息內容的那一條拿到的是 undefined。",
   },
   {
     name: '持股列改回 flex（右側數字會被擠到下一行）',
@@ -1473,8 +1547,13 @@ const MUTATIONS = [
       + '看起來很正常的結果，而且合計也被汙染 —— 使用者不會發現那一檔根本沒填。',
     file: 'js/calc.js',
     find: "    if (missing.length) { skipped.push({ code: leg.code, name: leg.name, missing }); continue; }",
-    replace: "    if (missing.length) { leg = { ...leg, growthRate: leg.growthRate || 0, yieldRate: leg.yieldRate || 0, amount: leg.amount || 0 }; }",
+    // 2026-09-24 補 expect 時發現：以前寫的是 `leg = { ...leg, … }`，leg 是 for…of 的 const，一跑就 TypeError——
+    // 測試是被語法錯誤弄崩的，不是抓到「空白被當成 0」。改成直接改寫那一檔的欄位，行為才是它 why 講的那樣。
+    replace: "    if (missing.length) { Object.assign(leg, { growthRate: leg.growthRate || 0, yieldRate: leg.yieldRate || 0, amount: leg.amount || 0 }); }",
     test: 'calctest',
+    expect: "沒填完的那一檔沒有算",
+    alsoRed: ["填完的兩檔算進去了"],
+    alsoRedWhy: "沒填完的那一檔被當成 0 算進去，列表從兩檔變三檔，「填完的兩檔」那條數的是同一份列表。",
   },
   {
     name: '一檔都沒填完時合計回 0 而不是 null',
@@ -1483,6 +1562,7 @@ const MUTATIONS = [
     find: '  if (rows.length === 0) return { rows, skipped, total: null };',
     replace: '  if (rows.length === 0) return { rows, skipped, total: { reinvest: { totalEndMicro: 0n, investedMicro: 0n, dividendTotalMicro: 0n }, payout: { totalEndMicro: 0n, investedMicro: 0n, dividendTotalMicro: 0n, paidOutMicro: 0n }, counted: 0, yearly: [] } };',
     test: 'calctest',
+    expect: "**合計是 null，不是 0** —— 0 會被讀成「算出來是零」",
   },
   {
     name: '每一檔共用同一組成長率與配息率',
@@ -1492,6 +1572,9 @@ const MUTATIONS = [
     find: '      growthRate: Number(leg.growthRate),\n      yieldRate: Number(leg.yieldRate),',
     replace: '      growthRate: Number(legs[0].growthRate),\n      yieldRate: Number(legs[0].yieldRate),',
     test: 'calctest',
+    expect: "兩檔的成長率各自是 6% 與 3%",
+    alsoRed: ["配息率也各自不同"],
+    alsoRedWhy: "突變把成長率與配息率都改成拿第一檔的，兩條各看一個欄位。",
   },
   {
     name: '試算的成長率欄位不再說明為什麼沒有參考值',
@@ -1633,6 +1716,7 @@ const MUTATIONS = [
     find: "(t) => /當日損益\\s*[+-]?[\\d,]+/.test(t)",
     replace: "(t) => /當日損益\\\\s*[+-]?[\\\\d,]+/.test(t)",
     test: 'shelltest',
+    expect: "沒有任何 regex 的反斜線被跳脫兩次（那種 regex 永遠不會命中，等於假斷言）",
   },
   {
     name: '配股不稀釋均價',
@@ -1665,6 +1749,7 @@ const MUTATIONS = [
     find: '  "version": "',
     replace: '  "versionX": "',
     test: 'shelltest',
+    expect: "package.json 的 version 與 js/version.js 一致（",
   },
   {
     name: '突變挑選器不看測試的相依',
@@ -1673,6 +1758,9 @@ const MUTATIONS = [
     find: '    for (const f of changed) if (deps(m.test).has(f)) return true;',
     replace: '    // 不看相依',
     test: 'shelltest',
+    expect: "改到 js/money.js → settletest 的兩條都挑",
+    alsoRed: ["改到 js/ui.js → uikittest 與 shelltest 的都挑"],
+    alsoRedWhy: "兩條都是「靠相依才挑得到」的情境；拿掉看相依那一行，兩條一起挑不到。",
   },
   {
     name: 'moduleClosure 只展開一層，不遞移',
@@ -1681,6 +1769,7 @@ const MUTATIONS = [
     find: "      if (next.startsWith('js/')) walk(next);",
     replace: "      if (false) walk(next);",
     test: 'shelltest',
+    expect: "遞移展開：直接 import settle.js，連帶把 money.js 與 format.js 都算進來",
   },
   {
     name: 'npm test 鏈裡少一支，文件的數字沒跟上',
@@ -1689,6 +1778,9 @@ const MUTATIONS = [
     find: 'node scripts/roctest.mjs && ',
     replace: '',
     test: 'doctest',
+    expect: "文件裡每一處寫的測試支數都等於實際的 ",
+    alsoRed: ["README 有但 npm test 沒有的，就是刻意排除的那幾支"],
+    alsoRedWhy: "鏈上少一支 roctest：支數對不上，README 列著它卻不在鏈上、又不是刻意排除的。",
   },
   {
     name: 'README 的測試表格漏掉一支',
@@ -1697,6 +1789,7 @@ const MUTATIONS = [
     find: '| `npm run pathtest` |',
     replace: '| `npm run pathtest-打錯字了` |',
     test: 'doctest',
+    expect: "npm test 跑的每一支都列在 README 表格裡（漏了的話，沒人知道它存在）",
   },
   {
     name: '把被禁用的 type="time" 用回去',
@@ -1705,6 +1798,7 @@ const MUTATIONS = [
     find: 'export function timeSelect(',
     replace: 'const _banned = { type: \'time\' };\nexport function timeSelect(',
     test: 'doctest',
+    expect: "程式裡沒有任何一處用到被禁用的元件",
   },
   {
     name: 'A14：holdingtest 的頁面文字抓成空的',
@@ -1761,6 +1855,7 @@ const MUTATIONS = [
     find: 'export const CALENDAR_WARN_DAYS = 45;',
     replace: 'export const CALENDAR_WARN_DAYS = 0;',
     test: 'roctest',
+    expect: "剛好 45 天就開始提醒",
   },
   {
     name: 'A1：covers 退回只認第一年',
@@ -1769,6 +1864,9 @@ const MUTATIONS = [
     find: '  return cal.years.includes(y);',
     replace: '  return cal.years[0] === y;',
     test: 'roctest',
+    expect: "也涵蓋 2027",
+    alsoRed: ["2027 第一個交易日的前一個交易日是 2026-12-31","2027-01-04 是交易日","2027-01-01 不是（元旦）","跨年的區間也算得出來","跨年的缺漏日回補得出來"],
+    alsoRedWhy: "日曆只認第一年，所有落在 2027 的推算（交易日、休市、跨年接續、區間、缺漏回補）一起錯。",
   },
   {
     name: 'A1：makeCalendar 看不懂多年格式',
@@ -1889,6 +1987,9 @@ const MUTATIONS = [
     find: '      if (viewError) {',
     replace: '      if (false) {',
     test: 'shelltest',
+    expect: "view 丟例外時，畫面上出現錯誤卡",
+    alsoRed: ["頂列標題換成「這一頁打不開」","把打不開的那條路徑寫出來","**例外訊息原樣放在畫面上**：「","先安撫：資料沒事","寫出目前執行的版本 ","有「更新到最新版」的按鈕","也留了一條回總覽的路"],
+    alsoRedWhy: "錯誤卡整張沒出來，卡片上的每一項（標題、路徑、訊息、安撫、版本、兩個按鈕）各有一條斷言，一起紅。",
   },
   {
     name: 'view 炸了的錯誤卡片不放例外訊息',
@@ -1897,6 +1998,7 @@ const MUTATIONS = [
     find: '      h(\'p\', { class: \'mono sm\', dataset: { field: \'viewErrorMessage\' } }, message),',
     replace: '      h(\'p\', { class: \'mono sm\', dataset: { field: \'viewErrorMessage\' } }, \'（略）\'),',
     test: 'shelltest',
+    expect: "**例外訊息原樣放在畫面上**：「",
   },
   {
     name: '開機沒有硬期限（store.init 吊死就整個不開）',
@@ -1953,6 +2055,7 @@ const MUTATIONS = [
     find: '    <main id="view"></main>',
     replace: '    <main id="view" aria-live="polite"></main>',
     test: 'shelltest',
+    expect: "#view 沒有 aria-live（該朗讀的是 #toast）",
   },
   {
     name: 'A5：鍵盤焦點的 outline 改成 none',
@@ -1969,6 +2072,7 @@ const MUTATIONS = [
     find: '    rel: \'noopener noreferrer\',',
     replace: '    rel: \'noreferrer\',',
     test: 'shelltest',
+    expect: "每一處 target: '_blank' 都帶 rel: 'noopener'",
   },
   {
     name: 'A16：manifest 沒有 id',
@@ -1977,6 +2081,7 @@ const MUTATIONS = [
     find: '  "id": "./",\n',
     replace: '',
     test: 'shelltest',
+    expect: "manifest 有 id（瀏覽器靠它認出「同一個 App」，換 start_url 也不會裝成第二個）",
   },
   {
     name: 'A16：拿掉 color-scheme meta',
@@ -1985,6 +2090,7 @@ const MUTATIONS = [
     find: '  <meta name="color-scheme" content="dark" />\n',
     replace: '',
     test: 'shelltest',
+    expect: "index.html 有 color-scheme meta（表單控制項第一幀就是深色，不先閃白）",
   },
   {
     name: '看門狗等 10 分鐘才出手',
@@ -2017,6 +2123,7 @@ const MUTATIONS = [
     find: '        reload();\n      }, 1500);',
     replace: '        navigator.serviceWorker.getRegistration().then((r) => r && r.unregister()).finally(reload);\n      }, 1500);',
     test: 'shelltest',
+    expect: "applyNow（更新提示列與自動換版）裡沒有 unregister —— 只 skipWaiting＋reload",
   },
   {
     name: 'app.js 不標 data-booted',
@@ -2033,6 +2140,7 @@ const MUTATIONS = [
     find: 'style-src \'self\';',
     replace: 'style-src \'self\' \'unsafe-inline\';',
     test: 'shelltest',
+    expect: "style-src 沒有 'unsafe-inline'（頁面被注入時也塞不進 style 屬性）",
   },
   {
     name: 'A8：集中度長條又用字串 style',
@@ -2049,6 +2157,7 @@ const MUTATIONS = [
     find: '      if (typeof v !== \'object\') throw new TypeError(`h(): style 只接受物件（{ \'--w\': \'40%\' }），不接受字串「${v}」`);',
     replace: '      if (typeof v !== \'object\') { el.setAttribute(\'style\', String(v)); continue; }',
     test: 'shelltest',
+    expect: "字串型 style 直接丟錯：「",
   },
   {
     name: 'A11：塞一個沒人用的匯出進去',
@@ -2057,6 +2166,7 @@ const MUTATIONS = [
     find: 'export async function fetchDayAll(client) {',
     replace: 'export function __nobodyUsesThis() { return 1; }\nexport async function fetchDayAll(client) {',
     test: 'shelltest',
+    expect: "除了允許清單（",
   },
   {
     name: 'B2：導覽請求沒有逾時',

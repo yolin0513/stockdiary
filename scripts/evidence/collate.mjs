@@ -26,7 +26,9 @@ for (const name of names) {
   if (h(fs.readFileSync(m.file, 'utf8')) !== h(orig)) { console.log(`✗ ${m.file} 沒還原`); process.exit(1); }
   const failed = failedAssertions(`${r.stdout}${r.stderr}`);
   const testSrc = fs.readFileSync(`scripts/${m.test}.mjs`, 'utf8');
-  const extras = failed.filter((f) => !f.includes(m.expect));
+  // 還沒寫 expect 的突變，全部失敗都要列出來（2026-09-24 補 expect 第一批時發現：以前 includes(undefined) 會比對字串
+  // 「undefined」，訊息裡剛好印出 undefined 的那幾條被濾掉，漏列成 alsoRed）
+  const extras = m.expect ? failed.filter((f) => !f.includes(m.expect)) : failed;
   // 最長字面開頭：從整句往前縮，直到測試原始碼裡找得到（至少 6 個字）
   const anchor = (msg) => {
     for (let n = msg.length; n >= 6; n -= 1) { const p = msg.slice(0, n); if (testSrc.includes(p)) return p; }

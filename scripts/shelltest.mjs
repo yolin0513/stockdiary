@@ -828,7 +828,10 @@ try {
     router.route('/__boom', async () => { throw new Error('測試用的例外：BOOM-4242'); });
     location.hash = '#/__boom';
   });
-  await page.waitForSelector('#view [data-card="viewError"]', { timeout: 60000 });
+  // 等不到錯誤卡要變成一條明寫的斷言，不是讓 waitForSelector 逾時、整支崩掉（2026-09-24 補 expect 時發現：
+  // 突變「view 炸了只印 console」以前是靠崩潰紅的，沒有任何一條斷言紅，判定分不出它紅在哪裡）
+  const sawErrorCard = await page.waitForSelector('#view [data-card="viewError"]', { timeout: 60000 }).then(() => true, () => false);
+  ok(sawErrorCard, 'view 丟例外時，畫面上出現錯誤卡（不是只印在 console）');
   const boom = await page.evaluate(() => ({
     hash: location.hash,
     title: document.getElementById('topTitle').textContent,

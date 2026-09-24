@@ -60,7 +60,7 @@ section('案例 2：純複利 —— 對得上 1,000,000 × 1.12^10');
 // 手算：1,000,000 × 1.12^10 = 3,105,848.21
 const c2 = run({ amount: 0, startValue: 1000000, growthRate: 12, years: 10 });
 near(yuan(c2.finalValueMicro), 1000000 * Math.pow(1.12, 10), 0.5,
-  `期末 ${yuan(c2.finalValueMicro).toFixed(2)}，手算 ${(1000000 * Math.pow(1.12, 10)).toFixed(2)}`);
+  `純複利十年對得上手算：期末 ${yuan(c2.finalValueMicro).toFixed(2)}，手算 ${(1000000 * Math.pow(1.12, 10)).toFixed(2)}`);
 eq(yuan(c2.investedMicro), 1000000, '累積投入就是那筆已有部位');
 near(Math.pow(Number(monthlyFactor(12)) / 1e12, 12), 1.12, 1e-9,
   '月成長倍數連乘 12 次剛好回到 12%（複利換算，不是除以 12）');
@@ -73,7 +73,7 @@ const cmp = compareScenarios(validateInputs({
   ...base, amount: 0, startValue: 1000000, growthRate: 0, yieldRate: 5, dividendFreq: 1, years: 10,
 }).values);
 near(yuan(cmp.reinvest.finalValueMicro), 1000000 * Math.pow(1.05, 10), 0.5,
-  `再投入期末 ${yuan(cmp.reinvest.finalValueMicro).toFixed(2)}，手算 ${(1000000 * Math.pow(1.05, 10)).toFixed(2)}`);
+  `配息再投入十年對得上手算：再投入期末 ${yuan(cmp.reinvest.finalValueMicro).toFixed(2)}，手算 ${(1000000 * Math.pow(1.05, 10)).toFixed(2)}`);
 eq(yuan(cmp.payout.finalValueMicro), 1000000, '領現時市值維持 1,000,000');
 eq(yuan(cmp.payout.dividendPaidOutMicro), 500000, '領現累積 500,000 元（10 年 × 50,000）');
 eq(yuan(cmp.payout.totalEndMicro), 1500000, '領現手上總共 1,500,000 元');
@@ -124,7 +124,7 @@ ok(gap.diffMicro > 0n, `金額法比股數法高 ${yuan(gap.diffMicro).toFixed(2
 ok(gap.inShares > 0, `相當於 ${gap.inShares.toFixed(3)} 股`);
 // 驗收條件（STATUS M4）：這組假設下差距小於一股股價
 ok(gap.diffMicro < gap.sharePriceMicro,
-  `差距 ${yuan(gap.diffMicro).toFixed(2)} 元 < 期末一股股價 ${yuan(gap.sharePriceMicro).toFixed(2)} 元`);
+  `股數法與金額法的差距小於一股：差距 ${yuan(gap.diffMicro).toFixed(2)} 元 < 期末一股股價 ${yuan(gap.sharePriceMicro).toFixed(2)} 元`);
 ok(gap.diffMicro !== 0n, '（對照）差距確實不是 0');
 
 section('期間拉長時差距不一定還小於一股 —— 所以畫面不寫死那句話');
