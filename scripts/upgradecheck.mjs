@@ -19,7 +19,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { ok, eq, section, done, note } from './tap.mjs';
+import { ok, eq, section, done, note, everyOf } from './tap.mjs';
+import { ROUTES, routeOrphans } from './routes.mjs';
 import { findOldRev } from './oldrev.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -151,6 +152,47 @@ async function tapManagePlans(page) {
   };
 }
 
+/**
+ * 換版之後逐頁開（清單在 scripts/routes.mjs，跟 sweep 共用）。每一頁看：標題換到、畫得出內容、
+ * **沒有錯誤卡**、這一頁沒有未攔截的例外。
+ * 為什麼要看錯誤卡：view 拋錯時 router 會接住、畫一張 data-card="viewError" 的卡——標題與內容都在，
+ * 只看「標題對、有內容」會被這張卡騙過去。
+ * 以前（2026-09-24 之前）換版之後只開主畫面與持股頁 → 定期定額：新版「股利」頁一開就拋錯，照樣 17 項通過（S9 實測）。
+ */
+async function visitAll(page) {
+  const results = [];
+  for (const [route, title] of ROUTES) {
+    const errs = [];
+    const onErr = (e) => errs.push(e.message.slice(0, 120));
+    page.on('pageerror', onErr);
+    await page.evaluate((r) => { location.hash = `#${r}`; }, route);
+    let landed = true;
+    try {
+      await page.waitForFunction((t) => document.getElementById('topTitle')?.textContent === t, { timeout: 20000 }, title);
+    } catch { landed = false; }
+    // 新聞頁會先畫一張「正在抓取」的暫時卡片，再換成真的內容（或「這次沒抓到」）——等它消失再量（同 sweep）
+    if (route === '/news') {
+      await page.waitForFunction(() => !document.querySelector('#view [data-card="newsLoading"]'), { timeout: 60000 }).catch(() => {});
+    }
+    await sleep(1000);
+    const seen = await page.evaluate(() => ({
+      text: document.querySelector('#view')?.textContent.trim().length ?? 0,
+      errorCard: !!document.querySelector('#view [data-card="viewError"]'),
+    }));
+    page.off('pageerror', onErr);
+    results.push({ route, landed, ...seen, errs });
+  }
+  const patterns = await page.evaluate(async () => (await import('./js/router.js')).routePatterns());
+  return { results, patterns };
+}
+const pageOk = (x) => x.landed && x.text > 20 && !x.errorCard && x.errs.length === 0;
+function checkAllPages(all) {
+  ok(all.results.length === ROUTES.length && ['/', '/holdings', '/plans'].every((r) => all.results.some((x) => x.route === r)),
+    `（前提）換版之後逐頁開了 ${all.results.length} 頁，涵蓋以前就看的主畫面、持股、定期定額`);
+  everyOf(all.results, pageOk, 'upgradecheck 逐頁：換版之後每一頁都開得起來（標題對、有內容、沒有錯誤卡、沒有未攔截的例外）');
+  eq(routeOrphans(all.patterns).missing, [], 'upgradecheck 路由孤兒：新版註冊的每一條路由都在逐頁清單裡、或寫了不巡的理由');
+}
+
 const NEW_VERSION = /APP_VERSION = '([^']+)'/.exec(fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8'))[1];
 
 try {
@@ -188,6 +230,7 @@ try {
     ok(tapped.clicked, '持股頁上找得到「管理定期定額計畫」');
     eq(tapped.hash, '#/plans', '按下去進得到定期定額頁 —— 沒有跳回主頁');
     eq(tapped.title, '定期定額', '標題也對');
+    checkAllPages(await visitAll(second.page));
     await second.page.close();
   } else {
     await second.page.close();
@@ -197,6 +240,7 @@ try {
     const tapped = await tapManagePlans(third.page);
     ok(tapped.clicked, '持股頁上找得到「管理定期定額計畫」');
     eq(tapped.hash, '#/plans', '按下去進得到定期定額頁 —— 沒有跳回主頁');
+    checkAllPages(await visitAll(third.page));
     await third.page.close();
   }
 

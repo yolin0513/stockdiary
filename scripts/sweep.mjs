@@ -22,15 +22,8 @@ const WORKER = 'https://stockdiary-news.yolin0513.workers.dev';
 const LOCAL_VERSION = /APP_VERSION = '([^']+)'/.exec(
   fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8'))[1];
 
-const ROUTES = [
-  ['/', 'StockDiary 股息日記'],
-  ['/holdings', '持股'],
-  ['/plans', '定期定額'],
-  ['/dividends', '股利'],
-  ['/news', '新聞'],
-  ['/calc', '定期定額試算'],
-  ['/settings', '設定'],
-];
+// 逐頁清單跟 upgradecheck 共用（scripts/routes.mjs）；註冊了卻沒登記的路由，下面「路由孤兒」那條會報。
+const { ROUTES, routeOrphans } = await import('./routes.mjs');
 
 const bust = () => `?cb=${Date.now()}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -118,6 +111,8 @@ try {
     `而且至少涵蓋巡檢清單裡的 ${ROUTES.length} 頁`);
   everyOf(ROUTES.map(([r]) => r), (r) => running.patterns.includes(r),
     '巡檢清單裡的每一條路由線上都真的註冊了');
+  // 反方向（2026-09-24）：線上註冊了、巡檢清單卻沒有的路由（以前多註冊一條 /zzq，20 項照樣全過）
+  eq(routeOrphans(running.patterns).missing, [], 'sweep 路由孤兒：線上註冊的每一條路由都在巡檢清單裡、或寫了不巡的理由');
 
   section('Service Worker');
   const sw = await page.evaluate(async () => {

@@ -14,6 +14,7 @@ import { ok, eq, section, done } from './tap.mjs';
 import { controls as auditControls, chainOf, auditOrphans } from './auditjudge.mjs';
 import { controls as sweepControls } from './sweepjudge.mjs';
 import { controls as liveControls, stageControls as liveStageControls } from './livejudge.mjs';
+import { controls as routeControls, registeredRoutes, routeOrphans } from './routes.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -74,5 +75,21 @@ expectEach('livecheck', liveControls(), {
 expectEach('livecheck 段落', await liveStageControls(), {
   stages: 'livecheck 對照十一：中間一段崩了，要記成那一段失敗、講出段名，後面照跑',
 });
+
+section('逐頁清單（scripts/routes.mjs；sweep 與 upgradecheck 共用）＝ js/app.js 註冊的路由（孤兒檢查）');
+expectEach('路由清單', routeControls(), {
+  clean: '路由對照一（必過）：註冊的全部登記或寫了理由，什麼都不報；註解裡的 route 不算',
+  missing: '路由對照二：多註冊一條沒登記的，要報出它',
+  stale: '路由對照三：清單裡有一條沒註冊的，要報出它',
+  'skip-stale': '路由對照四：不巡的理由寫給沒註冊的，要報出它',
+});
+{
+  const reg = registeredRoutes(fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8'));
+  ok(reg.length >= 7, `（前提）從 js/app.js 取到 ${reg.length} 條註冊的路由`);
+  const o = routeOrphans(reg);
+  eq(o.missing, [], '路由孤兒：js/app.js 註冊的每一條路由，都在逐頁清單裡或寫了不巡的理由');
+  eq(o.stale, [], '路由過期：逐頁清單裡的每一條都還註冊著');
+  eq(o.skipStale, [], '路由理由過期：寫了不巡理由的每一條都還註冊著');
+}
 
 done('controltest');
