@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done } from './tap.mjs';
 import { controls as auditControls, chainOf, auditOrphans } from './auditjudge.mjs';
 import { controls as sweepControls } from './sweepjudge.mjs';
-import { controls as liveControls } from './livejudge.mjs';
+import { controls as liveControls, stageControls as liveStageControls } from './livejudge.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -69,6 +69,10 @@ expectEach('livecheck', liveControls(), {
   calendar: 'livecheck 對照七：證交所那個月少一個交易日，要報出是哪一天',
   stocks: 'livecheck 對照八：市場上多了一檔代號表沒有的，要報出那一檔',
   gaps: 'livecheck 對照九：請求間隔不到 2 秒或一個都沒量到，要報',
+  'calendar-closed': 'livecheck 對照十：日曆休市日多年格式要讀得到、認不得的格式要拋錯',
+});
+expectEach('livecheck 段落', await liveStageControls(), {
+  stages: 'livecheck 對照十一：中間一段崩了，要記成那一段失敗、講出段名，後面照跑',
 });
 
 done('controltest');

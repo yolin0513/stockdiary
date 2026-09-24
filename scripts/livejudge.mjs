@@ -94,6 +94,35 @@ export function gapProblems(gaps) {
   return out;
 }
 
+/**
+ * 一段一段跑，某一段崩了就記成那一段失敗、講出段名與例外，**後面照跑**。
+ * 以前沒有這一層：日曆那段自從日曆改成多年格式就一直崩（`cal.closed is not iterable`），
+ * 它後面的代號表核對、節流檢查從來沒跑到，卻沒有任何一條斷言講「這幾段沒跑」（2026-09-24 實跑發現）。
+ */
+export function makeStage({ section, fail }) {
+  const crashed = [];
+  const stage = async (name, fn) => {
+    section(name);
+    try { await fn(); } catch (e) {
+      crashed.push(name);
+      fail(`livecheck 段落崩潰：${name}`, String(e?.stack ?? e).split('\n').slice(0, 2).join(' ｜ '));
+    }
+  };
+  return { stage, crashed };
+}
+
+/**
+ * data/calendar.json 的休市日（多年格式攤平，舊的單年格式也讀得到）。
+ * **兩種格式都不是就拋錯**：不能回空陣列——空的休市清單會讓「挑休市最多的月份」默默挑錯月份。
+ */
+export function calendarClosed(cal) {
+  if (cal && cal.years && typeof cal.years === 'object') {
+    return Object.keys(cal.years).sort().flatMap((y) => cal.years[y].closed ?? []);
+  }
+  if (cal && Array.isArray(cal.closed)) return cal.closed;
+  throw new Error('data/calendar.json 的格式認不得：沒有 years，也沒有頂層的 closed');
+}
+
 /** 對照組。回傳 [{ key, name, ok, detail }]。全部用 scripts/fixtures/ 裡錄好的回應，不打網路。 */
 export function controls() {
   const fx = (n) => fs.readFileSync(path.join(HERE, 'fixtures', n), 'utf8');
@@ -188,5 +217,26 @@ export function controls() {
     const empty = gapProblems([]);
     return [good.length === 0, has(bad, '< 2 秒') && has(empty, '沒量到'), `改壞的報：${[...bad, ...empty].join('；')}`];
   });
+
+  // 10. 日曆的休市日：好的＝真的 data/calendar.json（多年格式）與合成的單年格式；改壞＝兩種格式都不是
+  run('calendar-closed', '日曆休市日：多年格式要讀得到，認不得的格式要拋錯', () => {
+    const real = calendarClosed(JSON.parse(fs.readFileSync(path.join(ROOT, 'data/calendar.json'), 'utf8')));
+    const single = calendarClosed({ year: 2026, closed: [{ date: '2026-01-01' }] });
+    let threw = false;
+    try { calendarClosed({ tradingDays: [] }); } catch { threw = true; }
+    return [real.length > 5 && single.length === 1, threw, `真的日曆讀到 ${real.length} 天休市；認不得的格式${threw ? '拋錯了' : '沒拋錯'}`];
+  });
   return res;
+}
+
+/** 段落的對照（非同步，所以跟上面分開）：中間那段崩了，要記成那一段失敗、講出段名，後面那段照跑。 */
+export async function stageControls() {
+  const log = [];
+  const fails = [];
+  const { stage, crashed } = makeStage({ section: (n) => log.push(`段 ${n}`), fail: (msg) => fails.push(msg) });
+  await stage('甲', async () => { log.push('甲跑了'); });
+  await stage('乙', async () => { throw new Error('合成的崩潰'); });
+  await stage('丙', async () => { log.push('丙跑了'); });
+  const good = crashed.join() === '乙' && fails.length === 1 && fails[0] === 'livecheck 段落崩潰：乙' && log.includes('丙跑了');
+  return [{ key: 'stages', name: '中間一段崩了 → 記成那一段失敗、講出段名，後面照跑', ok: good, detail: `崩了的：${crashed.join('、') || '（沒有）'}；失敗訊息：${fails.join('；')}；${log.join('、')}` }];
 }

@@ -17,6 +17,7 @@ import { parseTwt49u } from '../js/dividend.js';
 import {
   controls, corsProblem, stockDayAllProblems, stockDayJuneProblems, otcPremiseProblems, twt48uProblems,
   refPriceMismatches, calendarDays, calendarDiff, stocksProblems, gapProblems,
+  makeStage, stageControls,
 } from './livejudge.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -24,13 +25,15 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 // 先跑對照組（SPEC_檢查器修補 S6）：用 scripts/fixtures/ 裡錄好的回應，**不打證交所**。
 // 判斷邏輯壞了，下面對著真實回應的「全過」就不可信——以前全部比對的是真實回應，沒有合成對照。
 process.stdout.write('對照組（判斷邏輯自己有沒有壞；錄好的回應，不打網路）：\n');
-const ctrl = controls();
+const ctrl = [...controls(), ...(await stageControls())];
 for (const c of ctrl) process.stdout.write(`  ${c.ok ? '✓' : '✗'} （對照）${c.name}（${c.detail}）\n`);
 if (ctrl.some((c) => !c.ok)) {
   process.stdout.write('對照組沒過：livecheck 的判斷邏輯壞了，巡檢結果不可信——停下，不打證交所。\n');
   process.exit(1);
 }
 // 下面每一段的判斷都在 scripts/livejudge.mjs，跟對照組同一段程式。
+// 每一段包在 stage 裡：崩了就記成那一段失敗、講出段名，**後面照跑**（2026-09-24；以前崩在日曆段，後面兩段從來沒跑到）。
+const { stage } = makeStage({ section, fail: (msg, detail) => ok(false, msg, detail) });
 const none = (list, msg) => eq(list, [], msg);
 const GAP_MS = 2200;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -49,8 +52,7 @@ async function get(url) {
 
 const TWSE = 'https://www.twse.com.tw';
 
-section('STOCK_DAY_ALL（全市場當日收盤，瀏覽器直打）');
-{
+await stage('STOCK_DAY_ALL（全市場當日收盤，瀏覽器直打）', async () => {
   const { res, text } = await get(`${TWSE}/rwd/zh/afterTrading/STOCK_DAY_ALL?response=json`);
   ok(res.status === 200, `HTTP ${res.status}`);
   eq(corsProblem(res.headers.get('access-control-allow-origin')), null,
@@ -58,31 +60,28 @@ section('STOCK_DAY_ALL（全市場當日收盤，瀏覽器直打）');
   const parsed = parseStockDayAll(text);
   none(stockDayAllProblems(parsed),
     `格式沒變：資料日期 ${parsed.date}、${parsed.rows.length} 檔、2330 與 0050 都在、沒成交的不是 0`);
-}
+});
 
-section('STOCK_DAY（個股當月逐日）');
-{
+await stage('STOCK_DAY（個股當月逐日）', async () => {
   const { res, text } = await get(`${TWSE}/exchangeReport/STOCK_DAY?response=json&date=20260601&stockNo=2330`);
   ok(res.status === 200, `HTTP ${res.status}`);
   eq(corsProblem(res.headers.get('access-control-allow-origin')), null, 'CORS 標頭還在');
   const parsed = parseStockDay(JSON.parse(text));
   none(stockDayJuneProblems(parsed),
     `回應可解析、115 年 6 月有 ${parsed.rows.length} 個交易日、除權息標記還是用 "X"`);
-}
+});
 
-section('上櫃代號在 TWSE 查不到 —— 「不支援」的設計前提');
-{
+await stage('上櫃代號在 TWSE 查不到 —— 「不支援」的設計前提', async () => {
   const { text: otc } = await get(`${TWSE}/exchangeReport/STOCK_DAY?response=json&date=20260901&stockNo=6488`);
   const { text: nosuch } = await get(`${TWSE}/exchangeReport/STOCK_DAY?response=json&date=20260901&stockNo=9999`);
   const a = parseStockDay(JSON.parse(otc));
   const b = parseStockDay(JSON.parse(nosuch));
   none(otcPremiseProblems(a, b),
     `上櫃代號 6488 查不到資料、一筆都沒有，而且跟不存在的代號回一樣的訊息：「${a.message}」—— 所以必須靠 data/stocks.json 分辨`);
-}
+});
 
-section('除權息預告表 TWT48U（日曆用的那張）');
 let forecastRows = [];
-{
+await stage('除權息預告表 TWT48U（日曆用的那張）', async () => {
   const { res, text } = await get(`${TWSE}/exchangeReport/TWT48U?response=json`);
   ok(res.status === 200, `HTTP ${res.status}`);
   eq(corsProblem(res.headers.get('access-control-allow-origin')), null, 'CORS 標頭還在');
@@ -90,11 +89,10 @@ let forecastRows = [];
   forecastRows = t48.rows;
   none(t48.problems,
     `解析成功、有資料（${forecastRows.length} 筆未來的除權息公告，其中 ${forecastRows.filter((r) => r.cashPerShare != null).length} 筆的金額已公告）`);
-}
+});
 
-section('除權息結果表 TWT49U（參考價用的那張）');
 let resultRows = [];
-{
+await stage('除權息結果表 TWT49U（參考價用的那張）', async () => {
   const today = new Date();
   const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const { res, text } = await get(
@@ -115,10 +113,9 @@ let resultRows = [];
   } else {
     note(`今天沒有除權息結果（stat：${j.stat}）—— 不算失敗`);
   }
-}
+});
 
-section('捕捉「預告 → 結果」的配對樣本');
-{
+await stage('捕捉「預告 → 結果」的配對樣本', async () => {
   // 為什麼要做這件事：參考價的自算備援還缺一段驗證（見 docs/STATUS.md 的待辦）。
   // 需要同一檔先出現在預告表、之後出現在結果表的配對樣本，而 TWT49U 只給得到
   // 最近一次的結果 —— 只能靠每次 livecheck 把預告記下來，等它變成結果。
@@ -175,10 +172,9 @@ section('捕捉「預告 → 結果」的配對樣本');
   } else {
     note('這次沒有新的配對樣本（要在除權息日的隔天跑才抓得到）—— 不算失敗');
   }
-}
+});
 
-section('data/calendar.json 與 TWSE 實際成交日一致');
-{
+await stage('data/calendar.json 與 TWSE 實際成交日一致', async () => {
   const cal = JSON.parse(fs.readFileSync(`${ROOT}data/calendar.json`, 'utf8'));
   // 多年格式沒有頂層 tradingDays。這裡不 import market.js（livecheck 是獨立腳本），
   // 直接把各年份的交易日攤平 —— 舊格式也照樣讀得到。
@@ -216,10 +212,9 @@ section('data/calendar.json 與 TWSE 實際成交日一致');
     eq(calendarDiff(mine, actual), { missing: [], extra: [] },
       `${month} 的交易日與 TWSE 實際成交日完全一致（${actual.length} 天；missing＝日曆少了、extra＝日曆多了）`);
   }
-}
+});
 
-section('data/stocks.json 還跟得上市場');
-{
+await stage('data/stocks.json 還跟得上市場', async () => {
   const stocks = JSON.parse(fs.readFileSync(`${ROOT}data/stocks.json`, 'utf8'));
   const { text } = await get(`${TWSE}/rwd/zh/afterTrading/STOCK_DAY_ALL?response=json`);
   const live = parseStockDayAll(text);
@@ -228,9 +223,10 @@ section('data/stocks.json 還跟得上市場');
     `今天在集中市場成交的 ${live.rows.length} 檔，代號表裡都有`,
     unknown.length ? `代號表缺少：${unknown.slice(0, 10).map((r) => `${r.code} ${r.name}`).join('、')}${unknown.length > 10 ? ` 等 ${unknown.length} 檔` : ''} → 跑 npm run build-stocks` : '');
   eq(wrongMarket.map((r) => r.code), [], '在集中市場成交的證券在代號表裡都標成上市');
-}
+});
 
-section('請求節流');
-none(gapProblems(gaps), `量到 ${gaps.length} 個請求間隔，每一次都 >= 2 秒（最短 ${Math.min(...gaps)} ms）`);
+await stage('請求節流', async () => {
+  none(gapProblems(gaps), `量到 ${gaps.length} 個請求間隔，每一次都 >= 2 秒（最短 ${Math.min(...gaps)} ms）`);
+});
 
 done('livecheck');
