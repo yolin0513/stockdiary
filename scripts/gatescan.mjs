@@ -231,4 +231,64 @@ const stale = EXCEPTIONS.filter((e) => !hits.some((h) => h.rel === e.file && h.r
 eq(stale.map((e) => `${e.file} [${e.rule}] ${e.lineIncludes}`), [], `登記的 ${EXCEPTIONS.length} 條例外都還對得到命中（對不到的就是過期，要拿掉）`);
 note(`初篩命中經登記例外放行 ${hits.length - real.length} 條（理由寫在這支檔的 EXCEPTIONS）`);
 
+// ---------------------------------------------------------------------------
+// 孤兒檢查（SPEC_檢查器修補 S5，F4）：登記制的洞是「沒登記的不會被掃」——v9 盤點實測：丟一支帶 `| tail -1`、
+// 沒登記的推送腳本，這支照樣回 0。所以走訪整個 repo（含還沒 commit 的檔），看起來是推送、自查、閘門類的腳本，
+// 不在 FILES 就要在 ORPHAN_SKIP 寫理由。判準：檔名帶 gate／precheck／piiscan／push，或不是註解的行裡呼叫了
+// git push、precheck、piiscan、gatepush。
+const ORPHAN_SKIP = {
+  'scripts/gatescan.mjs': '就是這支掃描器；它提到 precheck、git push 的字串都是對照組的樣本',
+  'scripts/mutationtest.mjs': '突變清單，不推送也不自查；提到 precheck、gatepush 的是突變要打的原文（S5 那幾條）',
+};
+const SCRIPT_EXT = /\.(sh|bash|mjs|js|cjs|ps1|bat|cmd)$/i;
+const WALK_SKIP = new Set(['node_modules', '.git', '.logs', '.private']);
+function walkScripts(root, dir = '') {
+  const out = [];
+  for (const ent of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+    const rel = dir ? `${dir}/${ent.name}` : ent.name;
+    if (ent.isDirectory()) { if (!WALK_SKIP.has(ent.name)) out.push(...walkScripts(root, rel)); } else if (SCRIPT_EXT.test(ent.name)) out.push(rel);
+  }
+  return out;
+}
+const looksLikeGate = (rel, text) => /gate|precheck|piiscan|push/i.test(path.basename(rel))
+  || text.split('\n').some((l) => !isComment(l) && (/\bgit\b[^\n|;&]*\bpush\b/.test(l) || /precheck|piiscan|gatepush/i.test(l)));
+function gateOrphans(root, registered, skip) {
+  const cand = walkScripts(root).filter((rel) => looksLikeGate(rel, fs.readFileSync(path.join(root, rel), 'utf8')));
+  return {
+    scanned: walkScripts(root).length,
+    orphans: cand.filter((rel) => !registered.includes(rel) && !(rel in skip)),
+    skipStale: Object.keys(skip).filter((rel) => !cand.includes(rel)),
+  };
+}
+
+section('孤兒檢查：看起來是推送、自查、閘門的腳本，都要登記或寫理由');
+{
+  // 對照組（§5.3）：當場造一個小 repo，跑的是跟下面真實檢查同一段 gateOrphans
+  const os = await import('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatescan-orphan-'));
+  try {
+    const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
+    // v9 盤點實測放的那一種：沒登記、帶 | tail -1 的推送腳本（檔名看不出來，靠內容抓）
+    put('scripts/ship.sh', 'node scripts/precheck.mjs HEAD ' + P + ' tail -1 && git push -q origin main\n');
+    // 檔名就看得出來的
+    put('tools/push-now.mjs', "console.log('ok');\n");
+    // 已登記的、只在註解裡提到 git push 的、跟推送無關的：都不該報
+    put('scripts/gatepush.sh', 'git push -q "$REMOTE" "$BRANCH" > "$OUT.push" 2>&1\n');
+    put('scripts/build.mjs', "// 這支不會 git push\nconsole.log('build');\n");
+    put('node_modules/x/push.js', 'git push\n');
+    const c = gateOrphans(dir, ['scripts/gatepush.sh'], { 'scripts/gone.sh': '理由' });
+    ok(c.orphans.includes('scripts/ship.sh'), 'gatescan 孤兒對照一：沒登記、帶 | tail -1 的推送腳本要報出來', `報了：${c.orphans.join('、') || '（沒有）'}`);
+    ok(c.orphans.includes('tools/push-now.mjs'), 'gatescan 孤兒對照二：檔名帶 push 的腳本要報出來', `報了：${c.orphans.join('、') || '（沒有）'}`);
+    eq(c.orphans.filter((r) => r !== 'scripts/ship.sh' && r !== 'tools/push-now.mjs'), [], 'gatescan 孤兒對照三（必過）：已登記的、只在註解提到的、node_modules 裡的都不報');
+    eq(c.skipStale, ['scripts/gone.sh'], 'gatescan 孤兒對照四：理由寫給一支不存在（或不像閘門）的腳本，要報出來');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  const g = gateOrphans(ROOT, FILES, ORPHAN_SKIP);
+  ok(g.scanned > 50, `（前提）走訪了 ${g.scanned} 支腳本`);
+  eq(g.orphans, [], 'gatescan 孤兒：repo 裡看起來是推送、自查、閘門的腳本都登記了（或寫了理由）');
+  eq(g.skipStale, [], 'gatescan 理由過期：ORPHAN_SKIP 的每一條都還對得到一支像閘門的腳本');
+}
+
 done('gatescan');

@@ -19,6 +19,44 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+// ---- 登記：assertaudit 要收集哪幾支（S5 從 assertaudit.mjs 搬來，好讓 controltest 每版做孤兒檢查）----
+// 只跑不需要真網路、也不會改寫原始碼的那些。npm test 鏈上的每一支，不在這裡就要在 AUDIT_SKIP 寫理由——
+// 以前 v9 新加進鏈的 gatescan、taptest 都沒補進來，沒有任何東西會發現（v9 盤點實測）。
+export const AUDIT_TESTS = [
+  // 純靜態、最快，放第一個
+  'doctest',
+  'roctest', 'fmttest', 'parsetest', 'settletest', 'changestest', 'dividendtest',
+  'plantest', 'calctest', 'throttletest', 'datatest', 'shelltest', 'holdingtest',
+  'eventtest', 'dcatest', 'calcviewtest', 'versionmixtest', 'racetest', 'newstest',
+  'secret-leak-test', 'insighttest', 'backuptest', 'concentrationtest', 'layouttest',
+  'uikittest', 'divrecordtest',
+  // v0.7.7 之後新增的兩支端對端 —— 不補進來的話，它們的 140+ 條斷言
+  // 從來不會被假斷言健檢掃到（這正是這支報告存在的理由）。
+  'scenariotest', 'pathtest',
+  // 2026-09-23（SPEC_測試可信度 A）接進 npm test 鏈的秒級檢查
+  'checkmutations',
+  // 2026-09-24（S5）孤兒檢查抓到的：v9 之後接進鏈、當時沒補進來的三支
+  'taptest', 'controltest', 'gatescan',
+];
+/** npm test 鏈上、刻意不收的：名稱 → 理由。 */
+export const AUDIT_SKIP = {
+  mutationtest: '它會改寫原始碼、再跑別的測試——那些測試的斷言會被重複計數，而且跑一次要一個多小時',
+};
+
+/** 從 package.json 的 scripts.test 取出鏈上每一支的名稱（node scripts/<名稱>.mjs）。 */
+export function chainOf(testCmd) {
+  return [...String(testCmd).matchAll(/node scripts\/([\w-]+)\.mjs/g)].map((m) => m[1]);
+}
+
+/** 孤兒檢查：鏈上沒登記也沒寫理由的（missing）、登記了卻不在鏈上的（stale）、理由過期的（skipStale）。 */
+export function auditOrphans(chain, tests = AUDIT_TESTS, skip = AUDIT_SKIP) {
+  return {
+    missing: chain.filter((t) => !tests.includes(t) && !(t in skip)),
+    stale: tests.filter((t) => !chain.includes(t)),
+    skipStale: Object.keys(skip).filter((t) => !chain.includes(t)),
+  };
+}
+
 /** 資料檔裡「這一支」寫了幾筆。某一行解析不了就讓它拋錯（故障時停下，不當成 0 筆）。 */
 export function rowsOf(outFile, name) {
   if (!fs.existsSync(outFile)) return [];
@@ -73,6 +111,18 @@ export function controls() {
     res.push({ key: 'crash', name: '寫出資料前就崩掉 → 判成「沒收到任何資料」', ok: classify(crash) === 'no-data', detail: `判成 ${classify(crash)}，${crash.rows.length} 筆` });
     const cleanTiny = tinyOf(clean.rows.filter(isAssert));
     res.push({ key: 'clean', name: '（必過）母體 3 的乾淨測試 → 判成通過、不被「母體 ≤ 2」挑出來', ok: classify(clean) === 'ok' && cleanTiny.length === 0, detail: `判成 ${classify(clean)}，挑出 ${cleanTiny.length} 筆` });
+
+    // 孤兒檢查（S5）：合成的鏈與清單，跑的是跟 controltest 真實檢查同一段 chainOf／auditOrphans
+    const chain = chainOf('node scripts/alpha.mjs && node scripts/secret-leak-test.mjs && node scripts/newtest.mjs && node scripts/mutationtest.mjs');
+    const o1 = auditOrphans(chain, ['alpha', 'secret-leak-test'], { mutationtest: '理由' });
+    res.push({ key: 'orphan-missing', name: '鏈上多了一支沒登記的 → 報出它（孤兒）', ok: o1.missing.length === 1 && o1.missing[0] === 'newtest', detail: `報了：${o1.missing.join('、') || '（沒有）'}` });
+    const o2 = auditOrphans(chain, ['alpha', 'secret-leak-test', 'newtest', 'goner'], { mutationtest: '理由' });
+    res.push({ key: 'orphan-stale', name: '清單裡有一支不在鏈上 → 報出它（過期）', ok: o2.stale.length === 1 && o2.stale[0] === 'goner', detail: `報了：${o2.stale.join('、') || '（沒有）'}` });
+    const o3 = auditOrphans(chain, ['alpha', 'secret-leak-test', 'newtest'], { mutationtest: '理由', oldtest: '理由' });
+    const o4 = auditOrphans(chain, ['alpha', 'secret-leak-test', 'newtest'], { mutationtest: '理由' });
+    res.push({ key: 'orphan-skip-stale', name: '不收的理由寫給一支不在鏈上的 → 報出它（理由過期）', ok: o3.skipStale.length === 1 && o3.skipStale[0] === 'oldtest', detail: `報了：${o3.skipStale.join('、') || '（沒有）'}` });
+    const n4 = o4.missing.length + o4.stale.length + o4.skipStale.length;
+    res.push({ key: 'orphan-clean', name: '（必過）鏈上 4 支全部登記或寫了理由 → 什麼都不報', ok: chain.length === 4 && chain.includes('secret-leak-test') && n4 === 0, detail: `鏈取到 ${chain.length} 支（${chain.join('、')}），報了 ${n4}` });
     return res;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

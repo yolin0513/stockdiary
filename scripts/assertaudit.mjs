@@ -19,26 +19,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { controls, collect, classify, isAssert, tinyOf, thinDetectOf } from './auditjudge.mjs';
+import { controls, collect, classify, isAssert, tinyOf, thinDetectOf, AUDIT_TESTS, chainOf, auditOrphans } from './auditjudge.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const OUT = path.join(ROOT, 'assert-audit.jsonl');
 
-// 只跑不需要真網路、也不會改寫原始碼的那些（mutationtest 會跑別的測試，會重複計數）
-const TESTS = [
-  // 純靜態、最快，放第一個
-  'doctest',
-  'roctest', 'fmttest', 'parsetest', 'settletest', 'changestest', 'dividendtest',
-  'plantest', 'calctest', 'throttletest', 'datatest', 'shelltest', 'holdingtest',
-  'eventtest', 'dcatest', 'calcviewtest', 'versionmixtest', 'racetest', 'newstest',
-  'secret-leak-test', 'insighttest', 'backuptest', 'concentrationtest', 'layouttest',
-  'uikittest', 'divrecordtest',
-  // v0.7.7 之後新增的兩支端對端 —— 不補進來的話，它們的 140+ 條斷言
-  // 從來不會被假斷言健檢掃到（這正是這支報告存在的理由）。
-  'scenariotest', 'pathtest',
-  // 2026-09-23（SPEC_測試可信度 A）接進 npm test 鏈的秒級檢查
-  'checkmutations',
-];
+// 要收集哪幾支登記在 scripts/auditjudge.mjs 的 AUDIT_TESTS（S5 搬過去，好讓 controltest 每版對 npm test 鏈做孤兒檢查）。
+const TESTS = AUDIT_TESTS;
 
 const only = process.argv[2];
 const list = only ? TESTS.filter((t) => t.includes(only)) : TESTS;
@@ -49,6 +36,16 @@ const ctrl = controls();
 for (const c of ctrl) process.stdout.write(`  ${c.ok ? '✓' : '✗'} （對照）${c.name}（${c.detail}）\n`);
 if (ctrl.some((c) => !c.ok)) {
   process.stdout.write('對照組沒過：assertaudit 的判斷邏輯壞了，下面的報告不可信——停下，不產報告。\n');
+  process.exit(1);
+}
+
+// 孤兒檢查（S5）：npm test 鏈上有、清單沒收也沒寫理由的，這份報告就不完整——停下，講是哪一支。
+const orphans = auditOrphans(chainOf(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts.test));
+if (orphans.missing.length || orphans.stale.length || orphans.skipStale.length) {
+  if (orphans.missing.length) process.stdout.write(`✗ npm test 鏈上有、清單沒收也沒寫理由：${orphans.missing.join('、')}（加進 auditjudge.mjs 的 AUDIT_TESTS，或在 AUDIT_SKIP 寫理由）\n`);
+  if (orphans.stale.length) process.stdout.write(`✗ 清單裡有、npm test 鏈上沒有：${orphans.stale.join('、')}\n`);
+  if (orphans.skipStale.length) process.stdout.write(`✗ 寫了不收的理由、卻不在鏈上：${orphans.skipStale.join('、')}\n`);
+  process.stdout.write('清單跟 npm test 鏈對不上——停下，不產報告。\n');
   process.exit(1);
 }
 

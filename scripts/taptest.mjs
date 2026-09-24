@@ -23,7 +23,8 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'taptest-'));
 function probe(name, body) {
   const file = path.join(DIR, `${name}.mjs`);
   fs.writeFileSync(file, `import { noneOf, everyOf, detects, done } from ${JSON.stringify(TAP_URL)};\n${body}\ndone('probe');\n`);
-  const r = spawnSync(process.execPath, [file], { encoding: 'utf8' });
+  // 探針不寫稽核資料：assertaudit 收集時本支帶著 SD_AUDIT=1，探針故意做的空母體會混進報告（S5 把本支加進 assertaudit 清單時發現）
+  const r = spawnSync(process.execPath, [file], { encoding: 'utf8', env: { ...process.env, SD_AUDIT: '' } });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 const failed = (r) => r.code !== 0 && /1 項失敗/.test(r.out);

@@ -7,11 +7,16 @@
 // 每一組對照用**寫死的標籤**斷言（共用慣例 §5.9：突變的 expect 要有固定的錨點），
 // 而且逐一點名：哪一組對照不見了，那一條就紅（不能靠「全部都 ok」——少一組也是全部都 ok）。
 
-import { ok, section, done } from './tap.mjs';
-import { controls as auditControls } from './auditjudge.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ok, eq, section, done } from './tap.mjs';
+import { controls as auditControls, chainOf, auditOrphans } from './auditjudge.mjs';
 import { controls as sweepControls } from './sweepjudge.mjs';
 
-const expectEach = (tool, results, labels) => {
+const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+
+const expectEach =(tool, results, labels) => {
   ok(results.length === Object.keys(labels).length,
     `（前提）${tool} 的對照組有 ${results.length} 組，登記的是 ${Object.keys(labels).length} 組`);
   for (const [key, label] of Object.entries(labels)) {
@@ -26,7 +31,21 @@ expectEach('assertaudit', auditControls(), {
   empty: 'assertaudit 對照二：空母體的 noneOf，它那一筆要被母體 ≤ 2 挑出來',
   crash: 'assertaudit 對照三：寫出資料前就崩掉，要判成沒收到任何資料',
   clean: 'assertaudit 對照四（必過）：母體 3 的乾淨測試，要判成通過、不被挑出來',
+  'orphan-missing': 'assertaudit 對照五：鏈上多了一支沒登記的，要報出它',
+  'orphan-stale': 'assertaudit 對照六：清單裡有一支不在鏈上，要報出它',
+  'orphan-skip-stale': 'assertaudit 對照七：不收的理由寫給不在鏈上的，要報出它',
+  'orphan-clean': 'assertaudit 對照八（必過）：鏈上全部登記或寫了理由，什麼都不報',
 });
+
+// 孤兒檢查（S5，F4）：assertaudit 的清單要涵蓋 npm test 鏈上的每一支——以前 v9 新加進鏈的兩支沒補進去，沒有東西會發現。
+// 跟上面對照五到八同一段程式（auditjudge.mjs 的 chainOf、auditOrphans）。
+section('assertaudit 的清單 ＝ npm test 鏈（孤兒檢查）');
+const chain = chainOf(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts.test);
+ok(chain.length >= 30, `（前提）從 package.json 的 npm test 取到 ${chain.length} 支`);
+const orphans = auditOrphans(chain);
+eq(orphans.missing, [], 'assertaudit 孤兒：npm test 鏈上的每一支，都在 assertaudit 的清單裡或寫了不收的理由');
+eq(orphans.stale, [], 'assertaudit 過期：assertaudit 清單裡的每一支都還在 npm test 鏈上');
+eq(orphans.skipStale, [], 'assertaudit 理由過期：寫了不收理由的每一支都還在 npm test 鏈上');
 
 section('sweep 的判斷邏輯（scripts/sweepjudge.mjs；合成回應，不打網路）');
 expectEach('sweep', sweepControls(), {
