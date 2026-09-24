@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done } from './tap.mjs';
 import { controls as auditControls, chainOf, auditOrphans } from './auditjudge.mjs';
 import { controls as sweepControls } from './sweepjudge.mjs';
+import { controls as liveControls } from './livejudge.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -55,6 +56,19 @@ expectEach('sweep', sweepControls(), {
   'cache-stale': 'sweep 對照四：還留著舊版的快取，要挑出那一個',
   'real-error': 'sweep 對照五：不是新聞上游的錯誤，要算進真的錯誤',
   clean: 'sweep 對照六（必過）：全部一致、只有新聞上游 502，什麼都不報',
+});
+
+section('livecheck 的判斷邏輯（scripts/livejudge.mjs；錄好的回應，不打證交所）');
+expectEach('livecheck', liveControls(), {
+  cors: 'livecheck 對照一：CORS 標頭不見，要報',
+  sda: 'livecheck 對照二：STOCK_DAY_ALL 的表裡少了 2330，要報',
+  sd: 'livecheck 對照三：STOCK_DAY 的除權息標記不見，要報',
+  otc: 'livecheck 對照四：上櫃代號查得到資料了，要報',
+  t48u: 'livecheck 對照五：TWT48U 的欄位改名，要報格式變了',
+  refprice: 'livecheck 對照六：參考價跟公式差 0.01，要挑出那一筆',
+  calendar: 'livecheck 對照七：證交所那個月少一個交易日，要報出是哪一天',
+  stocks: 'livecheck 對照八：市場上多了一檔代號表沒有的，要報出那一檔',
+  gaps: 'livecheck 對照九：請求間隔不到 2 秒或一個都沒量到，要報',
 });
 
 done('controltest');
