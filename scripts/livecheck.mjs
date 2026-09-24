@@ -17,7 +17,7 @@ import { parseTwt49u } from '../js/dividend.js';
 import {
   controls, corsProblem, stockDayAllProblems, stockDayJuneProblems, otcPremiseProblems, twt48uProblems,
   refPriceMismatches, calendarDays, calendarDiff, stocksProblems, gapProblems,
-  makeStage, stageControls,
+  makeStage, stageControls, calendarClosed,
 } from './livejudge.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -183,7 +183,8 @@ await stage('data/calendar.json 與 TWSE 實際成交日一致', async () => {
   // 不寫死月份：寫死的話明年跑這支會去查未來的日期，TWSE 回「查詢日期大於今日」。
   const today = new Date();
   const closedWeekdaysByMonth = new Map();
-  for (const c of cal.closed) {
+  // 多年格式的休市日在 years[年].closed 底下（以前讀頂層的 cal.closed，日曆改成多年格式後每次都崩在這裡）
+  for (const c of calendarClosed(cal)) {
     const dow = new Date(`${c.date}T00:00:00Z`).getUTCDay();
     if (dow === 0 || dow === 6) continue;
     const m = c.date.slice(0, 7);

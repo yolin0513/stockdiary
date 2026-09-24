@@ -234,9 +234,13 @@ export async function stageControls() {
   const log = [];
   const fails = [];
   const { stage, crashed } = makeStage({ section: (n) => log.push(`段 ${n}`), fail: (msg) => fails.push(msg) });
-  await stage('甲', async () => { log.push('甲跑了'); });
-  await stage('乙', async () => { throw new Error('合成的崩潰'); });
-  await stage('丙', async () => { log.push('丙跑了'); });
-  const good = crashed.join() === '乙' && fails.length === 1 && fails[0] === 'livecheck 段落崩潰：乙' && log.includes('丙跑了');
-  return [{ key: 'stages', name: '中間一段崩了 → 記成那一段失敗、講出段名，後面照跑', ok: good, detail: `崩了的：${crashed.join('、') || '（沒有）'}；失敗訊息：${fails.join('；')}；${log.join('、')}` }];
+  // stage 自己若把例外往外丟（整支停），也要記成這一組沒過，不能讓呼叫端跟著崩、看不出是哪一組
+  let escaped = null;
+  try {
+    await stage('甲', async () => { log.push('甲跑了'); });
+    await stage('乙', async () => { throw new Error('合成的崩潰'); });
+    await stage('丙', async () => { log.push('丙跑了'); });
+  } catch (e) { escaped = e.message; }
+  const good = !escaped && crashed.join() === '乙' && fails.length === 1 && fails[0] === 'livecheck 段落崩潰：乙' && log.includes('丙跑了');
+  return [{ key: 'stages', name: '中間一段崩了 → 記成那一段失敗、講出段名，後面照跑', ok: good, detail: `${escaped ? `例外被往外丟（整支停）：${escaped}；` : ''}崩了的：${crashed.join('、') || '（沒有）'}；失敗訊息：${fails.join('；')}；${log.join('、')}` }];
 }

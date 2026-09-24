@@ -2555,6 +2555,43 @@ const MUTATIONS = [
     test: 'buildtest',
     expect: 'build-stocks 資料變少：',
   },
+  // ---- LC：livecheck 崩在日曆段（第 1 件）——以前一崩，後面兩段從來沒跑到 ----
+  {
+    name: 'LC：段落崩了卻不記失敗',
+    why: '崩掉的那一段被吞掉，整支看起來是綠的——比以前「崩了但回 1」更糟。',
+    file: 'scripts/livejudge.mjs',
+    find: '      fail(`livecheck 段落崩潰：${name}`,',
+    replace: '      void (`livecheck 段落崩潰：${name}`,',
+    test: 'controltest',
+    expect: 'livecheck 對照十一：',
+  },
+  {
+    name: 'LC：段落崩了就整支停',
+    why: '修正前的行為：崩在日曆段，後面的代號表核對、節流檢查從來沒跑到。',
+    file: 'scripts/livejudge.mjs',
+    find: '    try { await fn(); } catch (e) {\n      crashed.push(name);',
+    replace: '    try { await fn(); } catch (e) {\n      throw e;',
+    test: 'controltest',
+    expect: 'livecheck 對照十一：',
+  },
+  {
+    name: 'LC：日曆休市日讀不懂格式時回空的',
+    why: '空的休市清單會讓「挑休市最多的月份」默默挑錯月份，而不是停下來。',
+    file: 'scripts/livejudge.mjs',
+    find: "  throw new Error('data/calendar.json 的格式認不得：沒有 years，也沒有頂層的 closed');",
+    replace: '  return [];',
+    test: 'controltest',
+    expect: 'livecheck 對照十：',
+  },
+  {
+    name: 'LC：日曆休市日只讀頂層的 closed（修正前的寫法）',
+    why: '多年格式沒有頂層的 closed：修正前 livecheck 每次都崩在這裡。',
+    file: 'scripts/livejudge.mjs',
+    find: "  if (cal && cal.years && typeof cal.years === 'object') {",
+    replace: '  if (false) {',
+    test: 'controltest',
+    expect: 'livecheck 對照十：',
+  },
   // ---- S6：livecheck 的判斷邏輯（livejudge.mjs）——以前全部比對真實回應，沒有合成對照 ----
   {
     name: 'S6：CORS 比對永遠成立',
