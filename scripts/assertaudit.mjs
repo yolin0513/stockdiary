@@ -13,6 +13,8 @@
 // 把每條斷言的母體大小記下來，然後挑出可疑的。
 //
 // **這支不是 pass/fail 的測試**，是一份報告。它不進 npm test。
+// 但**資料不齊時回傳 1**（2026-09-24）：有哪一支沒收到任何資料、或一支都沒跑到，報告最後講明並回傳 1——
+// 以前崩掉那支的斷言會憑空消失、照樣回傳 0，看起來像一份完整的報告。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,10 +45,23 @@ const list = only ? TESTS.filter((t) => t.includes(only)) : TESTS;
 
 fs.rmSync(OUT, { force: true });
 process.stdout.write(`跑 ${list.length} 支測試收集斷言資料…\n`);
+if (list.length === 0) {
+  process.stdout.write(`一支都沒跑到（過濾「${only}」對不到任何登記的測試）——沒有資料，不產報告。\n`);
+  process.exit(1);
+}
 
+// 每支跑完，數資料檔裡「這一支」寫了幾筆（每支測試 done() 的名稱就是檔名，2026-09-24 逐支核對過）。
+// **0 筆＝它在寫出資料之前就崩了**，它的斷言會從報告裡憑空消失。2026-09-24 以前這裡照樣印
+// 「測試本身沒過，資料仍然收到了」、最後回傳 0——盤點實測：兩支裡崩掉一支，報告只算到一支，回傳 0。
+// 資料檔某一行解析不了就讓它拋錯停下，不要包 catch 把它當成 0 筆（v9 §5.13：故障時停下）。
+const rowsOf = (name) => (fs.existsSync(OUT)
+  ? fs.readFileSync(OUT, 'utf8').split('\n').filter(Boolean).filter((l) => JSON.parse(l).test === name).length
+  : 0);
+const noData = [];
 for (const t of list) {
   const file = path.join(ROOT, 'scripts', `${t}.mjs`);
-  if (!fs.existsSync(file)) { process.stdout.write(`  ⚠ 找不到 ${t}.mjs\n`); continue; }
+  if (!fs.existsSync(file)) { process.stdout.write(`  ✗ 找不到 ${t}.mjs（登記了但檔案不在）\n`); noData.push(t); continue; }
+  let passed = true;
   try {
     execFileSync(process.execPath, [file], {
       cwd: ROOT,
@@ -54,10 +69,18 @@ for (const t of list) {
       stdio: ['ignore', 'ignore', 'ignore'],
       timeout: 15 * 60 * 1000,
     });
-    process.stdout.write(`  ✓ ${t}\n`);
-  } catch {
-    process.stdout.write(`  ✗ ${t}（測試本身沒過，資料仍然收到了）\n`);
+  } catch { passed = false; }   // 測試紅了不是故障：它的斷言照樣寫進資料檔，下面數得到
+  const n = rowsOf(t);
+  if (n === 0) {
+    noData.push(t);
+    process.stdout.write(`  ✗ ${t}（**沒收到任何資料**——它在寫出資料之前就崩了或沒跑到 done()，報告裡不會有它）\n`);
+  } else {
+    process.stdout.write(passed ? `  ✓ ${t}（${n} 筆）\n` : `  ✗ ${t}（測試本身沒過；收到 ${n} 筆資料）\n`);
   }
+}
+if (!fs.existsSync(OUT)) {
+  process.stdout.write('資料檔一筆都沒有——沒有任何一支寫出資料，不產報告。\n');
+  process.exit(1);
 }
 
 const rows = fs.readFileSync(OUT, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -128,3 +151,10 @@ for (const [t, v] of [...byTest].sort((a, b) => (a[1].strong / a[1].total) - (b[
 
 line(`\n原始資料：${path.relative(ROOT, OUT)}`);
 line('這是報告不是測試 —— 上面每一條都要人看過再決定要不要改。');
+
+// 報告不是 pass/fail，但**資料不齊就不能當成齊的**：少收到的那幾支，它們的斷言不在上面任何一段裡。
+if (noData.length) {
+  line(`\n✗ 這份報告不完整：要跑 ${list.length} 支，${noData.length} 支沒收到任何資料（${noData.join('、')}）——`);
+  line('  它們的斷言沒有被上面任何一段檢查到。先讓那幾支能跑到 done()，再重跑一次。');
+  process.exit(1);
+}
