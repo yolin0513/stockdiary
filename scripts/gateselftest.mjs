@@ -7,7 +7,7 @@
 // **逐行解析**每一種情境的結論，比對「不符的那幾種」**剛好等於**預期（多一種、少一種都算不符）；
 // 另外看驗法跑完登記檔在不在、跑到的是不是改壞的那一份（比雜湊）。
 //
-// 解析結論時**斷言剛好是 ALL 那幾種**（現在 22 種；2026-09-24 F9 的六種必備情境是 13–18）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
+// 解析結論時**斷言剛好是 ALL 那幾種**（現在 23 種；2026-09-24 F9 的六種必備情境是 13–18）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
 // 「兩邊相同」在母體是空的時候恆真（本 App 與統籌者各踩過一次）。
 //
 // 用法：node scripts/gateselftest.mjs      回傳 0＝每一種變體的結果都跟預期一樣
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '4b', '6', '7', '7b', '8', '9', '10', '11', '13', '14', '15', '16', '17', '18', '5'];
+const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '4b', '6', '7', '7b', '7c', '8', '9', '10', '11', '13', '14', '15', '16', '17', '18', '5'];
 const REVERSED = [...ALL].reverse();
 const STALE_REG = 'scripts/gatepush.sh 0000000000000000000000000000000000000000\n';
 
@@ -158,6 +158,13 @@ try {
   variant('突變 G12（隱式的擋）：ls-remote 讀不到時當成跟本機一樣', [
     ['scripts/gatepush.sh', 'if [ "$REMOTE_SHA" != "$LOCAL" ]; then', 'if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" != "$LOCAL" ]; then'],
   ], { expectBad: ['4b'], expectReg: false });
+  // ---- 自查的作者欄與提交者欄各自有情境（2026-09-25，補充說明（十一）第 1 點）：只拿掉其中一欄，只紅對應的那一種 ----
+  variant('突變 G13：自查不取作者信箱（保留提交者）', [
+    ['scripts/precheck.mjs', "const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn <%ce>';", "const META_FMT = '%B%n作者：%an%n提交者：%cn <%ce>';"],
+  ], { expectBad: ['7b'], expectReg: false });
+  variant('突變 G14：自查不取提交者信箱（保留作者）', [
+    ['scripts/precheck.mjs', "const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn <%ce>';", "const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn';"],
+  ], { expectBad: ['7c'], expectReg: false });
   variant('突變 G10（第 5 條）：沒動到被守的檔也要有登記檔', [
     ['scripts/buildverify.mjs', '  if (!touched.length) { say(', '  if (!touched.length && fs.existsSync(REG)) { say('],
   ], { expectBad: ['17'], expectReg: false });

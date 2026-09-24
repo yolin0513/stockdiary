@@ -211,10 +211,22 @@ sc_7() {
   run "7. 命中只出現在 commit 訊息" 1 沒動 "hit|(a) 金鑰／token|commit 訊息／作者|+gatetest：合成 token 只放在訊息裡"
 }
 # 7b. 命中只出現在作者信箱（真實信箱樣式、不是 noreply）；信箱拆開拼，這支檔自己才不會被自查抓到
+# 2026-09-25（補充說明（十一））：以前用 `git -c user.email=…`，作者與提交者**兩個信箱同時**是一般信箱——只拿掉其中一欄，
+# 另一欄照樣抓得到。「只有作者是一般信箱」（--author、rebase 別人的 commit）是最常見的外洩形態，所以兩欄各一種情境，
+# 而且先斷言另一欄確實是 noreply。
 sc_7b() {
   local fake_mail="someone""@""example.com"
-  git -c user.email="$fake_mail" commit -q --allow-empty -m "gatetest：作者信箱不是 noreply" || die "commit 失敗（情境 7b）"
+  GIT_AUTHOR_EMAIL="$fake_mail" git commit -q --allow-empty -m "gatetest：只有作者信箱不是 noreply" || die "commit 失敗（情境 7b）"
+  [ "$(git log -1 --format=%ae)" = "$fake_mail" ] && [ "$(git log -1 --format=%ce)" != "$fake_mail" ] \
+    || die "情境 7b：不是「只有作者」是一般信箱，前提沒造成"
   run "7b. 命中只出現在作者信箱" 1 沒動 "hit|(b) email（noreply 不算）|commit 訊息／作者|+作者："
+}
+sc_7c() {
+  local fake_mail="someone""@""example.com"
+  GIT_COMMITTER_EMAIL="$fake_mail" git commit -q --allow-empty -m "gatetest：只有提交者信箱不是 noreply" || die "commit 失敗（情境 7c）"
+  [ "$(git log -1 --format=%ce)" = "$fake_mail" ] && [ "$(git log -1 --format=%ae)" != "$fake_mail" ] \
+    || die "情境 7c：不是「只有提交者」是一般信箱，前提沒造成"
+  run "7c. 命中只出現在提交者信箱" 1 沒動 "hit|(b) email（noreply 不算）|commit 訊息／作者|+提交者："
 }
 # 8. 內容以 `++` 開頭的命中行，而且先加、下一個 commit 又刪掉（2026-09-24）
 # 以前抽新增行用「以 + 開頭、但不是 +++」：`++` 開頭的內容加上 diff 的 `+` 變成 `+++…`，被當成檔頭丟掉。
@@ -325,7 +337,7 @@ sc_18() {
   run "18. 前一個 commit 動到、最後一個乾淨" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildguard.mjs，但沒有 build 驗法登記——先跑 node scripts/buildverify.mjs"
 }
 
-ALL="1 1b 2a 2b 2c 3 4 4b 6 7 7b 8 9 10 11 13 14 15 16 17 18 5"
+ALL="1 1b 2a 2b 2c 3 4 4b 6 7 7b 7c 8 9 10 11 13 14 15 16 17 18 5"
 ORDER="${GATETEST_ORDER:-$ALL}"
 # 順序清單要恰好是每一種各一次：少一種就少驗一種，多一種就是打錯字
 SORTED_ALL="$(printf '%s\n' $ALL | sort)"
