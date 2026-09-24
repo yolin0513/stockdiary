@@ -180,11 +180,11 @@
   "name": "永豐ESG低碳高息",
   "exDate": "2026-09-23",
   "kind": "cash",
-  "cashPerShare": null,
+  "cashPerShare": 0.815,
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "00934-2026-09-16": {
   "code": "00934",
@@ -437,7 +437,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "01009T-2026-09-15": {
   "code": "01009T",
@@ -459,7 +459,7 @@
   "stockRate": 0.04999999,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "1438-2026-09-09": {
   "code": "1438",
@@ -481,7 +481,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "1517-2026-09-16": {
   "code": "1517",
@@ -503,7 +503,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "2062-2026-09-10": {
   "code": "2062",
@@ -525,7 +525,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "2323-2026-10-01": {
   "code": "2323",
@@ -536,7 +536,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "2330-2026-09-16": {
   "code": "2330",
@@ -569,7 +569,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "2614-2026-10-06": {
   "code": "2614",
@@ -580,7 +580,7 @@
   "stockRate": 0.08,
   "rightsRate": 0.38195352,
   "rightsPrice": null,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "3059-2026-09-09": {
   "code": "3059",
@@ -613,7 +613,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "4763-2026-09-16": {
   "code": "4763",
@@ -657,7 +657,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "5306-2026-09-17": {
   "code": "5306",
@@ -690,7 +690,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "6133-2026-09-09": {
   "code": "6133",
@@ -745,7 +745,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "7631-2026-09-29": {
   "code": "7631",
@@ -756,7 +756,7 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
  },
  "9802-2026-09-10": {
   "code": "9802",
@@ -789,6 +789,149 @@
   "stockRate": 0,
   "rightsRate": 0,
   "rightsPrice": 0,
-  "seenAt": "2026-09-11"
+  "seenAt": "2026-09-24"
+ },
+ "00400A-2026-10-08": {
+  "code": "00400A",
+  "name": "主動國泰動能高息",
+  "exDate": "2026-10-08",
+  "kind": "cash",
+  "cashPerShare": null,
+  "stockRate": 0,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "00406A-2026-10-05": {
+  "code": "00406A",
+  "name": "主動中信台灣收益",
+  "exDate": "2026-10-05",
+  "kind": "cash",
+  "cashPerShare": null,
+  "stockRate": 0,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "00939-2026-10-05": {
+  "code": "00939",
+  "name": "統一台灣高息動能",
+  "exDate": "2026-10-05",
+  "kind": "cash",
+  "cashPerShare": null,
+  "stockRate": 0,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "00940-2026-10-07": {
+  "code": "00940",
+  "name": "元大台灣價值高息",
+  "exDate": "2026-10-07",
+  "kind": "cash",
+  "cashPerShare": null,
+  "stockRate": 0,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "00946-2026-10-07": {
+  "code": "00946",
+  "name": "群益科技高息成長",
+  "exDate": "2026-10-07",
+  "kind": "cash",
+  "cashPerShare": null,
+  "stockRate": 0,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "00953B-2026-10-07": {
+  "code": "00953B",
+  "name": "群益優選非投等債",
+  "exDate": "2026-10-07",
+  "kind": "cash",
+  "cashPerShare": null,
+  "stockRate": 0,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "00984D-2026-10-05": {
+  "code": "00984D",
+  "name": "主動聯博全球非投",
+  "exDate": "2026-10-05",
+  "kind": "cash",
+  "cashPerShare": null,
+  "stockRate": 0,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "00985B-2026-10-07": {
+  "code": "00985B",
+  "name": "群益ESG投等債0-5",
+  "exDate": "2026-10-07",
+  "kind": "cash",
+  "cashPerShare": null,
+  "stockRate": 0,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "1449-2026-10-12": {
+  "code": "1449",
+  "name": "佳和",
+  "exDate": "2026-10-12",
+  "kind": "stock",
+  "cashPerShare": 0,
+  "stockRate": 0.00999999,
+  "rightsRate": 0,
+  "rightsPrice": 0,
+  "seenAt": "2026-09-24"
+ },
+ "1727-2026-10-13": {
+  "code": "1727",
+  "name": "中華化",
+  "exDate": "2026-10-13",
+  "kind": "stock",
+  "cashPerShare": 0,
+  "stockRate": 0,
+  "rightsRate": 0.10779602,
+  "rightsPrice": null,
+  "seenAt": "2026-09-24"
+ },
+ "2890-2026-10-07": {
+  "code": "2890",
+  "name": "永豐金",
+  "exDate": "2026-10-07",
+  "kind": "stock",
+  "cashPerShare": 0,
+  "stockRate": 0,
+  "rightsRate": 0.0432954,
+  "rightsPrice": null,
+  "seenAt": "2026-09-24"
+ },
+ "6834-2026-10-02": {
+  "code": "6834",
+  "name": "天二科技",
+  "exDate": "2026-10-02",
+  "kind": "stock",
+  "cashPerShare": 0,
+  "stockRate": 0,
+  "rightsRate": 0.11303128,
+  "rightsPrice": 80,
+  "seenAt": "2026-09-24"
+ },
+ "8021-2026-10-06": {
+  "code": "8021",
+  "name": "尖點",
+  "exDate": "2026-10-06",
+  "kind": "stock",
+  "cashPerShare": 0,
+  "stockRate": 0,
+  "rightsRate": 0.02715001,
+  "rightsPrice": null,
+  "seenAt": "2026-09-24"
  }
 }
