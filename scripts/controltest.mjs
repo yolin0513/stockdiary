@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done } from './tap.mjs';
 import { controls as auditControls, chainOf, auditOrphans } from './auditjudge.mjs';
 import { controls as sweepControls } from './sweepjudge.mjs';
-import { controls as liveControls, stageControls as liveStageControls } from './livejudge.mjs';
+import { controls as liveControls, stageControls as liveStageControls, endpointsIn, endpointOrphans } from './livejudge.mjs';
 import { controls as routeControls, registeredRoutes, routeOrphans } from './routes.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -71,7 +71,22 @@ expectEach('livecheck', liveControls(), {
   stocks: 'livecheck 對照八：市場上多了一檔代號表沒有的，要報出那一檔',
   gaps: 'livecheck 對照九：請求間隔不到 2 秒或一個都沒量到，要報',
   'calendar-closed': 'livecheck 對照十：日曆休市日多年格式要讀得到、認不得的格式要拋錯',
+  fmtqik: 'livecheck 對照十二：FMTQIK 的欄位改名，要報格式變了',
+  endpoints: 'livecheck 對照十三：app 多用一個沒登記的端點要報、登記了卻沒打的也要報',
 });
+{
+  // 端點的孤兒檢查（範圍外發現第 2 件）：app 端用到的證交所端點，每一個都要登記、而且 livecheck 真的有打
+  const files = [];
+  const walk = (d) => { for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walk(p); else if (/\.m?js$/.test(e.name)) files.push(p); } };
+  walk('js');
+  for (const f of ['sw.js', 'worker/src/index.js']) if (fs.existsSync(path.join(ROOT, f))) files.push(f);
+  const appEps = [...new Set(files.flatMap((f) => endpointsIn(fs.readFileSync(path.join(ROOT, f), 'utf8'))))];
+  ok(appEps.length >= 4, `（前提）app 端 ${files.length} 支檔用到 ${appEps.length} 個證交所端點：${appEps.join('、')}`);
+  const o = endpointOrphans(appEps, fs.readFileSync(path.join(ROOT, 'scripts/livecheck.mjs'), 'utf8'));
+  eq(o.missing, [], '端點孤兒：app 用到的每一個證交所端點都登記了（或寫了不打的理由）');
+  eq(o.notChecked, [], '端點沒打：登記的每一個端點 livecheck 都真的有打');
+  eq(o.skipStale, [], '端點理由過期：寫了不打理由的每一個，app 都還在用');
+}
 expectEach('livecheck 段落', await liveStageControls(), {
   stages: 'livecheck 對照十一：中間一段崩了，要記成那一段失敗、講出段名，後面照跑',
 });

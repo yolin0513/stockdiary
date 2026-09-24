@@ -17,7 +17,7 @@ import { parseTwt49u } from '../js/dividend.js';
 import {
   controls, corsProblem, stockDayAllProblems, stockDayJuneProblems, otcPremiseProblems, twt48uProblems,
   refPriceMismatches, calendarDays, calendarDiff, stocksProblems, gapProblems,
-  makeStage, stageControls, calendarClosed,
+  makeStage, stageControls, calendarClosed, fmtqikProblems,
 } from './livejudge.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -113,6 +113,18 @@ await stage('除權息結果表 TWT49U（參考價用的那張）', async () => 
   } else {
     note(`今天沒有除權息結果（stat：${j.stat}）—— 不算失敗`);
   }
+});
+
+await stage('大盤成交資訊 FMTQIK（今日觀察用的那張）', async () => {
+  // app 在用（js/prices.js 的 urlFmtqik），以前 livecheck 從沒打過它（2026-09-24 補）。
+  // 查**上個月**：月初當月還沒有資料，查當月會把「還沒開盤」誤報成「一筆都沒有」。
+  const d = new Date();
+  const lastMonth = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  const ymd = `${lastMonth.getFullYear()}${String(lastMonth.getMonth() + 1).padStart(2, '0')}01`;
+  const { res, text } = await get(`${TWSE}/rwd/zh/afterTrading/FMTQIK?response=json&date=${ymd}`);
+  ok(res.status === 200, `HTTP ${res.status}`);
+  eq(corsProblem(res.headers.get('access-control-allow-origin')), null, 'CORS 標頭還在');
+  none(fmtqikProblems(JSON.parse(text)), `格式沒變：${ymd.slice(0, 6)} 每一天都算得出指數與漲跌％`);
 });
 
 await stage('捕捉「預告 → 結果」的配對樣本', async () => {

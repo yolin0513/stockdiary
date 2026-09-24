@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
 const load = (rel) => import(pathToFileURL(path.join(ROOT, rel)).href);
-const { parseStockDayAll, parseStockDay } = await load('js/twse.js');
+const { parseStockDayAll, parseStockDay, parseFmtqik } = await load('js/twse.js');
 const { parseTwt48u, parseTwt49u, refPriceFromExValue } = await load('js/dividend.js');
 
 /** CORS：瀏覽器直打要靠 access-control-allow-origin: *。回傳問題字串或 null。 */
@@ -82,6 +82,40 @@ export function stocksProblems(stocks, liveRows) {
   return {
     unknown: liveRows.filter((r) => !stocks.stocks[r.code]),
     wrongMarket: liveRows.filter((r) => stocks.stocks[r.code] && stocks.stocks[r.code].market !== '上市'),
+  };
+}
+
+/** FMTQIK（大盤成交資訊，今日觀察用的那張）：格式變了、沒資料、有算不出漲跌％的。 */
+export function fmtqikProblems(json) {
+  let parsed;
+  try { parsed = parseFmtqik(json); } catch (e) { return [`格式變了：${e.message}`]; }
+  const out = [];
+  if (!parsed.ok) out.push(`解析失敗：${parsed.message}`);
+  else if (parsed.rows.length === 0) out.push('一筆都沒有');
+  const bad = parsed.rows.filter((r) => r.index == null || r.changePct == null);
+  if (bad.length) out.push(`有 ${bad.length} 筆算不出指數或漲跌％（例：${bad[0].date}）`);
+  return out;
+}
+
+// ---- 端點的登記（孤兒檢查；2026-09-24，範圍外發現第 2 件）----
+// 以前 livecheck 自己挑要打哪些端點：app 在用的 FMTQIK 從來沒被檢查過（S9 實測）。
+// 現在 app 端（js/、sw.js、Worker）用到的每一個證交所端點，都要在這裡登記、而且 livecheck 真的有打；
+// 刻意不打的寫在 ENDPOINT_SKIP 並寫理由。
+export const LIVE_ENDPOINTS = ['STOCK_DAY_ALL', 'STOCK_DAY', 'TWT48U', 'TWT49U', 'FMTQIK'];
+export const ENDPOINT_SKIP = {};
+
+/** 從原始碼取出證交所的端點名（…/exchangeReport/XXX、…/rwd/zh/…/XXX）。 */
+export function endpointsIn(text) {
+  return [...new Set([...String(text).matchAll(/\/(?:exchangeReport|rwd\/zh\/[\w/]+?)\/([A-Z0-9_]+)(?=[?'"`\s]|$)/g)].map((m) => m[1]))];
+}
+
+/** 孤兒檢查：app 有用、沒登記也沒理由的（missing）；登記了、livecheck 卻沒打的（notChecked）；理由過期的（skipStale）。 */
+export function endpointOrphans(appEndpoints, liveText, registered = LIVE_ENDPOINTS, skip = ENDPOINT_SKIP) {
+  const checked = endpointsIn(liveText);
+  return {
+    missing: appEndpoints.filter((e) => !registered.includes(e) && !(e in skip)),
+    notChecked: registered.filter((e) => !checked.includes(e)),
+    skipStale: Object.keys(skip).filter((e) => !appEndpoints.includes(e)),
   };
 }
 
@@ -225,6 +259,30 @@ export function controls() {
     let threw = false;
     try { calendarClosed({ tradingDays: [] }); } catch { threw = true; }
     return [real.length > 5 && single.length === 1, threw, `真的日曆讀到 ${real.length} 天休市；認不得的格式${threw ? '拋錯了' : '沒拋錯'}`];
+  });
+
+  // 11. FMTQIK：好的＝錄好的 115 年 9 月；改壞＝「漲跌點數」欄改名
+  run('fmtqik', 'FMTQIK 的欄位改名 → 要報格式變了', () => {
+    const fm = JSON.parse(fx('fmtqik-115-09.json'));
+    const fmBad = clone(fm);
+    fmBad.fields = fmBad.fields.map((f) => (f === '漲跌點數' ? '漲跌' : f));
+    const good = fmtqikProblems(fm);
+    const bad = fmtqikProblems(fmBad);
+    return [good.length === 0 && fm.data.length > 5, has(bad, '格式變了'), `錄音 ${fm.data.length} 筆；改壞的報：${bad.join('；')}`];
+  });
+
+  // 12. 端點的孤兒檢查：合成的 app 原始碼與 livecheck 原文，跑的是跟 controltest 真實檢查同一段程式
+  run('endpoints', '端點：app 多用了一個沒登記的要報；登記了、livecheck 卻沒打的要報', () => {
+    const app = "fetch(`${BASE}/exchangeReport/STOCK_DAY?x`); const u = `${BASE}/rwd/zh/afterTrading/FMTQIK?response=json`;";
+    const live = "get(`${TWSE}/exchangeReport/STOCK_DAY?response=json`); get(`${TWSE}/rwd/zh/afterTrading/FMTQIK?response=json`);";
+    const found = endpointsIn(app);
+    const good = endpointOrphans(found, live, ['STOCK_DAY', 'FMTQIK'], {});
+    const extra = endpointOrphans([...found, 'NEWONE'], live, ['STOCK_DAY', 'FMTQIK'], {});
+    const unchecked = endpointOrphans(found, "get(`${TWSE}/exchangeReport/STOCK_DAY?response=json`);", ['STOCK_DAY', 'FMTQIK'], {});
+    const n = good.missing.length + good.notChecked.length + good.skipStale.length;
+    return [found.join() === 'STOCK_DAY,FMTQIK' && n === 0,
+      extra.missing.join() === 'NEWONE' && unchecked.notChecked.join() === 'FMTQIK',
+      `擷取到 ${found.join('、')}；多一個報 ${extra.missing.join('、') || '（沒有）'}；沒打的報 ${unchecked.notChecked.join('、') || '（沒有）'}`];
   });
   return res;
 }
