@@ -3056,12 +3056,14 @@ const MUTATIONS = [
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
 
+// 每支測試的逾時。gateselftest（推送閘門驗法的自我測試）要跑約 7 分鐘，180 秒會讓基準直接被判成不綠（2026-09-24 踩到）。
+const TEST_TIMEOUT = { gateselftest: 15 * 60 * 1000 };
 function runTest(name) {
   try {
     execFileSync(process.execPath, [path.join(ROOT, 'scripts', `${name}.mjs`)], {
       cwd: ROOT,
       stdio: 'pipe',
-      timeout: 180000,
+      timeout: TEST_TIMEOUT[name] ?? 180000,
     });
     return { code: 0, out: '' };
   } catch (e) {
