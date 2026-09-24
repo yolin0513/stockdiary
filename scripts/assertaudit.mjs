@@ -19,7 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { controls, collect, classify, isAssert, tinyOf, thinDetectOf } from './auditjudge.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const OUT = path.join(ROOT, 'assert-audit.jsonl');
@@ -43,6 +43,15 @@ const TESTS = [
 const only = process.argv[2];
 const list = only ? TESTS.filter((t) => t.includes(only)) : TESTS;
 
+// 先跑對照組（SPEC_檢查器修補 S3）：判斷邏輯自己壞掉時，後面整份報告都不可信——以前篩選條件改壞，報告只寫「（沒有）」、回傳 0。
+process.stdout.write('對照組（判斷邏輯自己有沒有壞）：\n');
+const ctrl = controls();
+for (const c of ctrl) process.stdout.write(`  ${c.ok ? '✓' : '✗'} （對照）${c.name}（${c.detail}）\n`);
+if (ctrl.some((c) => !c.ok)) {
+  process.stdout.write('對照組沒過：assertaudit 的判斷邏輯壞了，下面的報告不可信——停下，不產報告。\n');
+  process.exit(1);
+}
+
 fs.rmSync(OUT, { force: true });
 process.stdout.write(`跑 ${list.length} 支測試收集斷言資料…\n`);
 if (list.length === 0) {
@@ -54,28 +63,19 @@ if (list.length === 0) {
 // **0 筆＝它在寫出資料之前就崩了**，它的斷言會從報告裡憑空消失。2026-09-24 以前這裡照樣印
 // 「測試本身沒過，資料仍然收到了」、最後回傳 0——盤點實測：兩支裡崩掉一支，報告只算到一支，回傳 0。
 // 資料檔某一行解析不了就讓它拋錯停下，不要包 catch 把它當成 0 筆（v9 §5.13：故障時停下）。
-const rowsOf = (name) => (fs.existsSync(OUT)
-  ? fs.readFileSync(OUT, 'utf8').split('\n').filter(Boolean).filter((l) => JSON.parse(l).test === name).length
-  : 0);
+// 收集與分類是 scripts/auditjudge.mjs 的 collect／classify——跟上面的對照組跑同一段程式。
 const noData = [];
 for (const t of list) {
   const file = path.join(ROOT, 'scripts', `${t}.mjs`);
   if (!fs.existsSync(file)) { process.stdout.write(`  ✗ 找不到 ${t}.mjs（登記了但檔案不在）\n`); noData.push(t); continue; }
-  let passed = true;
-  try {
-    execFileSync(process.execPath, [file], {
-      cwd: ROOT,
-      env: { ...process.env, SD_AUDIT: '1', SD_AUDIT_OUT: OUT },
-      stdio: ['ignore', 'ignore', 'ignore'],
-      timeout: 15 * 60 * 1000,
-    });
-  } catch { passed = false; }   // 測試紅了不是故障：它的斷言照樣寫進資料檔，下面數得到
-  const n = rowsOf(t);
-  if (n === 0) {
+  const got = collect(file, t, OUT, ROOT);
+  const n = got.rows.length;
+  const kind = classify(got);
+  if (kind === 'no-data') {
     noData.push(t);
     process.stdout.write(`  ✗ ${t}（**沒收到任何資料**——它在寫出資料之前就崩了或沒跑到 done()，報告裡不會有它）\n`);
   } else {
-    process.stdout.write(passed ? `  ✓ ${t}（${n} 筆）\n` : `  ✗ ${t}（測試本身沒過；收到 ${n} 筆資料）\n`);
+    process.stdout.write(kind === 'ok' ? `  ✓ ${t}（${n} 筆）\n` : `  ✗ ${t}（測試本身沒過；收到 ${n} 筆資料）\n`);
   }
 }
 if (!fs.existsSync(OUT)) {
@@ -84,7 +84,7 @@ if (!fs.existsSync(OUT)) {
 }
 
 const rows = fs.readFileSync(OUT, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
-const asserts = rows.filter((r) => r.kind !== 'section' && r.kind !== 'note');
+const asserts = rows.filter(isAssert);
 const notes = rows.filter((r) => r.kind === 'note');
 
 const line = (s = '') => process.stdout.write(`${s}\n`);
@@ -96,7 +96,7 @@ line('='.repeat(70));
 // ---------------------------------------------------------------------------
 line('\n【1】母體只有 1–2 項的集合斷言');
 line('    母體太小的 noneOf／everyOf 幾乎沒有鑑別力 —— 它可能只是剛好沒踩到。');
-const tiny = asserts.filter((r) => ['noneOf', 'everyOf'].includes(r.kind) && r.n != null && r.n <= 2);
+const tiny = tinyOf(asserts);   // 跟對照組同一段程式（auditjudge.mjs）
 if (tiny.length === 0) line('    （沒有）');
 for (const r of tiny.sort((a, b) => a.n - b.n)) {
   line(`    n=${r.n}  [${r.test}] ${r.section} → ${r.msg}`);
@@ -105,7 +105,7 @@ for (const r of tiny.sort((a, b) => a.n - b.n)) {
 // ---------------------------------------------------------------------------
 line('\n【2】對照組只有 1 個正例或 1 個反例');
 line('    detects 的鑑別力取決於兩邊的樣本數；只有一個很容易剛好通過。');
-const thinDetect = asserts.filter((r) => r.kind === 'detects' && r.n != null && r.n <= 1);
+const thinDetect = thinDetectOf(asserts);
 if (thinDetect.length === 0) line('    （沒有）');
 for (const r of thinDetect) line(`    min=${r.n}  [${r.test}] ${r.section} → ${r.msg}`);
 
