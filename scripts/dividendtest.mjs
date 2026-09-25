@@ -65,7 +65,7 @@ section('金額還沒公告時，配息是 null 不是 0');
 //   "<p style= text-align:center;>待公告實際收益分配金額</p>"
 // 解成 0 的話，日曆上會出現「每股 0 元、預估 0 元」——那不是不配息，是還不知道配多少。
 const notYet = f.rows.filter((r) => r.cashPerShare == null);
-ok(notYet.length > 0, `${notYet.length} 筆的配息金額還沒公告`);
+ok(notYet.length > 0, `有配息待公告的筆：${notYet.length} 筆的配息金額還沒公告`);
 noneOf(notYet, (r) => r.cashPerShare === 0, '這些筆的 cashPerShare 全部是 null，沒有一筆是 0');
 everyOf(notYet, (r) => typeof r.cashNote === 'string' && r.cashNote.length > 0,
   '每一筆都帶得出原因（cashNote）');
@@ -110,7 +110,7 @@ section('參考價公式：前收 − (權值+息值)，捨去到小數兩位');
 // 不是「我們自己發明一個數字」。
 for (const r of g.rows) {
   eq(refPriceFromExValue({ prevClose: r.prevClose, exValue: r.exValue }), r.refPrice,
-    `${r.code} ${r.name}（${r.kind}）：${r.prevClose} − ${r.exValue} = ${r.refPrice}`);
+    `參考價逐筆對得上：${r.code} ${r.name}（${r.kind}）：${r.prevClose} − ${r.exValue} = ${r.refPrice}`);
 }
 everyOf(g.rows, (r) => refPriceFromExValue({ prevClose: r.prevClose, exValue: r.exValue }) === r.refPrice,
   '六筆全部一致');

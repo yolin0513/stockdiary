@@ -154,6 +154,14 @@ const CONTROLS = {
       // 合成：推送本身後面接管線、取遠端狀態接管線
       'git push -q origin main 2>&1 ' + P + ' tail -1',
       'REMOTE_SHA="$(git ls-remote origin refs/heads/main ' + P + ' cut -f1)"',
+      // 2026-09-25（補充說明（十一）第 3 點）：關鍵指令的每一個分支各一個樣本——以前 9 個分支只打到 4 個
+      'node scripts/piiscan.mjs ' + P + ' tail -1',
+      'bash scripts/gatepush.sh ' + P + ' tee .logs/push.txt',
+      'git fetch -q origin main 2>&1 ' + P + ' tail -1',
+      'git log --format=%h -1 ' + P + ' cat',
+      'git diff --stat HEAD ' + P + ' tail -1',
+      // 只有 `git -C <路徑>` 那個分支對得到（拿掉 -C 那一段，git 後面接的就不是關鍵指令）
+      'git -C "$ROOT" fetch -q origin main ' + P + ' tail -1',
     ],
     miss: [
       'git -C "$ROOT" push -q "$REMOTE" "$BRANCH" > "$OUT.push" 2>&1',
@@ -174,6 +182,8 @@ const CONTROLS = {
       // 真的出過事：舊 precheck 抽新增行（2026-09-24 以前）
       "const addedLines = raw.split('\\n').filter((l) => l.startsWith('+') && !l.startsWith('" + '++' + "+'));",
       "grep -v '^" + '\\+\\+' + "\\+'",
+      // 2026-09-25：只打「'+++' 字面」那個分支（startsWith 那個分支的樣本也一定含 '+++' 字面，那一支是等價的）
+      "if (head === '" + '++' + "+') continue;",
     ],
     miss: ["if (l.startsWith('@@')) { inHunk = true; continue; }", "if (inHunk && l.startsWith('+')) out.push(l);"],
   },
@@ -182,6 +192,8 @@ const CONTROLS = {
       // 真的出過事：舊 precheck 取 diff 的寫法，整支沒有取訊息與作者（2026-09-24 以前）
       "const raw = execFileSync('git', ['-C', ROOT, 'show', rev, '--format=', '--unified=0']);",
       "const raw = execFileSync('git', ['-C', ROOT, 'log', '-p', '--format=', '--unified=0', rev]);",
+      // 2026-09-25：--patch 那個分支以前沒有樣本
+      "const raw = execFileSync('git', ['log', '--patch', '--format=', rev]);",
     ],
     miss: [
       "const raw = git(['log', '-p', '--format=', rev]);\nconst meta = git(['log', '--format=%B%n%an <%ae>', rev]);",
@@ -202,7 +214,8 @@ const CONTROLS = {
     ],
   },
   'absent-assert': {
-    hit: ['ok(!fs.existsSync(reg), "登記檔不見了");', 'if [ ! -f "$REG" ]; then echo 已刪; fi'],
+    // 2026-09-25：以前兩個樣本各打到兩個分支，拿掉其中一支照樣全過——改成一個樣本只打一個分支
+    hit: ['ok(!fs.existsSync(reg), "reg gone");', 'if [ ! -f "$REG" ]; then exit 1; fi', 'ok(x, "登記檔不見了");', "note('舊登記已刪');"],
     miss: ['ok(fs.existsSync(reg), "登記檔還在");', '[ -s "$T/ns9.txt" ]'],
   },
   'shell-backslash': {
@@ -281,7 +294,7 @@ note(`初篩命中經登記例外放行 ${hits.length - real.length} 條（理�
 const ORPHAN_SKIP = {
   'scripts/gatescan.mjs': '就是這支掃描器；它提到 precheck、git push 的字串都是對照組的樣本',
   'scripts/mutationtest.mjs': '突變清單，不推送也不自查；提到 precheck、gatepush 的是突變要打的原文（S5 那幾條）',
-  'scripts/controltest.mjs': '每版跑的判斷邏輯測試；import precheck.mjs 只為了測 commitMeta（假的 git 與 GIT_DIR 讓真的 git 失敗），不推送',
+  'scripts/controltest.mjs': '每版跑的判斷邏輯測試；import precheck.mjs、piiscan.mjs 只為了測它們的判斷與每個分支的合成樣本（commitMeta、controlResults、contextControls），不推送',
   'scripts/entrygatetest.mjs': '檔名帶 gate，但它測的是三支入口的「對照組沒過就停」（F10），跟推送無關',
   // scripts/evidence/：量「修正前」的一次性腳本（2026-09-24 收進 repo，保留供重做），不在任何推送流程裡
   'scripts/evidence/p1ev.mjs': '一次性量測：在暫存複本裡把 3e7b009 的舊驗法換進來跑 gatetest，只推到假遠端',

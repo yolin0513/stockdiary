@@ -93,7 +93,15 @@ const hasStack = (out) => out.split('\n').some((l) => /^\s+at .+:\d+:\d+\)?\s*$/
   const h2 = dirHash(d);
   fs.writeFileSync(path.join(d, 'a.json'), '1');
   ok(h0 !== h1 && h0 !== h2 && dirHash(d) === h0, '（對照）目錄雜湊：多一個暫存檔、改一個字都會變，改回原樣就相同');
+  // 2026-09-25（補充說明（十一）第 3 點：每個分支都要有自己的樣本）——子目錄那個分支以前沒有樣本
+  fs.mkdirSync(path.join(d, 'sub'));
+  fs.writeFileSync(path.join(d, 'sub', 'b.json'), '1');
+  const h3 = dirHash(d);
+  fs.writeFileSync(path.join(d, 'sub', 'b.json'), '2');
+  ok(dirHash(d) !== h3, '（對照）目錄雜湊：子目錄裡改一個字也會變');
   fs.rmSync(d, { recursive: true, force: true });
+  // 模組頂層崩掉時，堆疊那一行不帶括號（`    at file:///…:行:欄`）——以前樣本只有帶括號的
+  ok(hasStack('TypeError: x\n    at file:///a/b.mjs:3:7'), '（對照）堆疊的判斷：不帶括號的那一種（模組頂層崩掉）也算吐了堆疊');
 }
 
 const run = (script, args, env = {}) => {

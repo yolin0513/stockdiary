@@ -18,6 +18,42 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn <%ce>';
 
+// ---- 搜尋式與合成對照樣本（模組層，controltest 逐一驗每個分支）----
+export const TOKEN = /gh[pousr]_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}/;
+export const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+export const EMAIL_OK = /(users\.)?noreply@(anthropic\.com|github\.com)|@users\.noreply\.github\.com/;
+export const userPattern = (user) => new RegExp(user.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+// 磁碟機代號前面不能接英文字母：不然 `file:///` 與正規式 `find:/gm` 裡「字母＋冒號＋斜線」那一段都會被當成路徑
+export const PATHS = /(?<![A-Za-z])[A-Za-z]:[\\/]|\/(home|Users)\/[A-Za-z0-9._一-鿿-]+/;
+export const PATHS_MISS = ['+file:///x.mjs', '+match(/^\\s+find:/gm)', '+https://example.com/a'];
+export const hitsIn = (lines, re, skip) => lines.filter((l) => re.test(l) && !(skip && skip.test(l)));
+
+/**
+ * 合成對照樣本，**每個分支一個**（2026-09-25，補充說明（十一）第 3 點：以前 (a) 只有 gh 一種，另外三種金鑰格式拿掉照樣全過）。
+ * 拆開拼，這個檔自己才不會被自己抓到。hit＝要被抓到；miss＝不能被抓到（(b) 的 noreply 三種寫法）。
+ * 回傳 [{ cat, label, ok }]；main 與 controltest 用同一份。
+ */
+export function controlResults(user) {
+  const U = userPattern(user);
+  const hit = (cat, label, line, re, skip) => ({ cat, label, ok: hitsIn([line], re, skip).length === 1 });
+  const miss = (cat, label, line, re, skip) => ({ cat, label, ok: hitsIn([line], re, skip).length === 0 });
+  return [
+    hit('a', 'gh 權杖', '+' + 'gh' + 'p_' + 'A1b2C3d4E5f6G7h8I9j0KLMN', TOKEN),
+    hit('a', 'sk-ant 金鑰', '+' + 'sk' + '-ant-' + 'A1b2C3d4E5f6G7h8', TOKEN),
+    hit('a', 'AIza 金鑰', '+' + 'AI' + 'za' + 'A1b2C3d4E5f6G7h8I9j0', TOKEN),
+    hit('a', 'xox 權杖', '+' + 'xo' + 'xb-' + 'A1b2C3d4E5', TOKEN),
+    hit('b', '一般信箱', '+' + 'someone' + '@' + 'example' + '.com', EMAIL, EMAIL_OK),
+    miss('b', 'noreply@github.com 不算', '+' + 'noreply' + '@' + 'github.com', EMAIL, EMAIL_OK),
+    miss('b', 'noreply@anthropic.com 不算', '+' + 'noreply' + '@' + 'anthropic.com', EMAIL, EMAIL_OK),
+    miss('b', 'users.noreply.github.com 不算', '+' + '12345+someone' + '@' + 'users.noreply.github.com', EMAIL, EMAIL_OK),
+    hit('c', '本機使用者名稱', '+' + 'C' + ':/Users/' + user + '/somewhere', U),
+    hit('d', '磁碟機（反斜線）', '+' + 'X' + ':' + '\\' + 'Work' + '\\' + 'proj', PATHS),
+    hit('d', '磁碟機（斜線）', '+' + 'Y' + ':' + '/' + 'Work' + '/' + 'proj', PATHS),
+    hit('d', '/home/ 家目錄', '+' + '/home/' + 'someone' + '/x', PATHS),
+    hit('d', '/Users/ 家目錄', '+' + '/Users/' + 'someone' + '/x', PATHS),
+  ];
+}
+
 /**
  * 取這次每個 commit 的訊息、作者、提交者（每一行前面加「+」，跟新增行走同一套搜尋式）。
  * git：執行 git 的函式（參數陣列 → 輸出字串，失敗就丟例外）——當參數傳進來，測試才能只讓其中一個子指令失敗（F10 第 1b 點）。
@@ -109,38 +145,24 @@ if (!USER) {
   console.error('拿不到本機使用者名稱（環境變數 USERNAME／USER），(c) 類無法自查 —— 擋下');
   process.exit(1);
 }
+const USERNAME = userPattern(USER);
 
-const TOKEN = /gh[pousr]_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}/;
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
-const EMAIL_OK = /(users\.)?noreply@(anthropic\.com|github\.com)|@users\.noreply\.github\.com/;
-const USERNAME = new RegExp(USER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-// 磁碟機代號前面不能接英文字母：不然 `file:///` 與正規式 `find:/gm` 裡「字母＋冒號＋斜線」那一段都會被當成路徑
-const PATHS = /(?<![A-Za-z])[A-Za-z]:[\\/]|\/(home|Users)\/[A-Za-z0-9._\u4e00-\u9fff-]+/;
-const PATHS_MISS = ['+file:///x.mjs', '+match(/^\\s+find:/gm)', '+https://example.com/a'];
-
-const hitsIn = (lines, re, skip) => lines.filter((l) => re.test(l) && !(skip && skip.test(l)));
-
-// 合成對照樣本：拆開拼，這個檔自己才不會被自己抓到
-const CTRL = {
-  a: ['+' + 'gh' + 'p_' + 'A1b2C3d4E5f6G7h8I9j0KLMN'],
-  b: ['+' + 'someone' + '@' + 'example' + '.com'],
-  c: ['+' + 'C' + ':/Users/' + USER + '/somewhere'],
-  d: ['+' + 'X' + ':' + '\\' + 'Work' + '\\' + 'proj', '+' + '/home/' + 'someone' + '/x'],
-};
-
+const ctrlByCat = Object.groupBy(controlResults(USER), (r) => r.cat);
 const rows = [
-  ['(a) 金鑰／token', hitsIn(CTRL.a, TOKEN).length, hitsIn(added, TOKEN)],
-  ['(b) email（noreply 不算）', hitsIn(CTRL.b, EMAIL, EMAIL_OK).length, hitsIn(added, EMAIL, EMAIL_OK)],
-  ['(c) 本機使用者名稱', hitsIn(CTRL.c, USERNAME).length, hitsIn(added, USERNAME)],
-  ['(d) 磁碟機／家目錄路徑', hitsIn(CTRL.d, PATHS).length, hitsIn(added, PATHS)],
+  ['(a) 金鑰／token', ctrlByCat.a, hitsIn(added, TOKEN)],
+  ['(b) email（noreply 不算）', ctrlByCat.b, hitsIn(added, EMAIL, EMAIL_OK)],
+  ['(c) 本機使用者名稱', ctrlByCat.c, hitsIn(added, USERNAME)],
+  ['(d) 磁碟機／家目錄路徑', ctrlByCat.d, hitsIn(added, PATHS)],
 ];
 
 let bad = 0;
 console.log(`四類自查：${rev}，新增行 ${addedLines.length} 行＋commit 訊息與作者 ${metaLines.length} 行`);
 for (const [name, ctrl, hits] of rows) {
-  const ctrlOk = ctrl > 0;
+  // 每一個分支的樣本都要判對（2026-09-25，補充說明（十一）第 3 點：以前只要「對照組命中 > 0」，四種金鑰只測到一種）
+  const ctrlHit = ctrl.filter((c) => c.ok).length;
+  const ctrlOk = ctrl.length > 0 && ctrlHit === ctrl.length;
   if (!ctrlOk || hits.length > 0) bad += 1;
-  console.log(`${name}：對照組命中 ${ctrl}${ctrlOk ? ' ✔' : ' ✘（搜尋式壞了）'}｜目標命中 ${hits.length}${hits.length === 0 ? ' ✔' : ' ✘'}`);
+  console.log(`${name}：對照組命中 ${ctrlHit}/${ctrl.length}${ctrlOk ? ' ✔' : ` ✘（搜尋式壞了：${ctrl.filter((c) => !c.ok).map((c) => c.label).join('、')}）`}｜目標命中 ${hits.length}${hits.length === 0 ? ' ✔' : ' ✘'}`);
   // (c) 類命中時不印內容（會把使用者名稱印出來）
   if (name.startsWith('(c)')) continue;
   for (const h of hits.slice(0, 5)) console.log(`    [${SOURCE.get(h) ?? '新增行'}] ${h.slice(0, 120)}`);

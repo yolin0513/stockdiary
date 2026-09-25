@@ -128,8 +128,8 @@ register_now() {
 make_broken() {   # make_broken pre｜pii
   node -e "
 const fs=require('fs');const w=process.argv[1];
-if(w==='pre'){const a=fs.readFileSync('scripts/precheck.mjs','utf8');const x=\"a: ['+' + 'gh' + 'p_' + 'A1b2C3d4E5f6G7h8I9j0KLMN'],\";
-if(a.split(x).length!==2)process.exit(9);fs.writeFileSync('scripts/precheck.mjs',a.split(x).join(\"a: ['+not-a-token'],\"));}
+if(w==='pre'){const a=fs.readFileSync('scripts/precheck.mjs','utf8');const x='export const TOKEN = /gh[pousr]_';
+if(a.split(x).length!==2)process.exit(9);fs.writeFileSync('scripts/precheck.mjs',a.split(x).join('export const TOKEN = /zz[pousr]_'));}
 else{const b=fs.readFileSync('scripts/piiscan.mjs','utf8');const y='const ctrlLit = literalHits(';
 if(b.split(y).length!==2)process.exit(9);fs.writeFileSync('scripts/piiscan.mjs',b.split(y).join('const ctrlLit = 0 * literalHits('));}" "$1" \
     || die "造不出壞掉的檢查器（錨點對不上）"
@@ -138,7 +138,7 @@ if(b.split(y).length!==2)process.exit(9);fs.writeFileSync('scripts/piiscan.mjs',
 sc_2a() {
   clean_commit "對照組壞掉"; make_broken pre
   [ -n "$(git status --porcelain -- scripts/precheck.mjs)" ] || die "情境 2a：自查沒改到，前提沒造成"
-  run "2a. 四類自查的對照組壞掉" 1 沒動 "head|(a) 金鑰／token：對照組命中 0 ✘"
+  run "2a. 四類自查的對照組壞掉" 1 沒動 "head|(a) 金鑰／token：對照組命中 3/4 ✘（搜尋式壞了：gh 權杖）"
 }
 sc_2b() {
   clean_commit "對照組壞掉"; make_broken pii

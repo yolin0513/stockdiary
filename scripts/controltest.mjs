@@ -142,6 +142,25 @@ section('公開前自查取 commit 訊息與作者欄（scripts/precheck.mjs 的
     commitMeta((args) => { seen.push(args.join(' ')); return args[0] === 'rev-list' ? '1' : '作者：甲 <a@x>\n提交者：甲 <a@x>\n'; }, 'HEAD');
     ok(seen.length === 2 && seen.every((s) => s.includes('-1 HEAD')), '自查訊息與作者：單一 commit 兩個子指令都只看那一個（-1）', JSON.stringify(seen));
   }
+  // 四類自查的每一個分支各有自己的合成樣本（2026-09-25，補充說明（十一）第 3 點：以前 (a) 四種金鑰只測到 gh 一種、
+  // (b) 沒有 noreply 的反例、(d) 的 /Users/ 沒有自己的樣本——拿掉那幾個分支，對照組照樣全過）
+  const { controlResults } = await import('./precheck.mjs');
+  const cr = controlResults('someone-test');
+  eq(cr.map((c) => `${c.cat} ${c.label}`), [
+    'a gh 權杖', 'a sk-ant 金鑰', 'a AIza 金鑰', 'a xox 權杖',
+    'b 一般信箱', 'b noreply@github.com 不算', 'b noreply@anthropic.com 不算', 'b users.noreply.github.com 不算',
+    'c 本機使用者名稱',
+    'd 磁碟機（反斜線）', 'd 磁碟機（斜線）', 'd /home/ 家目錄', 'd /Users/ 家目錄',
+  ], '（前提）自查對照：每個分支一個樣本，登記的 13 個都在（母體用登記制）');
+  for (const c of cr) ok(c.ok, `自查對照（${c.cat}）${c.label}：判對`);
+  // 第五類的語境樣式：每個分支一個樣本（以前一個樣本只打到 9 個分支裡的 3 個）
+  const { contextControls } = await import('./piiscan.mjs');
+  const pc = contextControls();
+  eq(pc.map((c) => c.label), [
+    '指認詞「使用者的」', '指認詞「他的」', '指認詞「你的」', '指認詞「Yolin 的」', '指認詞「我的定期定額」',
+    '代號 00 開頭', '代號四位數', '金額（沒有千分位）', '沒有指認詞不算', '有指認詞、沒有代號也沒有金額不算',
+  ], '（前提）第五類對照：每個分支一個樣本，登記的 10 個都在');
+  for (const c of pc) ok(c.ok, `第五類對照：${c.label}：判對`);
   // 真的 git（F10 第 1b 點第 1 種）：正常的 HEAD 放行；GIT_DIR 指向不存在的目錄，真的 git 失敗，要擋
   const realGit = (env) => (args) => execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   eq(commitMeta(realGit({}), 'HEAD').problem, null, '自查訊息與作者（必過）：真的 git、真的 HEAD → 放行');
