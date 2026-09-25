@@ -356,7 +356,7 @@ F10 三支入口（`assertaudit`、`sweep`、`livecheck`）的停都是明寫的
 
 ## 收尾（2026-09-25）
 
-**最後一次 `gateselftest`**（跑在併 commit 之前的 `640ec41`；它跟推上去的 `34921b5` 只差證據檔、STATUS、`dividendtest` 與 `mutationtest`，閘門、驗法、自查、第五類、`buildverify`、`buildtest`、`gateselftest` 八支逐一比過雜湊都相同；對照樣本打到每一個分支、驗法 2a 改寫之後）：99 項全過，約 40 分鐘。
+**最後一次 `gateselftest`**（跑在併 commit 之前的 `640ec41`；它跟推上去的 `188b4fa` 只差證據檔、STATUS、`dividendtest` 與 `mutationtest`，閘門、驗法、自查、第五類、`buildverify`、`buildtest`、`gateselftest` 八支逐一比過雜湊都相同；對照樣本打到每一個分支、驗法 2a 改寫之後）：99 項全過，約 40 分鐘。
 - 23 種情境，正反兩種順序各跑一次，逐一相同。
 - 16 個變體（原樣、倒序、G1–G14）的「不符的情境」都剛好是預期的那幾種。
 - 閘門驗法 23 種全部符合；build 驗法登記 54 格全擋（同上，跑在 `640ec41`）。
