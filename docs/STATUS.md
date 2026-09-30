@@ -1229,6 +1229,12 @@ Yolin 原本把兩邊的市值講成「損益」—— **那兩個數字是市�
 
 ## 環境與工具陷阱（2026-09-16～18 踩到的）
 
+- **GitHub Pages 部署可能失敗或卡住**（2026-09-30，v0.7.25 踩到）：
+  - 推送成功不等於上線。那次第一輪在 GitHub 那端回 HTTP 500；重跑之後又在佇列卡了 49 分鐘，GitHub 狀態頁照樣寫一切正常。
+  - 處理：`gh run list -L 2` 看部署狀態；卡住就 `gh api -X POST repos/yolin0513/stockdiary/pages/builds` 要求重新建置。
+  - **確認線上是新版之後才跑 `sweep`**：等換版的迴圈逾時還照跑，量到的是舊版，紅了也不算數。
+- **Git Bash 會把指令參數裡的 `/` 改寫成路徑**：`gh ... --jq '.status+"/"+.conclusion'` 裡的 `"/"` 被換成 Git 自己的安裝目錄，比對就永遠不成立。要合字串就分開取兩個欄位，不要在參數裡放單獨的 `/`。
+
 - **Windows 上 node 的 `/tmp` 是「目前磁碟機根目錄底下的 `tmp`」**，不是 Git Bash 的 `/tmp`。bash 寫到 `/tmp/x`、node 讀 `/tmp/x` 會讀不到。暫存檔一律放 Session 的 scratchpad，用絕對路徑。
 - **`SP=... node a.js && node b.js`** 的環境變數只給第一個指令；要跨 `&&` 用 `export SP=...`。
 - **Bash 工具擋掉「`sleep N` 接著別的指令」**。等線上換版用 `until curl ... | grep -q vX; do sleep 5; done`。
