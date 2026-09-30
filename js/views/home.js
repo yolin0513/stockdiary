@@ -160,7 +160,10 @@ function dayPLCard(settled, settleDate, upd, runway) {
   }) : null;
 
   return h('section', { class: 'card' },
-    h('h2', { class: 'card-title' }, '當日損益'),
+    // 右上角的日曆圖示 → 每日損益日曆（Yolin 2026-09-30 要的；讀同一張結算紀錄，不另外算）
+    h('div', { class: 'card-title-row' },
+      h('h2', { class: 'card-title' }, '當日損益'),
+      h('a', { class: 'plcal-icon', href: '#/pl-calendar', 'aria-label': '看每日損益日曆', dataset: { action: 'openPlCalendar' } }, '🗓')),
     h('p', { class: 'big-number' },
       settled?.dayPLMicro != null ? moneyNode(settled.dayPLMicro) : num(NO_VALUE, 'v-none')),
     settleDate

@@ -22,6 +22,7 @@ route('/dividends', async () => (await import(`./views/dividends.js${V}`)).defau
 route('/news', async () => (await import(`./views/news.js${V}`)).default());
 route('/calc', async () => (await import(`./views/calc.js${V}`)).default());
 route('/settings', async () => (await import(`./views/settings.js${V}`)).default());
+route('/pl-calendar', async ({ query }) => (await import(`./views/plcal.js${V}`)).default(query.m));
 /**
  * 走到一條不認得的路。
  *

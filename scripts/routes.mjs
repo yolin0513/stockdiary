@@ -15,6 +15,7 @@ export const ROUTES = [
   ['/news', '新聞'],
   ['/calc', '定期定額試算'],
   ['/settings', '設定'],
+  ['/pl-calendar', '每日損益'],
 ];
 
 /** 註冊了、但不逐頁開的路由：路由 → 理由。 */

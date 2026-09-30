@@ -745,6 +745,7 @@ try {
     '/news': '新聞',
     '/calc': '定期定額試算',
     '/settings': '設定',
+    '/pl-calendar': '每日損益',
   };
   everyOf(routeDefs, (r) => EXPECT_TITLE[r.pattern] != null,
     '每條路由都列了它應該出現的標題（新增路由時不准漏掉）');

@@ -734,6 +734,8 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
 .collapse-head:focus-visible,
 .tab:focus-visible,
 .icon-btn:focus-visible,
+.plcal-icon:focus-visible,
+.plcal-cell:focus-visible,
 .field:focus-visible,
 .row[href]:focus-visible,
 .news-row:focus-visible,
@@ -748,3 +750,28 @@ table.yearly th { color: var(--fg-muted); font-weight: 600; }
 /* A8：把僅有的幾處 inline style 收成 class，CSP 才拿得掉 unsafe-inline */
 .pre-line { white-space: pre-line; }
 .mt-12 { margin-top: 12px; }
+
+/* ---- 每日損益日曆（views/plcal.js）：手機一月一頁、7 欄、每格至少 44px 高 ---- */
+.plcal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.plcal-title { font-size: 1.05em; color: var(--fg); text-align: center; flex: 1 1 auto; }
+.plcal-nav { min-width: 44px; min-height: 44px; font-size: 1.4em; line-height: 1; padding: 0 12px; }
+.plcal-nav[aria-disabled="true"] { opacity: 0.3; pointer-events: none; }
+.plcal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.plcal-wd { text-align: center; font-size: 0.75em; color: var(--fg-muted); padding: 2px 0; }
+.plcal-blank { min-height: 48px; }
+.plcal-cell {
+  min-height: 48px; min-width: 0; padding: 3px 1px; border-radius: 8px;
+  background: var(--bg-card-2); border: 1px solid transparent; color: var(--fg);
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px;
+  font: inherit; cursor: pointer; overflow: hidden;
+}
+div.plcal-cell { cursor: default; background: transparent; }
+.plcal-day { font-size: 0.8em; color: var(--fg-muted); }
+.plcal-v { font-size: 0.68em; font-variant-numeric: tabular-nums; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.plcal-closed, .plcal-uncovered { background: transparent; }
+.plcal-today { border-color: var(--accent-strong); }
+.plcal-today .plcal-day { color: var(--accent-strong); font-weight: 700; }
+.plcal-detail { border-top: 1px solid var(--line); padding-top: 8px; min-height: 3em; }
+.plcal-detail-date { margin: 0; font-weight: 600; }
+.plcal-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; margin: -12px -10px -12px 0; color: var(--accent); text-decoration: none; font-size: 1.2em; }
+.card-title-row { display: flex; align-items: center; justify-content: space-between; }

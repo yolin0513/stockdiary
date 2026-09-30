@@ -300,6 +300,11 @@ export async function latestSettleRecord() {
   return loadSettle(date);
 }
 
+/** 全部的結算紀錄（每日損益日曆用；只讀，原樣回傳，dayPL 仍是字串）。 */
+export async function allSettleRows() {
+  return db.getAll('settle');
+}
+
 export async function loadSettle(date) {
   const row = await db.get('settle', date);
   if (!row) return null;

@@ -577,7 +577,7 @@ try {
   // 確認扣款、確認股利、取消確認、修改、停用。實測量出來才發現。
   //
   // 種一份像真的資料再掃：沒有資料的話很多按鈕根本不會出現，掃了等於沒掃。
-  const ROUTES_44 = ['/', '/holdings', '/plans', '/dividends', '/calc', '/settings', '/news'];
+  const ROUTES_44 = ['/', '/holdings', '/plans', '/dividends', '/calc', '/settings', '/news', '/pl-calendar'];
   const tooSmall = [];
   const counted = [];
   for (const scale of ['md', 'xl']) {

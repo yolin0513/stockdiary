@@ -38,7 +38,7 @@ function assertColumns(all, where) {
 const SCALES = ['sm', 'md', 'lg', 'xl'];
 // 320：iPhone SE 這種最窄的；390：主流；430：Pro Max
 const WIDTHS = [320, 390, 430];
-const ROUTES = ['/', '/holdings', '/plans', '/dividends', '/news', '/calc', '/settings'];
+const ROUTES = ['/', '/holdings', '/plans', '/dividends', '/news', '/calc', '/settings', '/pl-calendar'];
 
 /**
  * 新聞頁有兩種會改變版面的狀態，不掃就等於沒掃到：

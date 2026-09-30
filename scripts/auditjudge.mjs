@@ -41,6 +41,8 @@ export const AUDIT_TESTS = [
   'buildtest',
   'buildverifytest',
   'entrygatetest',
+  'plcaltest',
+  'plcalviewtest',
   // 2026-09-24：跳脫掃描（補充說明（四）第 4 點）
   'escscan',
 ];
