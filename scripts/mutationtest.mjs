@@ -4035,6 +4035,36 @@ const MUTATIONS = [
     alsoRed: ['突變都還有效・find 剛好一次：'],
     alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
   },
+  // ──── 長跑的包裝（2026-10-03，TripQuest 同日的兩件）：跑完只認結算行、取樣一次就寫一行；認子孫防 PID 重用 ────
+  {
+    name: 'LR：看到 exit= 就算跑完',
+    why: '外殼被停掉的那一刻還來得及寫下 exit=127，被中斷的那一輪就被記成完成（TripQuest 的第一版）。',
+    file: 'scripts/longrun.mjs',
+    find: "  return hasSummary(logText, test) ? 'done' : 'not-done';",
+    replace: "  return /exit=/.test(logText) ? 'done' : 'not-done';",
+    test: 'controltest',
+    expect: '長跑判定・只有 exit= 沒有結算行：',
+    alsoRed: ['長跑・沒有結算行：'],
+    alsoRedWhy: '包裝結束時自己就寫 exit= 那一行，「沒有結算行也以 0 結束」那一格讀 log 時也會被判成跑完。',
+  },
+  {
+    name: 'LR：資源取樣跑完才寫',
+    why: '取樣先留在記憶體裡、正常結束時才寫檔：跟外殼一起被停掉時，那一段的程序數與記憶體什麼都沒留下（TripQuest 的第一版）。',
+    file: 'scripts/longrun.mjs',
+    find: "  let peak = null;\n  const sample = () => {\n    try {\n      const s = sampleLine(windowsProcessTable(), child.pid, spawnedAt, windowsFreeMemoryMB());\n      put(RES, s.line + '\\n');",
+    replace: "  let peak = null;\n  const later = [];\n  process.on('exit', () => put(RES, later.join('\\n') + '\\n'));\n  const sample = () => {\n    try {\n      const s = sampleLine(windowsProcessTable(), child.pid, spawnedAt, windowsFreeMemoryMB());\n      later.push(s.line);",
+    test: 'controltest',
+    expect: '長跑・中途被殺：',
+  },
+  {
+    name: 'LR：資源紀錄認子孫不看建立時間',
+    why: 'PID 被重用時，記著同一個父 PID 的舊程序（例：OneDrive）被數進這棵樹，程序數與記憶體被灌水（JLPT 2026-10-02）。',
+    file: 'scripts/proctree.mjs',
+    find: '      if (p.ppid !== parentPid || seen.has(p.pid) || !(p.created >= parentCreated)) continue;',
+    replace: '      if (p.ppid !== parentPid || seen.has(p.pid)) continue;',
+    test: 'controltest',
+    expect: '長跑資源紀錄・取樣：',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

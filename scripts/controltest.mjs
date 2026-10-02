@@ -402,6 +402,63 @@ section('殺程序樹（scripts/proctree.mjs）：只殺我們開的、比父程
 }
 
 // ---------------------------------------------------------------------------
+section('長跑的包裝（scripts/longrun.mjs）：跑完只認結算行、資源紀錄取樣一次就寫一行');
+{
+  // 2026-10-03（TripQuest 同日）：「看到 exit= 就算跑完」把被停掉的那一輪算成完成；資源紀錄跑完才寫，被停掉就什麼都沒留下。
+  const { sampleLine, judgeRun } = await import('./longrun.mjs');
+  const T0 = Date.parse('2026-10-03T10:00:00Z');
+  const P = (pid, ppid, name, dt, mem = 50 * 1024 * 1024) => ({ pid, ppid, name, created: T0 + dt, mem });
+  const s = sampleLine([P(10, 1, 'node.exe', 0), P(11, 10, 'bash.exe', 1000), P(12, 11, 'node.exe', 2000), P(13, 10, 'OneDrive.exe', -3600 * 1000)], 10, T0, 4096);
+  ok(s.workers === 2 && s.all === 3 && /\t工作程序 2\t全部 3\t記憶體 150MB\t系統可用 4096MB$/.test(s.line),
+    '長跑資源紀錄・取樣：工作程序只數 node（bash 不算）、PID 重用的舊程序不數進這棵樹', JSON.stringify(s));
+  eq(judgeRun('…\n結束，exit=127\n', 'x'), 'not-done', '長跑判定・只有 exit= 沒有結算行：判成沒跑完');
+  eq(judgeRun('…\nx：12 項通過\n結束，exit=0\n', 'x'), 'done', '長跑判定（必過）・有自己的結算行：判成跑完');
+
+  if (process.platform === 'win32') {
+    const { spawn, spawnSync } = await import('node:child_process');
+    const { killTargets } = await import('./proctree.mjs');
+    const W = path.join(ROOT, '.logs', `controltest-longrun-${process.pid}`);
+    fs.rmSync(W, { recursive: true, force: true });
+    fs.mkdirSync(W, { recursive: true });
+    const fake = path.join(W, 'fake.mjs');
+    fs.writeFileSync(fake, [
+      "import { spawn } from 'node:child_process';",
+      "const mode = process.argv[2];",
+      "const kid = spawn(process.execPath, ['-e', 'setTimeout(() => {}, ' + (mode === 'long' ? 8000 : 2500) + ')'], { stdio: 'ignore' });",
+      "kid.on('close', () => { if (mode === 'done') console.log('\\nfakerun：1 項通過'); process.exit(0); });",
+      '',
+    ].join('\n'));
+    const logsOf = (tag) => fs.readdirSync(path.join(ROOT, '.logs')).filter((f) => f.startsWith(`ctl-longrun-${process.pid}-${tag}-`)).map((f) => path.join(ROOT, '.logs', f));
+    const read = (tag, ext) => { const f = logsOf(tag).find((x) => x.endsWith(ext)); return f ? fs.readFileSync(f, 'utf8') : ''; };
+    const run = (tag, mode) => spawnSync(process.execPath, ['scripts/longrun.mjs', `ctl-longrun-${process.pid}-${tag}`, 'fakerun', '--every', '500', '--', process.execPath, fake, mode], { cwd: ROOT, encoding: 'utf8', timeout: 30000 });
+    try {
+      const a = run('a', 'done');
+      const resA = read('a', '.res.txt');
+      ok(a.status === 0 && read('a', '.log').includes('判定：跑完（有 fakerun 自己的結算行）') && /\t工作程序 [1-9]/.test(resA),
+        '長跑・跑完：有結算行 → 判成跑完；跑著的時候資源紀錄記到的工作程序不是 0', `回傳 ${a.status}；${resA.split('\n').slice(0, 3).join(' ⏎ ')}`);
+      const b = run('b', 'nodone');
+      ok(b.status === 3 && read('b', '.log').includes('判定：沒跑完（沒有 fakerun 自己的結算行）'),
+        '長跑・沒有結算行：以 0 結束也判成沒跑完、回 3', `回傳 ${b.status}`);
+      // 外殼被停掉：開跑 3 秒後**先殺包裝本身**（用 handle，模擬外殼被停掉；子孫還在跑），已經寫下的取樣要在、不能有判定行、
+      // 讀 log 判成沒跑完。讀完才把留下來的子孫清掉。（第一版用 killTargets 由下往上殺：子孫先死，包裝來得及寫判定行——情境沒成立）
+      const spawnedAt = Date.now();
+      const c = spawn(process.execPath, ['scripts/longrun.mjs', `ctl-longrun-${process.pid}-c`, 'fakerun', '--every', '500', '--', process.execPath, fake, 'long'], { cwd: ROOT, stdio: 'ignore' });
+      await new Promise((r) => setTimeout(r, 3000));
+      c.kill();
+      await new Promise((r) => setTimeout(r, 500));
+      const resC = read('c', '.res.txt');
+      const logC = read('c', '.log');
+      killTargets(c.pid, spawnedAt, ['node.exe']);   // 清掉包裝死後留下的假長跑與它的子程序
+      ok(resC.split('\n').filter((l) => /\t工作程序 \d/.test(l)).length >= 1 && !logC.includes('判定：') && judgeRun(logC, 'fakerun') === 'not-done',
+        '長跑・中途被殺：已經取的樣本都寫進檔了、沒有判定行、讀 log 判成沒跑完', `取樣 ${resC.split('\n').filter((l) => /\t工作程序/.test(l)).length} 行；log 結尾：${logC.slice(-120).split('\n').join(' ⏎ ')}`);
+    } finally {
+      for (const t of ['a', 'b', 'c']) for (const f of logsOf(t)) fs.rmSync(f, { force: true });
+      fs.rmSync(W, { recursive: true, force: true });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 section('突變挑選器（scripts/affected.mjs）：判斷不出範圍就全跑，不是「沒有關係」');
 {
   // 2026-10-03：以前讀不到的檔直接跳過，範圍默默變小（實測：一支中間的模組讀不到，改 js/avgcost.js 從 168 條變成 11 條，
