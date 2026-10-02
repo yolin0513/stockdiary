@@ -9,9 +9,15 @@
 // 回傳值：全部通過 0；任何一類有命中、或任何一類的對照組沒命中 → 1。
 //
 // 2026-09-23 從 Session 的暫存目錄搬進來：閘門跟著 Session 生死的話，每換一次 Session 就有一段沒有閘門的空窗。
+//
+// **殘留突變（2026-10-03）**：突變測試直接改工作區的原始碼；跑到一半被殺掉，被改壞的檔會一直留在工作區，
+// 直到下一次啟動 mutationtest 才還原——這段期間 commit 的話，壞檔就被收進去、推上線，而四類自查看不出來
+// （改壞的程式碼不含金鑰也不含路徑）。所以還原紀錄（scripts/.mutation-pending.json）在就擋，紀錄壞了也擋。
+//   node scripts/precheck.mjs --pending     只查這一件（閘門最前面用它，回 0＝沒有紀錄）
+//   不帶 --pending 時，四類自查之前也先查這一件（單獨跑自查也擋，不是只擋在推送那一層）。
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -82,9 +88,59 @@ export function commitMeta(git, rev) {
   return { lines, problem: null };
 }
 
+// ---- 殘留突變的還原紀錄（mutationtest 寫、這裡與 mutationtest 讀）----
+export const PENDING_REL = 'scripts/.mutation-pending.json';
+
+/**
+ * 讀突變執行器留下的還原紀錄。回傳三種之一：
+ *   { state: 'none' }                                   沒有紀錄
+ *   { state: 'pending', file, content, at }             有紀錄：file 被改壞、content 是原檔
+ *   { state: 'broken', why }                            有紀錄卻讀不了、解析不了、缺欄位
+ * **壞掉不等於沒有**（共用慣例 §5.13）：2026-10-03 以前 mutationtest 解析失敗就刪掉紀錄、當成乾淨，
+ * 被改壞的那一支檔就再也沒人知道。exists／read 當參數傳入，controltest 用假的檔案系統驗每一種。
+ */
+export function pendingRecord(root, { exists = existsSync, read = (p) => readFileSync(p, 'utf8') } = {}) {
+  const p = path.join(root, PENDING_REL);
+  if (!exists(p)) return { state: 'none' };
+  let rec;
+  try {
+    rec = JSON.parse(read(p));
+  } catch (e) {
+    return { state: 'broken', why: `讀不了或解析不了（${String(e?.message ?? e).split('\n')[0].slice(0, 80)}）` };
+  }
+  if (!rec || typeof rec.file !== 'string' || rec.file === '' || typeof rec.content !== 'string') {
+    return { state: 'broken', why: '缺 file 或 content 欄位' };
+  }
+  return { state: 'pending', file: rec.file, content: rec.content, at: typeof rec.at === 'string' ? rec.at : '（沒有時間）' };
+}
+
+/** 擋下時印的話（閘門的驗法用開頭比對「是誰擋的」，所以開頭固定）。 */
+export function pendingMessage(r) {
+  if (r.state === 'pending') {
+    return `【殘留突變擋下】突變測試上一次跑到一半被殺掉，${r.file} 還留著一條突變（紀錄寫於 ${r.at}）。`
+      + `先跑 node scripts/mutationtest.mjs --restore 把它還原，確認 git diff 裡沒有它，再 commit／推送`;
+  }
+  return `【殘留突變擋下】還原紀錄壞了：${PENDING_REL} ${r.why}——不知道是哪一支檔被改壞。`
+    + `請用 git diff 逐檔確認工作區沒有殘留突變，再手動刪掉這個紀錄檔`;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
 
 function main() {
+// 閘門最前面用的模式：只查還原紀錄
+if (process.argv[2] === '--pending') {
+  const only = pendingRecord(ROOT);
+  console.log(only.state === 'none' ? `殘留突變：沒有還原紀錄（${PENDING_REL}）✔` : pendingMessage(only));
+  process.exit(only.state === 'none' ? 0 : 1);
+}
+// 單獨跑自查也先查（處置跟上面分開寫：只拿掉其中一個，只紅它自己那一種情境——gatetest 19／19c）
+const pend = pendingRecord(ROOT);
+if (pend.state !== 'none') {
+  console.log(pendingMessage(pend));
+  process.exit(1);
+}
+console.log(`殘留突變：沒有還原紀錄（${PENDING_REL}）✔`);
+
 const rev = process.argv[2] || 'HEAD';
 
 // 單一 commit（`HEAD`）或一段範圍（`<遠端>..HEAD`，閘門給的），都用 git log **逐個 commit** 取新增行 ——

@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done , note } from './tap.mjs';
 import { selectAffected, moduleClosure } from './affected.mjs';
 import { judge, countOf, applyMutation } from './mutjudge.mjs';
+import { makePending } from './mutpending.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -3735,6 +3736,77 @@ const MUTATIONS = [
     test: 'buildverifytest',
     expect: 'F9 比對・範圍算不出：',
   },
+  // ──── 殘留突變（2026-10-03）：閘門與自查擋還原紀錄、紀錄壞了不當成乾淨、還原先寫回再刪紀錄 ────
+  // 閘門與自查的處置由 gateselftest 的 G15–G17 守（要跑整份驗法）；這裡守判斷（pendingRecord）與 mutationtest 自己的還原。
+  {
+    name: 'PD：還原紀錄解析不了就當成沒有紀錄',
+    why: '2026-10-03 以前 mutationtest 就是這樣：紀錄壞了被刪掉、當成乾淨，被改壞的那一支再也沒人知道，閘門與自查也擋不到。',
+    file: 'scripts/precheck.mjs',
+    find: "    return { state: 'broken', why: `讀不了或解析不了",
+    replace: "    return { state: 'none', why: `讀不了或解析不了",
+    test: 'controltest',
+    expect: '殘留突變判斷・紀錄解析不了：',
+    alsoRed: ['殘留突變判斷・紀錄讀不了：', '殘留突變還原・三'],
+    alsoRedWhy: '解析失敗與讀取失敗走同一個 catch；還原入口（複本裡的 mutationtest）讀的也是這一個函式，紀錄壞了就變成「沒有紀錄」。',
+  },
+  {
+    name: 'PD：還原紀錄缺欄位也當成有效',
+    why: '紀錄裡沒有 file 或 content，就不知道要還原哪一支、還原成什麼；當成有效的話，還原時會崩或寫錯檔。',
+    file: 'scripts/precheck.mjs',
+    find: "  if (!rec || typeof rec.file !== 'string' || rec.file === '' || typeof rec.content !== 'string') {",
+    replace: '  if (!rec) {',
+    test: 'controltest',
+    expect: '殘留突變判斷・紀錄缺欄位：',
+  },
+  {
+    name: 'PD：不看紀錄檔在不在，直接讀',
+    why: '沒有紀錄的正常情況會讀檔失敗、被判成「紀錄壞了」——每一次推送都被擋（永遠擋的閘門等於沒有閘門）。',
+    file: 'scripts/precheck.mjs',
+    find: "  if (!exists(p)) return { state: 'none' };",
+    replace: "  if (false) return { state: 'none' };",
+    test: 'controltest',
+    expect: '殘留突變判斷・沒有紀錄：',
+    alsoRed: ['殘留突變還原・二'],
+    alsoRedWhy: '還原入口讀的也是這一個函式：沒有紀錄時同樣被判成壞掉而停下。',
+  },
+  {
+    name: 'PD：mutationtest 遇到壞掉的紀錄不停下',
+    why: '紀錄壞了還往下走，會拿 undefined 當檔名崩掉，而且不講明是紀錄壞了。',
+    file: 'scripts/mutpending.mjs',
+    find: "    if (rec.state === 'broken') {",
+    replace: '    if (false) {',
+    test: 'controltest',
+    expect: '殘留突變還原・三',
+  },
+  {
+    name: 'PD：還原時先刪紀錄再寫回',
+    why: '2026-10-03 以前的順序：寫回失敗（檔案唯讀、被鎖住）時紀錄已經沒了，壞檔留在工作區，閘門與自查擋不到。',
+    file: 'scripts/mutpending.mjs',
+    find: '    // 先寫回、讀回確認、最後才刪紀錄（2026-10-03 以前先刪紀錄：寫回失敗的話，紀錄就沒了）',
+    replace: '    clearPending(); // 突變：先刪紀錄再寫回',
+    test: 'controltest',
+    expect: '殘留突變還原・四',
+  },
+  {
+    name: 'PD：結束時不管紀錄是誰寫的都刪',
+    why: '紀錄壞了或寫回失敗而停下時，exit 時的還原把別人留下的紀錄刪掉（controltest 2026-10-03 實際抓到這個錯）。',
+    file: 'scripts/mutpending.mjs',
+    find: '    if (backups.size === 0) return;',
+    replace: '    if (false) return;',
+    test: 'controltest',
+    expect: '殘留突變還原・三',
+    alsoRed: ['殘留突變還原・四'],
+    alsoRedWhy: '三（紀錄壞了）與四（寫回失敗）都是停下之後由 exit 時的這一段刪掉紀錄，同一個原因。',
+  },
+  {
+    name: 'PD：--restore 沒有真的寫回',
+    why: '還原這條路以前從沒被觸發過；不寫回的話，讀回的內容跟原檔不同。',
+    file: 'scripts/mutpending.mjs',
+    find: "    fs.writeFileSync(abs, rec.content, 'utf8');\n    if (fs.readFileSync(abs, 'utf8') !== rec.content) {",
+    replace: "    if (fs.readFileSync(abs, 'utf8') !== rec.content) {",
+    test: 'controltest',
+    expect: '殘留突變還原・一',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
@@ -3754,48 +3826,9 @@ function runTest(name) {
   }
 }
 
-// 被改壞的檔案一定要還原，就算中途被 Ctrl-C 或丟例外。
-const backups = new Map();
-
-/**
- * 還原記錄**寫在磁碟上**，不是只留在記憶體裡。
- *
- * `process.on('exit')` 遇到硬殺（工作管理員、CI 逾時、Ctrl-Break）不會跑。
- * 實際發生過：中途 kill 掉之後，`js/update.js` 留著一條突變在工作目錄裡 ——
- * 程式看起來很正常，只是某幾條測試紅；沒注意就 commit 的話，
- * 等於把一條**故意寫壞的程式碼**推上線。
- *
- * 有這個檔的話，下一次啟動會先把它還原回去，並且大聲講出來。
- */
-const PENDING = path.join(ROOT, 'scripts/.mutation-pending.json');
-
-function writePending(rel, content) {
-  try { fs.writeFileSync(PENDING, JSON.stringify({ file: rel, content, at: new Date().toISOString() }), 'utf8'); } catch { /* 盡力 */ }
-}
-function clearPending() {
-  try { fs.rmSync(PENDING, { force: true }); } catch { /* 盡力 */ }
-}
-
-/** 上一次跑到一半被殺掉的話，把那個檔案還原回去。 */
-function recoverPending() {
-  if (!fs.existsSync(PENDING)) return null;
-  let rec;
-  try { rec = JSON.parse(fs.readFileSync(PENDING, 'utf8')); } catch { clearPending(); return null; }
-  const abs = path.join(ROOT, rec.file);
-  const now = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
-  clearPending();
-  if (now === rec.content) return { file: rec.file, changed: false };
-  fs.writeFileSync(abs, rec.content, 'utf8');
-  return { file: rec.file, changed: true, at: rec.at };
-}
-
-function restoreAll() {
-  for (const [rel, content] of backups) {
-    try { fs.writeFileSync(path.join(ROOT, rel), content, 'utf8'); } catch { /* 盡力 */ }
-  }
-  backups.clear();
-  clearPending();
-}
+// 被改壞的檔案一定要還原，就算中途被 Ctrl-C、丟例外或硬殺。紀錄與還原在 scripts/mutpending.mjs（為什麼搬出去見那支檔開頭）：
+// 每改一支先寫紀錄；被硬殺時下一次啟動（或 --restore）照紀錄寫回；紀錄在的期間推送閘門與自查都擋。
+const { backups, writePending, clearPending, recoverPending, restoreAll } = makePending(ROOT);
 process.on('exit', restoreAll);
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => { restoreAll(); process.exit(130); });
@@ -3806,6 +3839,11 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 // 看起來像測試壞了，其實是 scripts/<代號>.mjs 根本不存在。（踩過一次。）
 section('開跑前：檢查上一次有沒有留下沒還原的突變');
 const recovered = recoverPending();
+// 只還原、不跑突變：node scripts/mutationtest.mjs --restore（推送閘門與自查擋下殘留突變時叫人跑這個；秒級）
+if (process.argv.includes('--restore')) {
+  console.log(recovered ? `--restore：${recovered.file} ${recovered.changed ? '已還原' : '內容本來就對'}，紀錄已刪` : '--restore：沒有還原紀錄，不用做事');
+  process.exit(0);
+}
 if (recovered?.changed) {
   ok(false, `上一次跑到一半被殺掉，${recovered.file} 留著一條突變（已經還原回去了）`,
     `那次是 ${recovered.at} 開始的。**請重跑一次**，而且先確認剛才那段時間沒有把它 commit 出去。`);

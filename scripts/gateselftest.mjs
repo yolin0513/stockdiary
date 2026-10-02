@@ -1,4 +1,4 @@
-// 推送閘門驗法的自我測試（npm run gateselftest；約 8 分鐘，不在 npm test 裡）。
+// 推送閘門驗法的自我測試（npm run gateselftest；2026-09-25 實測約 55 分鐘，屬重負載，不在 npm test 裡）。
 //
 // 為什麼（2026-09-24，統籌者驗收 S7 指出）：S7 的第零關（驗法登記）有兩個洞沒有東西守——
 //   · 沒有任何 S7 的突變：統籌者補跑「登記的雜湊對不上時不擋」，只有情境 10 紅，而且那個 commit 真的推了出去
@@ -7,7 +7,7 @@
 // **逐行解析**每一種情境的結論，比對「不符的那幾種」**剛好等於**預期（多一種、少一種都算不符）；
 // 另外看驗法跑完登記檔在不在、跑到的是不是改壞的那一份（比雜湊）。
 //
-// 解析結論時**斷言剛好是 ALL 那幾種**（現在 23 種；2026-09-24 F9 的六種必備情境是 13–18）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
+// 解析結論時**斷言剛好是 ALL 那幾種**（現在 26 種；2026-09-24 F9 的六種必備情境是 13–18；2026-10-03 殘留突變是 19、19b、19c）：用 grep 抽 ✓／✗ 這種多位元組字元，語系不對時兩邊都抽到 0 種，
 // 「兩邊相同」在母體是空的時候恆真（本 App 與統籌者各踩過一次）。
 //
 // 用法：node scripts/gateselftest.mjs      回傳 0＝每一種變體的結果都跟預期一樣
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, note } from './tap.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '4b', '6', '7', '7b', '7c', '8', '9', '10', '11', '13', '14', '15', '16', '17', '18', '5'];
+const ALL = ['1', '1b', '2a', '2b', '2c', '3', '4', '4b', '6', '7', '7b', '7c', '8', '9', '10', '11', '13', '14', '15', '16', '17', '18', '19', '19b', '19c', '5'];
 const REVERSED = [...ALL].reverse();
 const STALE_REG = 'scripts/gatepush.sh 0000000000000000000000000000000000000000\n';
 
@@ -165,6 +165,19 @@ try {
   variant('突變 G14：自查不取提交者信箱（保留作者）', [
     ['scripts/precheck.mjs', "const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn <%ce>';", "const META_FMT = '%B%n作者：%an <%ae>%n提交者：%cn';"],
   ], { expectBad: ['7c'], expectReg: false });
+  // ---- 殘留突變（2026-10-03）：閘門的處置、自查的處置、「紀錄壞了」的偵測，各一條只紅自己的 ----
+  // G15 閘門不理還原紀錄：往下跑到自查，自查照樣擋（回 1、不是 6）→ 19、19b 不符；19c 不經閘門，不受影響
+  variant('突變 G15：閘門不理殘留突變的還原紀錄', [
+    ['scripts/gatepush.sh', 'if [ "$M" -ne 0 ]; then', 'if false; then'],
+  ], { expectBad: ['19', '19b'], expectReg: false });
+  // G16 自查單獨跑不理還原紀錄：閘門前面那一關照樣擋（19、19b 照樣回 6），只有 19c 不符
+  variant('突變 G16：自查單獨跑不理殘留突變的還原紀錄', [
+    ['scripts/precheck.mjs', "if (pend.state !== 'none') {", 'if (false) {'],
+  ], { expectBad: ['19c'], expectReg: false });
+  // G17 紀錄壞了當成沒有紀錄（2026-10-03 以前 mutationtest 就是這樣）：只有 19b 不符
+  variant('突變 G17：還原紀錄解析不了就當成沒有紀錄', [
+    ['scripts/precheck.mjs', "    return { state: 'broken', why: `讀不了或解析不了", "    return { state: 'none', why: `讀不了或解析不了"],
+  ], { expectBad: ['19b'], expectReg: false });
   variant('突變 G10（第 5 條）：沒動到被守的檔也要有登記檔', [
     ['scripts/buildverify.mjs', '  if (!touched.length) { say(', '  if (!touched.length && fs.existsSync(REG)) { say('],
   ], { expectBad: ['17'], expectReg: false });

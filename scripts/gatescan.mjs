@@ -296,6 +296,7 @@ const ORPHAN_SKIP = {
   'scripts/mutationtest.mjs': '突變清單，不推送也不自查；提到 precheck、gatepush 的是突變要打的原文（S5 那幾條）',
   'scripts/controltest.mjs': '每版跑的判斷邏輯測試；import precheck.mjs、piiscan.mjs 只為了測它們的判斷與每個分支的合成樣本（commitMeta、controlResults、contextControls），不推送',
   'scripts/entrygatetest.mjs': '檔名帶 gate，但它測的是三支入口的「對照組沒過就停」（F10），跟推送無關',
+  'scripts/mutpending.mjs': '突變執行器的還原紀錄；import precheck.mjs 只為了跟閘門、自查共用同一個「讀紀錄」的函式，不推送也不自查',
   // scripts/evidence/：量「修正前」的一次性腳本（2026-09-24 收進 repo，保留供重做），不在任何推送流程裡
   'scripts/evidence/p1ev.mjs': '一次性量測：在暫存複本裡把 3e7b009 的舊驗法換進來跑 gatetest，只推到假遠端',
   'scripts/evidence/s5ev.sh': '一次性量測：S5 修正前，在暫存複本裡跑舊 gatescan／assertaudit；提到 push 的是丟進去被抓的樣本',

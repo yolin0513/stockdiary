@@ -168,4 +168,100 @@ section('公開前自查取 commit 訊息與作者欄（scripts/precheck.mjs 的
     '自查訊息與作者：真的 git 失敗（GIT_DIR 指向不存在的目錄）→ 擋', '');
 }
 
+// ---------------------------------------------------------------------------
+section('殘留突變的還原紀錄（scripts/precheck.mjs 的 pendingRecord；推送閘門、自查、mutationtest 共用）');
+{
+  // 2026-10-03：突變跑到一半被殺掉，壞檔留在工作區、紀錄還在，以前沒有任何東西擋在 commit 與推送之間；
+  // 紀錄壞掉時 mutationtest 刪掉它、當成乾淨。檔案系統當參數傳進去，每一種狀態一個樣本（母體用登記制）。
+  const { pendingRecord, pendingMessage, PENDING_REL } = await import('./precheck.mjs');
+  const fakeFs = (text) => ({
+    exists: (p) => text !== undefined && p.endsWith(PENDING_REL.split('/').join(path.sep)),
+    read: () => { if (text instanceof Error) throw text; return text; },
+  });
+  const st = (text) => pendingRecord('/r', fakeFs(text));
+  // 每一種一個固定標籤（共用慣例 §5.9：突變的 expect 比對的是原始碼裡的字面，標籤不能用樣板組出來）
+  const PENDING_OK = JSON.stringify({ file: 'js/version.js', content: '原檔', at: '2026-10-03' });
+  const PENDING_BAD_JSON = '{"file":"js/vers';
+  const SAMPLES = [
+    ['殘留突變判斷・沒有紀錄：', undefined, 'none'],
+    ['殘留突變判斷・有效紀錄：', PENDING_OK, 'pending'],
+    ['殘留突變判斷・紀錄解析不了：', PENDING_BAD_JSON, 'broken'],
+    ['殘留突變判斷・紀錄缺欄位：', JSON.stringify({ file: 'js/version.js' }), 'broken'],
+    ['殘留突變判斷・紀錄讀不了：', new Error('EACCES'), 'broken'],
+  ];
+  eq(SAMPLES.length, 5, '（前提）殘留突變：登記的 5 種狀態都有樣本');
+  for (const [label, text, want] of SAMPLES) eq(st(text).state, want, `${label}判成 ${want}`);
+  ok(st(PENDING_OK).file === 'js/version.js' && st(PENDING_OK).content === '原檔', '殘留突變判斷・有效紀錄：取得出被改壞的檔與原檔內容');
+  ok(pendingMessage(st(PENDING_OK)).startsWith('【殘留突變擋下】突變測試上一次跑到一半被殺掉，js/version.js'),
+    '殘留突變訊息：有紀錄時點名被改壞的那一支（閘門的驗法用這個開頭比對）');
+  ok(pendingMessage(st(PENDING_BAD_JSON)).startsWith('【殘留突變擋下】還原紀錄壞了'), '殘留突變訊息：紀錄壞了時講明是紀錄壞了');
+  // 不在這裡斷言「真的工作區沒有紀錄」：mutationtest 跑這支當突變的測試時，紀錄本來就在，會紅錯地方。
+  // 推送閘門與自查的真實入口由 gatetest.sh 的 19、19b、19c 在暫存複本裡驗。
+}
+
+// ---------------------------------------------------------------------------
+section('殘留突變的還原（mutationtest --restore，從命令列入口、在複本裡跑）');
+{
+  // 2026-10-03：還原這條路以前從沒被觸發過（本機 log 0 次）；紀錄壞了會被刪掉、當成乾淨；先刪紀錄再寫回，
+  // 寫回失敗紀錄就沒了。這裡在 .logs/ 底下放一份 scripts 與 js 的複本（工作區的版本，含還沒 commit 的改動），
+  // 造出每一種狀態、從命令列入口跑 --restore（只還原、不跑突變；秒級），兩個方向都驗。
+  const { spawnSync } = await import('node:child_process');
+  const { PENDING_REL } = await import('./precheck.mjs');
+  const C = path.join(ROOT, '.logs', `controltest-restore-${process.pid}`);
+  const V = path.join(C, 'js', 'version.js');
+  const P = path.join(C, PENDING_REL);
+  const fresh = () => {
+    if (fs.existsSync(V)) fs.chmodSync(V, 0o644);
+    fs.rmSync(C, { recursive: true, force: true });
+    for (const d of ['scripts', 'js']) fs.cpSync(path.join(ROOT, d), path.join(C, d), { recursive: true });
+    fs.rmSync(P, { force: true });   // 工作區自己若有紀錄（例如 mutationtest 正拿這支當突變的測試），不帶進複本
+  };
+  const restore = () => {
+    const r = spawnSync(process.execPath, ['scripts/mutationtest.mjs', '--restore'], { cwd: C, encoding: 'utf8', timeout: 60000 });
+    return { code: r.status, out: `${r.stdout}${r.stderr}` };
+  };
+  const putRecord = (text) => {
+    fs.writeFileSync(P, text);
+    if (fs.readFileSync(P, 'utf8') !== text) throw new Error('還原紀錄沒寫進去，前提沒造成');   // v11.3：造樣本後先讀回
+  };
+  try {
+    // 一、有效的紀錄、檔案真的被改壞 → 寫回原檔、刪紀錄、回 0
+    fresh();
+    const orig = fs.readFileSync(V, 'utf8');
+    fs.writeFileSync(V, orig + '\n// 殘留突變\n');
+    putRecord(JSON.stringify({ file: 'js/version.js', content: orig, at: 'controltest' }));
+    ok(fs.readFileSync(V, 'utf8') !== orig, '（前提）殘留突變還原・一：檔案真的被改壞了');
+    const r1 = restore();
+    ok(r1.code === 0 && fs.readFileSync(V, 'utf8') === orig && !fs.existsSync(P),
+      '殘留突變還原・一：有紀錄 → 寫回原檔、刪掉紀錄、回 0', `回傳 ${r1.code}；紀錄${fs.existsSync(P) ? '還在' : '已刪'}；${r1.out.slice(-200)}`);
+    // 二、沒有紀錄（必過的那個方向）→ 什麼都不動、回 0
+    fresh();
+    const before = fs.readFileSync(V, 'utf8');
+    const r2 = restore();
+    ok(r2.code === 0 && /--restore：沒有還原紀錄/.test(r2.out) && fs.readFileSync(V, 'utf8') === before,
+      '殘留突變還原・二（必過）：沒有紀錄 → 不動任何檔、回 0', `回傳 ${r2.code}；${r2.out.slice(-200)}`);
+    // 三、紀錄壞了 → 停下（非 0）、講明是紀錄壞了、紀錄留著（閘門與自查才擋得到）
+    fresh();
+    putRecord('{"file":"js/vers');
+    const r3 = restore();
+    ok(r3.code !== 0 && r3.out.split('\n').some((l) => l.startsWith('【殘留突變擋下】還原紀錄壞了')) && fs.existsSync(P),
+      '殘留突變還原・三：紀錄壞了 → 停下、講明、紀錄留著', `回傳 ${r3.code}；紀錄${fs.existsSync(P) ? '還在' : '被刪了'}；${r3.out.slice(-200)}`);
+    // 四、寫回失敗（檔案唯讀）→ 非 0、紀錄留著（以前先刪紀錄再寫回）
+    fresh();
+    const orig4 = fs.readFileSync(V, 'utf8');
+    fs.writeFileSync(V, orig4 + '\n// 殘留突變\n');
+    putRecord(JSON.stringify({ file: 'js/version.js', content: orig4, at: 'controltest' }));
+    fs.chmodSync(V, 0o444);
+    let writable = true;
+    try { fs.writeFileSync(V, fs.readFileSync(V, 'utf8')); } catch { writable = false; }
+    ok(!writable, '（前提）殘留突變還原・四：檔案真的寫不進去');
+    const r4 = restore();
+    ok(r4.code !== 0 && fs.existsSync(P),
+      '殘留突變還原・四：寫回失敗 → 非 0、紀錄留著', `回傳 ${r4.code}；紀錄${fs.existsSync(P) ? '還在' : '被刪了'}`);
+  } finally {
+    if (fs.existsSync(V)) fs.chmodSync(V, 0o644);
+    fs.rmSync(C, { recursive: true, force: true });
+  }
+}
+
 done('controltest');

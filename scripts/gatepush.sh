@@ -10,8 +10,10 @@
 #   回傳 3  第三關：推送回報成功，但遠端的分支≠本機（「推了但沒成功」）
 #   回傳 5  F9（fetch 之後、自查之前）：這次要推的 commit 動到三支 build 或它們的驗法，但 build 驗法登記
 #           （.logs/build-verified.txt）沒有、或跟要推的版本對不上。先跑 node scripts/buildverify.mjs
-#   回傳 4  第零關（最先跑）：閘門、自查或驗法改過之後還沒跑過驗法——六支檔案（含驗法用的 gatereason.mjs、F9 的 buildverify.mjs）目前的雜湊
+#   回傳 4  第零關：閘門、自查或驗法改過之後還沒跑過驗法——六支檔案（含驗法用的 gatereason.mjs、F9 的 buildverify.mjs）目前的雜湊
 #           跟 .logs/gate-verified.txt 的登記不一致，或沒有登記檔（新 clone、剛改完）
+#   回傳 6  殘留突變（最先跑，2026-10-03）：突變測試跑到一半被殺掉，還原紀錄 scripts/.mutation-pending.json 還在
+#           （或紀錄壞了）——工作區有一支被改壞的原始碼。先 node scripts/mutationtest.mjs --restore
 #
 # 第零關為什麼（2026-09-24，SPEC_檢查器修補 S7；共用慣例 §5.15）：「改過閘門就重跑驗法」以前靠人記得。
 # 現在驗法（scripts/gatetest.sh）全部符合時才登記五支檔案的雜湊，沒跑過或跑了沒全過，就推不出去。
@@ -38,6 +40,18 @@ PIISCAN="$HERE/piiscan.mjs"
 mkdir -p "$ROOT/.logs"
 OUT="$ROOT/.logs/gatepush-last.log"
 : > "$OUT"
+
+# ---- 殘留突變（最先跑，回 6）----
+# 突變測試直接改工作區的原始碼；跑到一半被殺掉，壞檔會留到下一次啟動 mutationtest 才還原。
+# 這段期間 commit 的話壞檔就被收進去，而四類自查看不出來（改壞的程式碼不含金鑰也不含路徑）。
+# 判斷在 precheck.mjs（pendingRecord）；自查單獨跑時也會擋，這裡另外擋一次，而且放在最前面。
+node "$PRECHECK" --pending > "$OUT.pending" 2>&1
+M=$?
+cat "$OUT.pending"
+if [ "$M" -ne 0 ]; then
+  echo "【殘留突變擋下】還原紀錄還在（precheck --pending 回傳 $M），不推"
+  exit 6
+fi
 
 # ---- 第零關：驗法登記（在 fetch 與自查之前）----
 # 登記檔一行一支：「路徑 雜湊」。雜湊用 git hash-object 算工作區的檔——有沒 commit 的改動，也對不上。

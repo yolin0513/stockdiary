@@ -60,6 +60,7 @@ prep() {
   if [ -f .private/pii-blacklist.moved ]; then mv .private/pii-blacklist.moved .private/pii-blacklist.txt; fi
   reset_to_remote
   git clean -fdq -e .private -e .logs
+  rm -f scripts/.mutation-pending.json   # 情境 19 系列放的；它被 .gitignore 擋掉，git clean -fd 清不到
   rm -f .logs/build-verified.txt
   register_work
   build_reg "$(remote_sha)"   # F9：每一種都先帶著「對起點」的 build 登記（13–18 各自再改）
@@ -266,6 +267,41 @@ sc_11() {
   run "11. 沒有登記檔" 4 沒動 "head|【第零關擋下】沒有驗法登記"
 }
 
+# 19 系列（2026-10-03）：突變測試跑到一半被殺掉，被改壞的原始碼留在工作區、還原紀錄還在。
+# 以前沒有任何東西擋在 commit 與推送之間：改壞的程式碼不含金鑰也不含路徑，四類自查看不出來。
+# 三種情境各守一個擋法（gateselftest G15–G17 各只紅自己那幾種）：
+#   19  閘門最前面那一關（有效的紀錄）→ 回 6；19b 紀錄壞了也要擋 → 回 6；19c 自查單獨跑也擋（不經閘門）。
+# 「照常放行」那一個方向由情境 5（全部正常，沒有紀錄）守著。
+pending_put() {   # pending_put <內容>：寫進去再讀回來，確認紀錄真的在（v11.3 §5.20：造樣本後先讀回）
+  printf '%s' "$1" > scripts/.mutation-pending.json
+  [ "$(cat scripts/.mutation-pending.json)" = "$1" ] || die "還原紀錄沒寫進去，前提沒造成"
+}
+sc_19() {
+  clean_commit "突變被殺掉之後"
+  pending_put '{"file":"js/version.js","content":"gatetest","at":"gatetest"}'
+  NOT="head|(a) 金鑰／token"
+  run "19. 突變的還原紀錄還在" 6 沒動 "head|【殘留突變擋下】突變測試上一次跑到一半被殺掉，js/version.js 還留著一條突變"
+}
+sc_19b() {
+  clean_commit "還原紀錄壞掉"
+  pending_put '{"file":"js/version.js","content":'   # 截斷的 JSON：雙引號成對（不然 gatescan 的指令切割會把後面幾行接起來）
+  NOT="head|(a) 金鑰／token"
+  run "19b. 還原紀錄壞了" 6 沒動 "head|【殘留突變擋下】還原紀錄壞了"
+}
+# 19c 不經閘門：直接跑自查。結論行照 run 的格式自己印（gateselftest 逐行解析「  ✓ 19c. 」）。
+sc_19c() {
+  clean_commit "自查單獨跑"
+  pending_put '{"file":"js/version.js","content":"gatetest","at":"gatetest"}'
+  node scripts/precheck.mjs HEAD > "$T/pc19c.txt" 2>&1
+  local pc=$?
+  local must="head|【殘留突變擋下】突變測試上一次跑到一半被殺掉，js/version.js 還留著一條突變"
+  if [ "$pc" -ne 0 ] && reason "$T/pc19c.txt" "$must"; then
+    OK=$((OK + 1)); echo "  ✓ 19c. 自查單獨跑也擋還原紀錄：回傳 $pc（預期非 0）"
+  else
+    BAD=$((BAD + 1)); echo "  ✗ 19c. 自查單獨跑也擋還原紀錄：回傳 $pc（預期非 0），輸出裡要有「$must」"
+  fi
+}
+
 # 13–18：F9 的六種必備情境（統籌者 2026-09-24 原文，一種一個情境；編號對照：13＝第 1 條 … 18＝第 6 條）。
 # 每一種靠**不同的機制**擋下或放行，所以每一種都有一條只紅它的突變（gateselftest 的 G5–G10）：
 #   prep 每一種都先放一份「對起點」的 build 登記——沒動到被守的檔的情境都帶著登記，只有 17 專門拿掉它。
@@ -337,7 +373,7 @@ sc_18() {
   run "18. 前一個 commit 動到、最後一個乾淨" 5 沒動 "head|【F9 擋下】這次要推的 commit 動到 scripts/buildguard.mjs，但沒有 build 驗法登記——先跑 node scripts/buildverify.mjs"
 }
 
-ALL="1 1b 2a 2b 2c 3 4 4b 6 7 7b 7c 8 9 10 11 13 14 15 16 17 18 5"
+ALL="1 1b 2a 2b 2c 3 4 4b 6 7 7b 7c 8 9 10 11 13 14 15 16 17 18 19 19b 19c 5"
 ORDER="${GATETEST_ORDER:-$ALL}"
 # 順序清單要恰好是每一種各一次：少一種就少驗一種，多一種就是打錯字
 SORTED_ALL="$(printf '%s\n' $ALL | sort)"
