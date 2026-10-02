@@ -55,6 +55,19 @@ export function parseVerdicts(out) {
   eq(parseVerdicts(''), {}, '（對照）空的輸出抽到 0 種（下面每一次都另外斷言剛好是 ALL 那幾種）');
 }
 
+// bash 先解成完整路徑（2026-10-03，JLPT／MealMate 同日）：裸寫的 bash 從 PowerShell 的 PATH 解，第一支是 WSL 的，驗法根本沒跑起來。
+// 解不出可用的 bash → 情境未成立，整支不跑（不是照跑、拿一個沒跑起來的驗法去判）。
+const { resolveBash } = await import('./resolvebin.mjs');
+let BASH;
+try {
+  BASH = resolveBash();
+  note(`bash：${BASH}`);
+} catch (e) {
+  ok(false, '（前提）找得到可用的 bash（不是 WSL）', `【情境未成立】${String(e?.message ?? e)}`);
+  done('gateselftest');
+  process.exit(1);
+}
+
 /** 預期清單裡、情境清單沒有的編號。 */
 const staleIds = (ids, all) => ids.filter((k) => !all.includes(k));
 // 對照（兩個方向）：清單裡都有 → 空；有一個不在 → 抓到那一個
@@ -105,7 +118,7 @@ function variant(name, patches, { expectBad, expectReg, order = ALL }) {
   fs.mkdirSync(path.dirname(REG), { recursive: true });
   fs.writeFileSync(REG, STALE_REG);
   const seeded = fs.existsSync(REG) && fs.readFileSync(REG, 'utf8') === STALE_REG;
-  const r = spawnSync('bash', ['scripts/gatetest.sh'], { cwd: W, encoding: 'utf8', env: { ...process.env, GATETEST_ORDER: order.join(' ') }, timeout: 600000 });
+  const r = spawnSync(BASH, ['scripts/gatetest.sh'], { cwd: W, encoding: 'utf8', env: { ...process.env, GATETEST_ORDER: order.join(' ') }, timeout: 600000 });
   const out = `${r.stdout}${r.stderr}`;
   const v = parseVerdicts(out);
   const ran = /被執行的閘門檔案雜湊：([0-9a-f]+)/.exec(out)?.[1];

@@ -405,6 +405,26 @@ section('殺程序樹（scripts/proctree.mjs）：只殺我們開的、比父程
 }
 
 // ---------------------------------------------------------------------------
+section('bash 解成完整路徑、拒絕 WSL（scripts/resolvebin.mjs）');
+{
+  // 2026-10-03（JLPT／MealMate 同日）：本機從 PowerShell 的 PATH 解，第一支 bash 是 system32 的（WSL），第二支是 WindowsApps 的。
+  const { pickBash, acceptableBash, resolveBash } = await import('./resolvebin.mjs');
+  // 磁碟機代號在執行時才拼：原樣寫成路徑字面的話，公開前自查的 (d) 類會擋（每台電腦都一樣的系統路徑也一樣擋）
+  const DRV = 'C' + ':';
+  const W = { windir: DRV + '\\Windows' };
+  const WSL = DRV + '\\Windows\\system32\\bash.exe';
+  const APPS = DRV + '\\Users\\someone\\AppData\\Local\\Microsoft\\WindowsApps\\bash.exe';
+  const GIT = DRV + '\\Program Files\\Git\\usr\\bin\\bash.exe';
+  eq(pickBash([WSL, APPS, GIT], W), GIT, 'bash 解析・WSL 排在前面：跳過系統目錄與 WindowsApps 的，挑到 Git 的那一支');
+  eq(pickBash([WSL, APPS], W), null, 'bash 解析・只有 WSL：解不出來（呼叫端判成情境未成立，不是照跑）');
+  ok(acceptableBash(GIT, W) && !acceptableBash(DRV.toLowerCase() + '\\windows\\System32\\BASH.EXE', W), 'bash 解析・大小寫不同的系統目錄也擋（Windows 路徑不分大小寫）');
+  if (process.platform === 'win32') {
+    const real = resolveBash();
+    ok(acceptableBash(real) && fs.existsSync(real), `bash 解析・這台機器（必過）：解到的是 ${real}，不是 WSL、檔案存在`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 section('長跑的包裝（scripts/longrun.mjs）：跑完只認結算行、資源紀錄取樣一次就寫一行');
 {
   // 2026-10-03（TripQuest 同日）：「看到 exit= 就算跑完」把被停掉的那一輪算成完成；資源紀錄跑完才寫，被停掉就什麼都沒留下。
