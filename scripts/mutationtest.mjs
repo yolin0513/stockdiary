@@ -4003,8 +4003,8 @@ const MUTATIONS = [
     name: 'SE：判對時不印實際紅在哪',
     why: '只在判錯時才顯示計算過程的檢查器，通過時無法被稽核：預期字串對應到好幾條斷言、隨便哪一條紅都算過，從輸出上看不出來。',
     file: 'scripts/mutationtest.mjs',
-    find: "  if (verdict === 'red') note(`實際紅在（共 ${failed.length} 條）：${failed.join('／')}`);\n}",
-    replace: '}',
+    find: "  if (verdict === 'red') note(`實際紅在（共 ${failed.length} 條）：${failed.join('／')}`);\n  resultLine(mut, verdict);",
+    replace: '  resultLine(mut, verdict);',
     test: 'controltest',
     expect: '判對時也印出實際紅在哪：',
   },
@@ -4050,6 +4050,40 @@ const MUTATIONS = [
     replace: '        else if (false) probs.push(',
     test: 'checkmutations',
     expect: '登記檢查・alsoRed 不在開頭：',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
+  },
+  // ──── 從 log 逐行數突變結果（2026-10-03）：不是恆等式 ────
+  {
+    name: 'ML：挑選了卻沒結果的不報',
+    why: '中斷的那一場少跑了幾條，統計照樣對得上——就是「走清單、缺的補成某一類」那個恆等式（遊戲早上的相加 225）。',
+    file: 'scripts/mutlog.mjs',
+    find: '  if (missing.length) problems.push(',
+    replace: '  if (false) problems.push(',
+    test: 'checkmutations',
+    expect: 'log 逐行數・中斷：',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
+  },
+  {
+    name: 'ML：同一條有兩個結果也不報',
+    why: '同一條被數兩次，另一條沒跑到，相加照樣等於挑選數。',
+    file: 'scripts/mutlog.mjs',
+    find: '  if (dup.length) problems.push(',
+    replace: '  if (false) problems.push(',
+    test: 'checkmutations',
+    expect: 'log 逐行數・重複：',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
+  },
+  {
+    name: 'ML：不做判定行那道獨立核對',
+    why: '只有「結果｜」一個來源：執行器印錯（或兩邊不一致）時沒有第二個來源對得出來。',
+    file: 'scripts/mutlog.mjs',
+    find: '  if (vBad.length) problems.push(',
+    replace: '  if (false) problems.push(',
+    test: 'checkmutations',
+    expect: 'log 逐行數・獨立核對：',
     alsoRed: ['突變都還有效・find 剛好一次：'],
     alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
   },
@@ -4107,6 +4141,24 @@ const MUTATIONS = [
     replace: "  let peak = null;\n  const later = [];\n  process.on('exit', () => put(RES, later.join('\\n') + '\\n'));\n  const sample = () => {\n    try {\n      const s = sampleLine(windowsProcessTable(), child.pid, spawnedAt, windowsFreeMemoryMB());\n      later.push(s.line);",
     test: 'controltest',
     expect: '長跑・中途被殺：',
+  },
+  {
+    name: 'PC：逐一計數重播時不扣掉結束的',
+    why: '陸續開過的程序全部疊上去，峰值變成「總共開過幾個」——看起來像同時開了一堆，其實沒有。',
+    file: 'scripts/longrun.mjs',
+    find: "    if (e.op === '+') live.set(e.id, e.name); else live.delete(e.id);",
+    replace: "    if (e.op === '+') live.set(e.id, e.name);",
+    test: 'controltest',
+    expect: '長跑・逐一計數的重播：',
+  },
+  {
+    name: 'PC：沒有把計數器掛到整棵樹上',
+    why: '事件檔是空的，逐一計數的峰值變成 0——只剩取樣，短命的子程序又抓不到（遊戲那邊的取樣偏低）。',
+    file: 'scripts/longrun.mjs',
+    find: "NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${counter}`.trim() };",
+    replace: "NODE_OPTIONS: process.env.NODE_OPTIONS ?? '' };",
+    test: 'controltest',
+    expect: '長跑・逐一計數：',
   },
   {
     name: 'LR：資源紀錄認子孫不看建立時間',
@@ -4291,6 +4343,11 @@ if (!baselineOk) {
 section(`${SELECTED.length} 條突變：每一條都必須讓對應的測試變紅`);
 // 結果分開數（2026-10-03）：「情境未成立」不算紅、不算沒紅，也不算跑過——回報寫「成立 N、未成立 M（不算）」
 const tally = { red: 0, 'not-red': 0, 'wrong-place': 0, 'extra-red': 0, 'not-counted': 0, stale: 0, staleExpect: 0, restoreBroke: 0 };
+// 給 scripts/mutlog.mjs 從 log 逐行數用的兩種行（2026-10-03）：開跑前每一條印「挑選｜名稱」，每一條出結果時印「結果｜名稱｜類別」。
+// 「相加等於母體」不能在這裡算：這個迴圈逐條走清單、每一條一定恰好歸進一類，相加永遠等於清單長度（恆等式，遊戲與 MealMate 同日都中）。
+const CATEGORY = { red: '紅在對的地方', 'not-red': '沒紅', 'wrong-place': '紅錯地方', 'extra-red': '多紅了別組', 'not-counted': '情境未成立', stale: '過期', staleExpect: '預期清單過期', restoreBroke: '還原失敗' };
+const resultLine = (mut, key) => note(`結果｜${mut.name}｜${CATEGORY[key]}`);
+for (const m of SELECTED) note(`挑選｜${m.name}`);
 for (const mut of SELECTED) {
   const abs = path.join(ROOT, mut.file);
   const original = fs.readFileSync(abs, 'utf8');
@@ -4301,6 +4358,7 @@ for (const mut of SELECTED) {
       `要改的程式碼在 ${mut.file} 裡出現 ${occurrences} 次（需要剛好 1 次）—— 這條突變過期了，` +
       '表示對應的斷言已經很久沒有被驗證過。請更新突變或確認該邏輯還在。');
     tally.stale += 1;
+    resultLine(mut, 'stale');
     continue;
   }
 
@@ -4311,6 +4369,7 @@ for (const mut of SELECTED) {
   if (expProbs.length) {
     tally.staleExpect += 1;
     ok(false, `${mut.name}`, `【預期清單過期】${expProbs.join('；')}——不是突變沒被抓到，是預期寫的那一條已經不在測試裡；這一條沒有跑`);
+    resultLine(mut, 'staleExpect');
     continue;
   }
 
@@ -4334,6 +4393,7 @@ for (const mut of SELECTED) {
   if (restoreBroke) {
     tally.restoreBroke += 1;
     ok(false, `${mut.name}：還原失敗`, `${mut.file} 的內容跟原檔不一樣了`);
+    resultLine(mut, 'restoreBroke');
     continue;
   }
 
@@ -4358,16 +4418,16 @@ for (const mut of SELECTED) {
   // **判對時也印出實際紅了哪幾條**（Dispatch 2026-10-03）：只在判錯時才顯示計算過程的檢查器，通過的時候無法被稽核——
   // 「預期字串對應到好幾條斷言、隨便哪一條紅都算過」從輸出上完全看不出來。印成說明行（行首「  · 」，不會被當成失敗斷言）。
   if (verdict === 'red') note(`實際紅在（共 ${failed.length} 條）：${failed.join('／')}`);
+  resultLine(mut, verdict);
 }
 
 {
   const counted = tally.red + tally['not-red'] + tally['wrong-place'] + tally['extra-red'];
   note(`結果分開數：情境成立 ${counted} 條（紅在對的地方 ${tally.red}、沒紅 ${tally['not-red']}、紅錯地方 ${tally['wrong-place']}、多紅了別組 ${tally['extra-red']}）；`
     + `情境未成立 ${tally['not-counted']} 條（不算）；過期 ${tally.stale} 條；預期清單過期 ${tally.staleExpect} 條；還原失敗 ${tally.restoreBroke} 條`);
-  // 分類加總要等於這次挑的條數，不等就是有一條沒被分到任何一類（v11.3：只報總數的檢查要分類、加總核對母體）
-  const sum = counted + tally['not-counted'] + tally.stale + tally.staleExpect + tally.restoreBroke;
-  ok(SELECTED.length > 0 && sum === SELECTED.length, `結果分類加總：${sum} 條＝這次挑的 ${SELECTED.length} 條`,
-    `差了 ${SELECTED.length - sum} 條沒被分到任何一類`);
+  // 2026-10-03 拿掉「結果分類加總＝這次挑的條數」那條斷言：它是恆等式（上面逐條走清單、每條恰好歸一類），擋不下任何東西。
+  // 核對改由 node scripts/mutlog.mjs <這一場的 log> 從 log 逐行數（擋重複、擋 log 有清單沒有、擋清單有 log 沒結果、各類相加對兩個數字）。
+  note('核對這一場：node scripts/mutlog.mjs <這一場的 log>（從 log 逐行數，不從清單走）');
 }
 
 section('突變清單本身');

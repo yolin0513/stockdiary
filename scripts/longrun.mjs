@@ -16,9 +16,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hasSummary } from './mutjudge.mjs';
 import { descendants, windowsProcessTable, windowsFreeMemoryMB, WORKER_NAMES } from './proctree.mjs';
+
+/**
+ * 逐一計數的峰值（scripts/proccount.mjs 寫的事件檔照時間重播）。回傳 { workers, all, events }。
+ * 工作程序＝node（每個 node 自己記的「node:」）＋它開的瀏覽器／python；全部＝每一筆。沒有「-」的（被硬殺）一直算著 → 只會高估。
+ */
+export function peakOf(eventsText) {
+  const ev = String(eventsText).split('\n').filter(Boolean).map((l) => l.split('\t')).filter((x) => x.length >= 3)
+    .map(([t, op, id, name]) => ({ t: Number(t), op, id, name: name || '' }));
+  ev.sort((a, b) => a.t - b.t || (a.op === '+' ? -1 : 1));
+  const live = new Map();
+  let workers = 0, all = 0;
+  const isWorker = (id, name) => id.startsWith('node:') || WORKER_NAMES.includes(name) || /chrome|python|msedge/.test(name);
+  for (const e of ev) {
+    if (e.op === '+') live.set(e.id, e.name); else live.delete(e.id);
+    all = Math.max(all, live.size);
+    workers = Math.max(workers, [...live].filter(([id, name]) => isWorker(id, name)).length);
+  }
+  return { workers, all, events: ev.length };
+}
 
 /** 讀 log 判定這一輪跑完了沒：只認那支測試自己的結算行。回傳 'done' 或 'not-done'。 */
 export function judgeRun(logText, test) {
@@ -63,8 +82,13 @@ function main() {
   put(RES, `# ${name} @ ${head}｜每 ${every / 1000} 秒一行｜時間\t工作程序\t全部\t記憶體（這棵樹）\t其他 node\t非 node\t系統可用\n`);
   console.log(`長跑：${name}｜log ${path.relative(ROOT, LOG)}｜資源 ${path.relative(ROOT, RES)}`);
 
+  // 逐一計數：整棵樹的每一個 node 都預先載入 proccount.mjs，事件寫進這一場的 .events.txt
+  const EVENTS = path.join(ROOT, '.logs', `${name}-${head}-${stamp}.events.txt`);
+  fs.writeFileSync(EVENTS, '');
+  const counter = pathToFileURL(path.join(ROOT, 'scripts', 'proccount.mjs')).href;
+  const env = { ...process.env, SD_PROCCOUNT: EVENTS, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${counter}`.trim() };
   const spawnedAt = Date.now();
-  const child = spawn(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], env });
   child.stdout.on('data', (b) => put(LOG, b.toString()));   // 每來一段就寫（被停掉時，已經寫下的都在）
   child.stderr.on('data', (b) => put(LOG, b.toString()));
   let peak = null;
@@ -84,7 +108,11 @@ function main() {
     const verdict = judgeRun(fs.readFileSync(LOG, 'utf8'), test);
     put(LOG, `\n結束 ${new Date().toISOString()}，exit=${code}${signal ? `、signal=${signal}` : ''}，耗時 ${Math.round((Date.now() - spawnedAt) / 1000)} 秒\n`);
     put(LOG, verdict === 'done' ? `判定：跑完（有 ${test} 自己的結算行）\n` : `判定：沒跑完（沒有 ${test} 自己的結算行）——不算數\n`);
-    put(RES, `# 峰值：${peak ? peak.line : '（沒有取到任何一次）'}\n`);
+    put(RES, `# 峰值（取樣）：${peak ? peak.line : '（沒有取到任何一次）'}\n`);
+    // 兩種峰值並列：差多少就是取樣漏掉多少（短命的子程序取樣抓不到）
+    const counted = peakOf(fs.readFileSync(EVENTS, 'utf8'));
+    put(RES, `# 峰值（逐一計數，${counted.events} 筆事件）：工作程序 ${counted.workers}｜全部 ${counted.all}；取樣：工作程序 ${peak ? peak.workers : '—'}｜全部 ${peak ? peak.all : '—'}\n`);
+    put(LOG, `峰值：逐一計數 工作程序 ${counted.workers}／全部 ${counted.all}；取樣 工作程序 ${peak ? peak.workers : '—'}／全部 ${peak ? peak.all : '—'}\n`);
     console.log(`長跑：${name} 結束，exit=${code}，${verdict === 'done' ? '跑完' : '沒跑完（不算數）'}，耗時 ${Math.round((Date.now() - spawnedAt) / 1000)} 秒`);
     process.exit(verdict === 'done' ? (code ?? 1) : 3);
   });

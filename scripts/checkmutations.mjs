@@ -162,6 +162,27 @@ everyOf(withExpect, (m) => expectProblems(m, read, loadRegistry(m.test)).length 
   }
 }
 
+section('從 log 逐行數突變結果（scripts/mutlog.mjs）：不是恆等式');
+{
+  // 2026-10-03：逐條走清單、缺的補成某一類的統計，相加永遠等於清單長度。這裡餵合成的 log，每一種對不上的情形各一個樣本。
+  const { countLog } = await import('./mutlog.mjs');
+  const L = (...xs) => xs.join('\n');
+  const P = (n) => `  · 挑選｜${n}`;
+  const R = (n, c) => `  · 結果｜${n}｜${c}`;
+  const V = (n, m = '✓') => `  ${m} ${n} → t 紅在「x」`;
+  const good = L(P('甲'), P('乙'), V('甲'), R('甲', '紅在對的地方'), V('乙', '✗'), R('乙', '沒紅'));
+  eq(countLog(good).problems, [], 'log 逐行數・對得上（必過）：每一條恰好一個結果、一行判定');
+  eq([countLog(good).sum, countLog(good).picked, countLog(good).verdictLines], [2, 2, 2], 'log 逐行數・三個數字都從 log 數出來：相加、挑選、判定行');
+  ok(countLog(L(P('甲'), P('乙'), V('甲'), R('甲', '紅在對的地方'))).problems.some((p) => p.includes('沒有結果') && p.includes('乙')),
+    'log 逐行數・中斷：挑選了 2 條、只跑了 1 條 → 點名沒有結果的那一條（不是補成某一類）');
+  ok(countLog(L(P('甲'), V('甲'), R('甲', '紅在對的地方'), R('甲', '沒紅'))).problems.some((p) => p.includes('不只一個結果')),
+    'log 逐行數・重複：同一條有兩個結果 → 報出來');
+  ok(countLog(L(P('甲'), V('甲'), R('甲', '紅在對的地方'), R('丙', '沒紅'))).problems.some((p) => p.includes('挑選清單卻沒有') && p.includes('丙')),
+    'log 逐行數・log 有而清單沒有 → 報出來');
+  ok(countLog(L(P('甲'), R('甲', '紅在對的地方'))).problems.some((p) => p.includes('判定行不是恰好一行')),
+    'log 逐行數・獨立核對：有「結果｜」行卻沒有判定行 → 報出來（兩個來源對不上）');
+}
+
 section('斷言登記表：預期有歧義、對不到、需要複審（兩個方向）');
 {
   const REG = { test: 't', version: '4:abc', assertions: ['甲：一', '甲：二', '乙：唯一', '丙：x'].map((name, i) => ({ id: `t#${i + 1}`, name })) };

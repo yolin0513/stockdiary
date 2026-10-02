@@ -334,6 +334,13 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     ok(d.code !== 0 && has(d.out, '基準就不是綠的') && (detailOf(d.out, '  ✗ sleeptest 在乾淨的程式碼上通過') ?? '').startsWith('      【情境未成立】沒有 sleeptest 自己的結算行')
       && !has(d.out, '  ✓ 假突變：逾時對照') && !has(d.out, '  ✗ 假突變：逾時對照'),
       '逾時對照・四：基準 exit 0 卻沒有結算行（沒跑完）→ 不算通過、停下、一條突變都不跑', `回傳 ${d.code}；${d.out.split('\n').filter((l) => /基準|情境|sleeptest/.test(l)).join(' ⏎ ').slice(0, 400)}`);
+    // 從 log 逐行數（scripts/mutlog.mjs）：真的跑出來的輸出要數得出正確的類別，而且三個數字對得上（不是走清單補出來的）
+    const { countLog } = await import('./mutlog.mjs');
+    const ca = countLog(a.out), cc = countLog(c.out);
+    ok(ca.problems.length === 0 && ca.picked === 1 && ca.counts['情境未成立'] === 1 && ca.verdictLines === 1
+      && cc.problems.length === 0 && cc.counts['紅在對的地方'] === 1 && cc.verdictLines === 1,
+      'log 逐行數・真實入口：逾時那一場數成「情境未成立 1」、真的紅那一場數成「紅在對的地方 1」，挑選、結果、判定行各 1',
+      JSON.stringify({ a: ca, c: cc }).slice(0, 400));
     // 預期清單過期（2026-10-03，TripQuest 同日）：expect 在測試裡找不到 → 獨立的結果，不是「紅錯地方」；找得到 → 照常判
     const e = runFake('PROBE_RED', 10000, false, '不存在的標籤：zz');
     ok((detailOf(e.out, '  ✗ 假突變：逾時對照') ?? '').startsWith('      【預期清單過期】') && tallyOf(e.out).includes('；預期清單過期 1 條；')
@@ -437,6 +444,18 @@ section('長跑的包裝（scripts/longrun.mjs）：跑完只認結算行、資�
     '長跑資源紀錄・取樣：工作程序只數 node（bash 不算）、PID 重用的舊程序不數進這棵樹', JSON.stringify(s));
   ok(/\t記憶體 150MB\t其他 node 30MB\t非 node 50MB\t系統可用 4096MB$/.test(s.line),
     '長跑資源紀錄・記憶體拆三份：這棵樹／樹外的 node／樹外的非 node（被 PID 重用騙進來的舊程序算在樹外）', s.line);
+  {
+    // 逐一計數的重播（合成事件）：自己＋瀏覽器＋3 個短命 node 同時活著＝工作 5；再加一個同時的 bash＝全部 6；之後陸續開的不疊上去
+    const { peakOf } = await import('./longrun.mjs');
+    const E = (t, op, id, name = '') => `${t}\t${op}\t${id}${op === '+' ? `\t${name}` : ''}`;
+    const ev = [E(0, '+', 'node:1', 'node'), E(10, '+', 'c:1:1', 'chrome.exe'), E(20, '+', 'c:1:2', 'bash.exe'),
+      E(100, '+', 'node:2', 'node'), E(110, '+', 'node:3', 'node'), E(120, '+', 'node:4', 'node'),
+      E(900, '-', 'node:2'), E(905, '-', 'node:3'), E(910, '-', 'node:4'), E(950, '-', 'c:1:2'),
+      E(1000, '+', 'node:5', 'node'), E(1100, '-', 'node:5'), E(1200, '+', 'node:6', 'node'), E(1300, '-', 'node:6'),
+      E(1400, '-', 'c:1:1'), E(1500, '-', 'node:1')].join('\n');
+    const p = peakOf(ev);
+    ok(p.workers === 5 && p.all === 6, '長跑・逐一計數的重播：同時活著的才疊（工作 5、全部 6），陸續開的不疊上去', JSON.stringify(p));
+  }
   eq(judgeRun('…\n結束，exit=127\n', 'x'), 'not-done', '長跑判定・只有 exit= 沒有結算行：判成沒跑完');
   eq(judgeRun('…\nx：12 項通過\n結束，exit=0\n', 'x'), 'done', '長跑判定（必過）・有自己的結算行：判成跑完');
 
@@ -450,8 +469,15 @@ section('長跑的包裝（scripts/longrun.mjs）：跑完只認結算行、資�
     fs.writeFileSync(fake, [
       "import { spawn } from 'node:child_process';",
       "const mode = process.argv[2];",
+      "if (mode === 'burst') {",
+      "  // 開 1 個只活 0.8 秒的 node 子程序：每 60 秒取樣一次一定抓不到，逐一計數要算到峰值 2（自己＋1）。",
+      "  // 只開 1 個：controltest＋longrun＋這支＋它＝4，不超過本 repo 同時 4 個工作程序；「同時好幾個」的疊加由合成事件那條驗",
+      "  let left = 1;",
+      "  for (let i = 0; i < 1; i++) spawn(process.execPath, ['-e', 'setTimeout(() => {}, 800)'], { stdio: 'ignore' }).on('close', () => { if (--left === 0) { console.log('\\nfakerun：1 項通過'); process.exit(0); } });",
+      "} else {",
       "const kid = spawn(process.execPath, ['-e', 'setTimeout(() => {}, ' + (mode === 'long' ? 8000 : 2500) + ')'], { stdio: 'ignore' });",
       "kid.on('close', () => { if (mode === 'done') console.log('\\nfakerun：1 項通過'); process.exit(0); });",
+      "}",
       '',
     ].join('\n'));
     const logsOf = (tag) => fs.readdirSync(path.join(ROOT, '.logs')).filter((f) => f.startsWith(`ctl-longrun-${process.pid}-${tag}-`)).map((f) => path.join(ROOT, '.logs', f));
@@ -462,6 +488,12 @@ section('長跑的包裝（scripts/longrun.mjs）：跑完只認結算行、資�
       const resA = read('a', '.res.txt');
       ok(a.status === 0 && read('a', '.log').includes('判定：跑完（有 fakerun 自己的結算行）') && /\t工作程序 [1-9]/.test(resA),
         '長跑・跑完：有結算行 → 判成跑完；跑著的時候資源紀錄記到的工作程序不是 0', `回傳 ${a.status}；${resA.split('\n').slice(0, 3).join(' ⏎ ')}`);
+      // 逐一計數 vs 取樣：1 個 0.8 秒的子程序，逐一計數要算到峰值 2，取樣（60 秒一次）一次都取不到
+      const d = spawnSync(process.execPath, ['scripts/longrun.mjs', `ctl-longrun-${process.pid}-d`, 'fakerun', '--every', '60000', '--', process.execPath, fake, 'burst'], { cwd: ROOT, encoding: 'utf8', timeout: 30000 });
+      const resD = read('d', '.res.txt');
+      const peakLine = resD.split('\n').find((l) => l.startsWith('# 峰值（逐一計數')) ?? '';
+      ok(d.status === 0 && /：工作程序 2｜全部 2；取樣：工作程序 —｜全部 —$/.test(peakLine),
+        '長跑・逐一計數：只活 0.8 秒的子程序，逐一計數算到峰值 2（自己＋1），取樣一次都取不到——兩種峰值並列印出', peakLine || resD.slice(0, 300));
       const b = run('b', 'nodone');
       ok(b.status === 3 && read('b', '.log').includes('判定：沒跑完（沒有 fakerun 自己的結算行）'),
         '長跑・沒有結算行：以 0 結束也判成沒跑完、回 3', `回傳 ${b.status}`);
@@ -478,7 +510,7 @@ section('長跑的包裝（scripts/longrun.mjs）：跑完只認結算行、資�
       ok(resC.split('\n').filter((l) => /\t工作程序 \d/.test(l)).length >= 1 && !logC.includes('判定：') && judgeRun(logC, 'fakerun') === 'not-done',
         '長跑・中途被殺：已經取的樣本都寫進檔了、沒有判定行、讀 log 判成沒跑完', `取樣 ${resC.split('\n').filter((l) => /\t工作程序/.test(l)).length} 行；log 結尾：${logC.slice(-120).split('\n').join(' ⏎ ')}`);
     } finally {
-      for (const t of ['a', 'b', 'c']) for (const f of logsOf(t)) fs.rmSync(f, { force: true });
+      for (const t of ['a', 'b', 'c', 'd']) for (const f of logsOf(t)) fs.rmSync(f, { force: true });
       fs.rmSync(W, { recursive: true, force: true });
     }
   }
