@@ -4303,7 +4303,10 @@ const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
 // （2026-09-24～25，證據檔與 .logs/gateselftest-*.log）。2026-10-03 以前這裡還是 15 分鐘：它的基準與兩條突變每次都逾時，
 // 而逾時的 exit code 非 0，兩條突變就被判成「變紅」——從來沒有證明過任何事。現在逾時判成「情境未成立」（mutjudge），
 // 逾時改成實測的 1.6 倍（90 分鐘）；它再變長，就會以「情境未成立」停下，而不是被記成紅。
-const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000 };
+// 修掉誤判的下游效應（Dispatch 2026-10-03）：逾時不再算紅之後，**逾時就是「沒驗到」**——餘裕太小的測試，一條讓它稍微變慢的突變
+// 就掉進「情境未成立」，系統性漏驗。pathtest（正常 140 秒）、layouttest（117 秒）原本吃預設 180 秒，改成 360 秒（Dispatch 准）。
+// 各支「正常耗時 vs 逾時」的表在 STATUS；餘裕不到 3 倍的標在那裡。
+const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000, pathtest: 360 * 1000, layouttest: 360 * 1000 };
 // 每支測試都在 Job Object 裡跑（scripts/jobrun.mjs，2026-10-03）：逾時時殺的是 jobrun 這一層，Job 連帶殺整棵樹——
 // 以前只殺得到直接開的那一支，它經 Git Bash 開的孫程序會活下來（實測：2 個 sleep 殺完還活著）。每支多約 0.85 秒（開 Job 的協助程序）。
 const JOBRUN = path.join(ROOT, 'scripts', 'jobrun.mjs');
