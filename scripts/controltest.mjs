@@ -152,7 +152,7 @@ section('公開前自查取 commit 訊息與作者欄（scripts/precheck.mjs 的
     'c 本機使用者名稱',
     'd 磁碟機（反斜線）', 'd 磁碟機（斜線）', 'd /home/ 家目錄', 'd /Users/ 家目錄',
   ], '（前提）自查對照：每個分支一個樣本，登記的 13 個都在（母體用登記制）');
-  for (const c of cr) ok(c.ok, `自查對照（${c.cat}）${c.label}：判對`);
+  for (const c of cr) ok(c.ok, `${c.cat} ${c.label}：自查對照判對`);   // 標籤在開頭（突變的 expect 比開頭，2026-10-03）
   // 第五類的語境樣式：每個分支一個樣本（以前一個樣本只打到 9 個分支裡的 3 個）
   const { contextControls } = await import('./piiscan.mjs');
   const pc = contextControls();

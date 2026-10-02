@@ -28,8 +28,8 @@ section('輸入檢查：空白不是 0');
 eq(validateInputs(base).ok, true, '完整的輸入通過');
 for (const key of REQUIRED) {
   const v = validateInputs({ ...base, [key]: '' });
-  ok(!v.ok && !!v.errors[key], `${key} 留空 → 報錯「${v.errors[key]}」`);
-  ok(v.values[key] === undefined, `${key} 留空時不會被當成 0`);
+  ok(!v.ok && !!v.errors[key], `留空 → 報錯：${key}「${v.errors[key]}」`);
+  ok(v.values[key] === undefined, `留空時不會被當成 0：${key}`);
 }
 eq(validateInputs({ ...base, growthRate: '' }).values.growthRate, undefined,
   '成長率空白 → undefined，**不是 0%**');

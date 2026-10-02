@@ -206,7 +206,7 @@ try {
   const oldSw = fromRev(OLD_REV, 'sw.js')?.toString('utf8') ?? '';
   const oldVersion = /const VERSION = '([^']+)';/.exec(oldSw)?.[1];
   ok(oldVersion && oldVersion !== NEW_VERSION,
-    `舊版 ${oldVersion}、新版 ${NEW_VERSION}，確實不同版`);
+    `確實不同版：舊版 ${oldVersion}、新版 ${NEW_VERSION}`);
 
   const first = await openApp();
   eq(first.info.running, oldVersion, `第一次開：跑的是舊版 ${oldVersion}`);

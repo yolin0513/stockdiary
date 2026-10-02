@@ -259,7 +259,7 @@ ok(Math.abs(s2.fractionShares - 0.7) < 1e-9, `餘數 0.7 股（實際 ${s2.fract
 const s3 = stockDividendShares({ shares: 1000, stockRate: both.stockRate });
 eq(s3.wholeShares, 49, '1000 股 × 0.04999999 = 49.99999 → 加 49 股，不是 50');
 ok(s3.fractionShares > 0.99 && s3.fractionShares < 1,
-  `餘數 ${s3.fractionShares} 股以現金找零 —— 不會自己進位成 50 股`);
+  `現金找零不進位：餘數 ${s3.fractionShares} 股以現金找零 —— 不會自己進位成 50 股`);
 eq(stockDividendShares({ shares: 500, stockRate: 0 }).wholeShares, 0, '配股率 0 就不加股數');
 eq(stockDividendShares({ shares: null, stockRate: 0.05 }).wholeShares, null, '沒有股數回 null');
 

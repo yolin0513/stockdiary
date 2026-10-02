@@ -119,9 +119,9 @@ function variant(name, patches, { expectBad, expectReg, order = ALL }) {
   if (expectReg) {
     ok(regNow != null && regNow !== STALE_REG && regNow.includes('scripts/gatepush.sh '), `${name}：全部符合，登記換成這一次的（不是先放的舊登記）`, `登記：${JSON.stringify(regNow)}`);
   } else {
-    ok(regNow == null, `${name}：驗法沒全過，先放的舊登記要被刪掉`, `登記還在：${JSON.stringify(regNow)}`);
+    ok(regNow == null, `驗法沒全過，先放的舊登記要被刪掉：${name}`, `登記還在：${JSON.stringify(regNow)}`);
   }
-  eq(r.status, expectBad.length ? 1 : 0, `${name}：gatetest.sh 的回傳值`);
+  eq(r.status, expectBad.length ? 1 : 0, `gatetest.sh 的回傳值：${name}`);
   return v;
 }
 

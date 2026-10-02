@@ -69,6 +69,23 @@ try {
     const r = spawnSync(process.execPath, [file], { encoding: 'utf8', env: { ...process.env, SD_AUDIT: '' } });
     const out = `${r.stdout}${r.stderr}`;
     const got = failedAssertions(out);
+    // 前置：碰巧的樣本（子程序輸出裡那一行「✗ 子程序自己的失敗行」）真的印出來了。沒印出來，下面的綠可能只是因為樣本根本不在，
+    // 不是因為格式改好了——「樣本沒被抓到」與「新格式堵住了」長得一樣，所以沒印出來就判情境未成立。
+    const samplePrinted = (o) => o.replace(/\r/g, '').split('\n').some((l) => l.trimStart().startsWith('✗ 子程序自己的失敗行'));
+    ok(samplePrinted(out), '（前提）判定行：碰巧的樣本真的印在輸出裡（只是不在行首）', out.slice(0, 300));
+    {
+      // 前置自己的對照組：樣本放在註解裡（不會印出來）→ 前置必須判成未成立
+      const file2 = path.join(DIR, 'lines-comment.mjs');
+      fs.writeFileSync(file2, [
+        `import { ok, done } from ${JSON.stringify(TAP_URL)};`,
+        "// ok(false, '真的失敗甲', '子程序的輸出第一行\\n  ✗ 子程序自己的失敗行（不是這支的斷言）');",
+        "ok(false, '真的失敗甲');",
+        "done('lines-comment');",
+        '',
+      ].join('\n'));
+      const r2 = spawnSync(process.execPath, [file2], { encoding: 'utf8', env: { ...process.env, SD_AUDIT: '' } });
+      ok(!samplePrinted(`${r2.stdout}${r2.stderr}`), '（對照）判定行的前提：樣本放在註解裡、沒印出來 → 判成情境未成立');
+    }
     ok(got.length === 2 && got[0] === '真的失敗甲' && got[1] === '真的失敗乙 ✗ 訊息中間帶著符號',
       '判定行・細節不會出現在行首：細節裡子程序的「  ✗ 」行不被當成這支的失敗斷言', JSON.stringify(got));
     ok(!out.replace(/\r/g, '').split('\n').some((l) => l.startsWith('  ✗ 訊息換行之後')),

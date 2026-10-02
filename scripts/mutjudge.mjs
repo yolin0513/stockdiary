@@ -46,8 +46,10 @@ export function judge({ code, out, test, timedOut = false }, expect, alsoRed = [
   if (code === 0) return { verdict: 'not-red', failed: [], extra: [] };
   const failed = failedAssertions(out);
   if (!expect) return { verdict: 'red', failed, extra: [] };
-  if (!failed.some((f) => f.includes(expect))) return { verdict: 'wrong-place', failed, extra: [] };
-  const extra = failed.filter((f) => !f.includes(expect) && !alsoRed.some((a) => f.includes(a)));
+  // expect／alsoRed 必須是失敗訊息的**開頭**（2026-10-03，Dispatch 決定 A）：在訊息中間比對，等於允許「要求被它不擁有的內容滿足」——
+  // 訊息裡嵌的證據（檔名、數值、別支的原始碼）碰巧含那幾個字，就被當成紅在那一條。
+  if (!failed.some((f) => f.startsWith(expect))) return { verdict: 'wrong-place', failed, extra: [] };
+  const extra = failed.filter((f) => !f.startsWith(expect) && !alsoRed.some((a) => f.startsWith(a)));
   return { verdict: extra.length ? 'extra-red' : 'red', failed, extra };
 }
 
@@ -94,12 +96,20 @@ export function loadMutations(src, appVersion) {
  * expect 要是測試原始碼裡的一段**字面** —— 打錯字的話它永遠不會命中，
  * 那條突變會永遠判成「紅錯地方」，而且要等到跑整套（一個半小時）才看得到。
  */
+/**
+ * s 有沒有出現在原始碼裡某個字面的**開頭**（緊接在 ' " ` 後面）。判定比的是失敗訊息的開頭（2026-10-03，Dispatch 決定 A），
+ * 所以登記時就擋：expect 只出現在字面中間、或前面嵌了 ${…} 的，不准登記。
+ * 這是必要條件，不是充分條件：同一個字面可能不是斷言訊息（例：規則代號），那種要等執行時的判定（開頭比對）才抓得到。
+ */
+export const atMessageStart = (src, s) => ["'", '"', '`'].some((q) => src.includes(q + s));
+
 export function expectProblems(mut, read) {
   if (mut.expect == null) return [];
   if (typeof mut.expect !== 'string' || mut.expect.trim() === '') return ['expect 是空的'];
   const testSrc = read(`scripts/${mut.test}.mjs`);
   if (testSrc == null) return [`指定的測試 scripts/${mut.test}.mjs 不存在`];
-  const probs = testSrc.includes(mut.expect) ? [] : [`expect「${mut.expect}」在 scripts/${mut.test}.mjs 裡找不到`];
+  const probs = !testSrc.includes(mut.expect) ? [`expect「${mut.expect}」在 scripts/${mut.test}.mjs 裡找不到`]
+    : !atMessageStart(testSrc, mut.expect) ? [`expect「${mut.expect}」在 scripts/${mut.test}.mjs 裡沒有出現在任何字面的開頭（判定比的是失敗訊息的開頭）`] : [];
   // alsoRed 同理：每一條都要是測試原始碼裡的字面，而且不能是空字串（空字串會讓每一條都算「宣告過」）
   if (mut.alsoRed != null) {
     // 連帶紅要講得出為什麼：沒有理由的 alsoRed，等於把「只紅對應」的檢查關掉
@@ -109,6 +119,7 @@ export function expectProblems(mut, read) {
       for (const a of mut.alsoRed) {
         if (typeof a !== 'string' || a.trim() === '') probs.push('alsoRed 裡有空的一條');
         else if (!testSrc.includes(a)) probs.push(`alsoRed「${a}」在 scripts/${mut.test}.mjs 裡找不到`);
+        else if (!atMessageStart(testSrc, a)) probs.push(`alsoRed「${a}」在 scripts/${mut.test}.mjs 裡沒有出現在任何字面的開頭（判定比的是失敗訊息的開頭）`);
       }
     }
   }

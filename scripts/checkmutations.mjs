@@ -78,9 +78,47 @@ const OUT_BOTH = '\n— 某段 —\n  ✗ 目標斷言：數字對得上（檢�
 }
 
 // ---------------------------------------------------------------------------
+section('expect 必須是失敗訊息的開頭（2026-10-03，Dispatch 決定 A）');
+{
+  // 三格（JLPT 的結構）：舊判定＋碰巧的樣本 → 要求被滿足（洞原本在）；新判定＋同一個樣本 → 不被滿足；新判定＋真的違規 → 照樣滿足。
+  // 碰巧的樣本：另一條失敗斷言的訊息裡嵌了證據（別支檔的原始碼），剛好含 expect 那幾個字——「要求被它不擁有的內容滿足」。
+  const EVIDENCE = '\n  ✗ 登記的檔沒有壞寫法：scripts/x.mjs:3 引用了「目標斷言」這幾個字\n\nx：0 項通過，1 項失敗';
+  const REAL = '\n  ✗ 目標斷言：數字對得上\n\nx：0 項通過，1 項失敗';
+  const IN_DETAIL = '\n  ✗ 別的斷言\n      細節：scripts/x.mjs:3 引用了「目標斷言」這幾個字\n\nx：0 項通過，1 項失敗';
+  /** 前置：碰巧的樣本真的被判定看見了（它出現在某一條失敗斷言的訊息裡）；沒有 → 情境未成立。 */
+  const sampleSeen = (out) => failedAssertions(out).some((f) => f.includes('目標斷言'));
+  /** 2026-10-03 以前的判定（子字串），只在這裡重現，證明洞原本在。 */
+  const oldRed = (out, expect) => failedAssertions(out).some((f) => f.includes(expect));
+  ok(sampleSeen(EVIDENCE), '（前提）三格：碰巧的樣本真的出現在一條失敗斷言的訊息裡（被判定看見）');
+  ok(!sampleSeen(IN_DETAIL), '（對照）三格的前提：樣本只在細節行（不在任何失敗斷言的訊息裡）→ 判成情境未成立');
+  ok(oldRed(EVIDENCE, '目標斷言'), '舊判定的洞・第一格：子字串比對時，嵌在別條訊息裡的證據會滿足 expect');
+  eq(judge({ test: 'x', code: 1, out: EVIDENCE }, '目標斷言').verdict, 'wrong-place', '舊判定的洞・第二格：新判定（比開頭）下，同一個樣本不滿足 expect → 紅錯地方');
+  eq(judge({ test: 'x', code: 1, out: REAL }, '目標斷言').verdict, 'red', '舊判定的洞・第三格（必過）：新判定下，真的紅在那一條 → 照樣判紅');
+  eq(judge({ test: 'x', code: 1, out: EVIDENCE + REAL.replace('\n\nx：0 項通過，1 項失敗', '') + '\n' }, '目標斷言', ['不相干：']).verdict, 'extra-red',
+    '舊判定的洞・多紅別組也比開頭：嵌了證據的那一條算「多紅了別組」，不會因為含 expect 那幾個字就被當成紅在對的地方');
+}
+{
+  // 登記時就擋：expect／alsoRed 要出現在原始碼某個字面的開頭（緊接在引號後面）；兩個方向
+  const src = "ok(a, '標籤甲：訊息'); ok(b, `前文 標籤乙：${x}`); ok(c, `${x} 標籤丙：`);";
+  const rd = (rel) => (rel === 'scripts/t.mjs' ? src : null);
+  eq(expectProblems({ test: 't', expect: '標籤甲：' }, rd), [], '登記檢查・expect 在開頭（必過）：緊接在引號後面 → 准登記');
+  ok(expectProblems({ test: 't', expect: '標籤乙：' }, rd).some((p) => p.includes('沒有出現在任何字面的開頭')),
+    '登記檢查・expect 不在開頭：只出現在固定文字中間 → 拒絕登記並點名');
+  ok(expectProblems({ test: 't', expect: '標籤丙：' }, rd).some((p) => p.includes('沒有出現在任何字面的開頭')),
+    '登記檢查・expect 前面嵌了動態內容：拒絕登記並點名');
+  ok(expectProblems({ test: 't', expect: '標籤甲：', alsoRed: ['標籤乙：'], alsoRedWhy: '同一行比對，兩組一起紅' }, rd).some((p) => p.includes('alsoRed「標籤乙：」') && p.includes('開頭')),
+    '登記檢查・alsoRed 不在開頭：拒絕登記並點名');
+  // 母體：檢查的筆數＝帶 expect 的突變數，而且要等於從原始碼另外數出來的「expect:」筆數（兩個來源核對）
+  const withExpect = MUTATIONS.filter((m) => m.expect);
+  // 兩種寫法：自成一行的「    expect: …」與寫在同一行的「…, expect: '…' }」；引號三種都算；註解行不算
+  const rawCount = SRC.split('\n').filter((l) => !/^\s*\/\//.test(l) && /(^\s+|, )expect: ['"`]/.test(l)).length;
+  eq(withExpect.length, rawCount, `（前提）登記檢查的母體：帶 expect 的突變 ${withExpect.length} 條＝原始碼裡數出的 expect 欄位 ${rawCount} 筆`);
+}
+
+// ---------------------------------------------------------------------------
 section('套用突變不會偷改替換字串（接手者第 40 條）');
 eq(applyMutation('a X b', 'X', "$$ $& $'"), "a $$ $& $' b",
-  '替換字串裡的 $$、$&、$\' 原樣寫進去（String.replace(字串, 字串) 會把它們當特殊序列）');
+  '套用突變不偷改替換字串：$$、$&、$\' 原樣寫進去（String.replace(字串, 字串) 會把它們當特殊序列）');
 
 // ---------------------------------------------------------------------------
 section('每一條突變都還有效：find 在目標檔裡剛好出現一次（C）');
@@ -88,7 +126,7 @@ section('每一條突變都還有效：find 在目標檔裡剛好出現一次（
 const t0 = Date.now();
 const stale = MUTATIONS.map((m) => ({ name: m.name, probs: findProblems(m, read) })).filter((x) => x.probs.length);
 noneOf(MUTATIONS.map((m) => ({ name: m.name, probs: findProblems(m, read) })), (x) => x.probs.length > 0,
-  `全部 ${MUTATIONS.length} 條突變都還有效（find 剛好一次、改了有差、測試檔存在）`
+  `突變都還有效・find 剛好一次：全部 ${MUTATIONS.length} 條（改了有差、測試檔存在）`
   + (stale.length ? `；過期的：${stale.map((x) => `${x.name}（${x.probs.join('；')}）`).join('／')}` : ''));
 // 對照組：用這支檔案自己當目標，造幾條假突變
 const SELF = 'scripts/checkmutations.mjs';

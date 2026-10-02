@@ -152,7 +152,7 @@ eq(gws.market, '上櫃', '6488 是上櫃');
 eq(gws.supported, false, '6488 不支援報價');
 
 const emerging = Object.entries(stocksJson.stocks).find(([, s]) => s.market === '興櫃');
-eq(catalog.lookup(emerging[0]).supported, false, `興櫃 ${emerging[0]} 不支援報價`);
+eq(catalog.lookup(emerging[0]).supported, false, `不支援報價・興櫃：${emerging[0]}`);
 
 eq(catalog.lookup('9999').found, false, '9999 不存在');
 eq(catalog.lookup('9999').supported, undefined, '不存在的代號沒有 supported 欄位，不會被誤判成支援');

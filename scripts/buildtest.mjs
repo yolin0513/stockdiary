@@ -400,14 +400,14 @@ try {
     fs.mkdirSync(`${out}.tmp`); fs.writeFileSync(path.join(`${out}.tmp`, '別人的檔.txt'), '不能被刪');
     const a = valid[script]({});
     cell(labels.tmpDir, a, unit, ['暫存檔寫不進去']);
-    ok(fs.existsSync(path.join(`${out}.tmp`, '別人的檔.txt')), `${labels.tmpDir}（佔位的資料夾與裡面的檔都還在）`);
+    ok(fs.existsSync(path.join(`${out}.tmp`, '別人的檔.txt')), `（佔位的資料夾與裡面的檔都還在）${labels.tmpDir}`);
     // readonly
     restoreData(); if (script === 'build-stocks') prepStocksPrev();
     fs.chmodSync(out, 0o444);
     const b = valid[script]({});
     cell(labels.readonly, b, unit, ['換不上去']);
     ok(reasonsOf(b.out).some((x) => x.startsWith(`${unit}：已清掉這次寫出的暫存檔`)) && !fs.existsSync(`${out}.tmp`),
-      `${labels.readonly}（清掉了自己寫出的暫存檔，而且講出來）`, JSON.stringify(reasonsOf(b.out)));
+      `（清掉了自己寫出的暫存檔，而且講出來）${labels.readonly}`, JSON.stringify(reasonsOf(b.out)));
     // cleanup：暫存檔會留下（這一格 data/ 本來就會多一個檔），其他三件照樣要成立，而且要點名留下的檔
     restoreData(); if (script === 'build-stocks') prepStocksPrev();
     fs.chmodSync(out, 0o444);

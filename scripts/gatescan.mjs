@@ -247,7 +247,7 @@ for (const rule of RULES) {
   const falsePos = (c?.miss ?? []).filter((s) => ruleHits(rule, s));
   const good = c && c.hit.length > 0 && c.miss.length > 0 && missed.length === 0 && falsePos.length === 0;
   if (!good) controlsOk = false;
-  ok(good, `（對照）${rule.id}：正例 ${c?.hit.length ?? 0} 個都抓到、反例 ${c?.miss.length ?? 0} 個都沒誤抓`,
+  ok(good, `${rule.id}・對照：正例 ${c?.hit.length ?? 0} 個都抓到、反例 ${c?.miss.length ?? 0} 個都沒誤抓`,
     `檢查器壞了——${missed.length ? `該抓沒抓到：${JSON.stringify(missed).slice(0, 200)}` : ''}${falsePos.length ? `；不該抓卻抓了：${JSON.stringify(falsePos).slice(0, 200)}` : ''}`);
 }
 if (!controlsOk) {
