@@ -1,0 +1,375 @@
+{
+ "test": "plantest",
+ "version": "92:47a1d52729f7",
+ "count": 92,
+ "assertions": [
+  {
+   "id": "plantest#1",
+   "name": "正常的計畫通過"
+  },
+  {
+   "id": "plantest#2",
+   "name": "沒代號"
+  },
+  {
+   "id": "plantest#3",
+   "name": "金額 0"
+  },
+  {
+   "id": "plantest#4",
+   "name": "負金額"
+  },
+  {
+   "id": "plantest#5",
+   "name": "沒有扣款日"
+  },
+  {
+   "id": "plantest#6",
+   "name": "0 號不存在"
+  },
+  {
+   "id": "plantest#7",
+   "name": "32 號不存在"
+  },
+  {
+   "id": "plantest#8",
+   "name": "重複的扣款日"
+  },
+  {
+   "id": "plantest#9",
+   "name": "費率 1 不合理（那是 100%）"
+  },
+  {
+   "id": "plantest#10",
+   "name": "負的費率講的是另一件事"
+  },
+  {
+   "id": "plantest#11",
+   "name": "費率留空是可以的"
+  },
+  {
+   "id": "plantest#12",
+   "name": "檢查器有對照組（正例 4、反例 4）"
+  },
+  {
+   "id": "plantest#13",
+   "name": "交易日就是當天"
+  },
+  {
+   "id": "plantest#14",
+   "name": "週六 → 下週一"
+  },
+  {
+   "id": "plantest#15",
+   "name": "週日 → 下週一"
+  },
+  {
+   "id": "plantest#16",
+   "name": "中秋節 → 跳過 9/28 教師節，到 9/29"
+  },
+  {
+   "id": "plantest#17",
+   "name": "日曆沒涵蓋 → null"
+  },
+  {
+   "id": "plantest#18",
+   "name": "下一個交易日在兩個月後 → 回 null（那是日曆缺了一段，不是連假）"
+  },
+  {
+   "id": "plantest#19",
+   "name": "（對照）春節休 12 天照樣順延得過去"
+  },
+  {
+   "id": "plantest#20",
+   "name": "（對照）春節第一天也順延得過去"
+  },
+  {
+   "id": "plantest#21",
+   "name": "「跳太遠就是缺口」的判斷有對照組（正例 3、反例 2）"
+  },
+  {
+   "id": "plantest#22",
+   "name": "三個扣款日"
+  },
+  {
+   "id": "plantest#23",
+   "name": "9/6 是週日，順延並記下原本的日期"
+  },
+  {
+   "id": "plantest#24",
+   "name": "9/16 沒有順延"
+  },
+  {
+   "id": "plantest#25",
+   "name": "9/26 順延到 9/29"
+  },
+  {
+   "id": "plantest#26",
+   "name": "展開出來的每一天都是交易日（檢查了 3 項）"
+  },
+  {
+   "id": "plantest#27",
+   "name": "9 月有 30 天，這三個日子都不用夾（檢查了 3 項）"
+  },
+  {
+   "id": "plantest#28",
+   "name": "展開出 1 筆"
+  },
+  {
+   "id": "plantest#29",
+   "name": "標記了「當月沒有這一天」"
+  },
+  {
+   "id": "plantest#30",
+   "name": "夾到 2 月 28 日"
+  },
+  {
+   "id": "plantest#31",
+   "name": "2/28 是週六，順延到下一個交易日"
+  },
+  {
+   "id": "plantest#32",
+   "name": "from 當天不算（已經產生過了）"
+  },
+  {
+   "id": "plantest#33",
+   "name": "from 之後算"
+  },
+  {
+   "id": "plantest#34",
+   "name": "to 之後不算"
+  },
+  {
+   "id": "plantest#35",
+   "name": "沒有 to 就不展開"
+  },
+  {
+   "id": "plantest#36",
+   "name": "三個月的扣款都在（8/16 是週日，順延到 8/17）"
+  },
+  {
+   "id": "plantest#37",
+   "name": "剛好三筆，不多不少"
+  },
+  {
+   "id": "plantest#38",
+   "name": "建立當天那一筆不重複產生（檢查了 3 項）"
+  },
+  {
+   "id": "plantest#39",
+   "name": "9/26 與 9/27 都順延到 9/29，只產生一筆"
+  },
+  {
+   "id": "plantest#40",
+   "name": "120 股"
+  },
+  {
+   "id": "plantest#41",
+   "name": "花費 2,976 元"
+  },
+  {
+   "id": "plantest#42",
+   "name": "餘額 24 元"
+  },
+  {
+   "id": "plantest#43",
+   "name": "沒有手續費時可用金額就是 3,000"
+  },
+  {
+   "id": "plantest#44",
+   "name": "可用金額 4,992.875 元（手續費 7.125）"
+  },
+  {
+   "id": "plantest#45",
+   "name": "201 股"
+  },
+  {
+   "id": "plantest#46",
+   "name": "花費 4,984.8 元"
+  },
+  {
+   "id": "plantest#47",
+   "name": "餘額 8.075 元"
+  },
+  {
+   "id": "plantest#48",
+   "name": "1,000 元買不到一股 2,450 元的股票 → 0 股"
+  },
+  {
+   "id": "plantest#49",
+   "name": "整筆都是餘額"
+  },
+  {
+   "id": "plantest#50",
+   "name": "股數是 null"
+  },
+  {
+   "id": "plantest#51",
+   "name": "不是 0 —— 0 股代表「買不到一股」，null 代表「不知道」"
+  },
+  {
+   "id": "plantest#52",
+   "name": "可用金額還是算得出來"
+  },
+  {
+   "id": "plantest#53",
+   "name": "沒有金額也回 null"
+  },
+  {
+   "id": "plantest#54",
+   "name": "收盤價 0 → null，不做除以零"
+  },
+  {
+   "id": "plantest#55",
+   "name": "定期定額"
+  },
+  {
+   "id": "plantest#56",
+   "name": "配息再投入"
+  },
+  {
+   "id": "plantest#57",
+   "name": "同樣的輸入永遠得到同樣的 id"
+  },
+  {
+   "id": "plantest#58",
+   "name": "均價維持 100"
+  },
+  {
+   "id": "plantest#59",
+   "name": "原因是「沒填成交價」"
+  },
+  {
+   "id": "plantest#60",
+   "name": "不會變成 0"
+  },
+  {
+   "id": "plantest#61",
+   "name": "加權平均 106.666667"
+  },
+  {
+   "id": "plantest#62",
+   "name": "原因是加權平均"
+  },
+  {
+   "id": "plantest#63",
+   "name": "剛好 55"
+  },
+  {
+   "id": "plantest#64",
+   "name": "賣出之後均價還是 100"
+  },
+  {
+   "id": "plantest#65",
+   "name": "原因是賣出"
+  },
+  {
+   "id": "plantest#66",
+   "name": "配股後均價降到 95.238095"
+  },
+  {
+   "id": "plantest#67",
+   "name": "原因是配股"
+  },
+  {
+   "id": "plantest#68",
+   "name": "配股一定會讓每股成本下降"
+  },
+  {
+   "id": "plantest#69",
+   "name": "配股不會因為沒有成交價就不動"
+  },
+  {
+   "id": "plantest#70",
+   "name": "原本 0 股 → 第一筆的價格就是均價"
+  },
+  {
+   "id": "plantest#71",
+   "name": "原因是「第一次有成本」"
+  },
+  {
+   "id": "plantest#72",
+   "name": "已經有部位但沒填過成本 → 還是 null（不能拿一筆新的推算整個部位）"
+  },
+  {
+   "id": "plantest#73",
+   "name": "原因是「沒有基礎可以加權」"
+  },
+  {
+   "id": "plantest#74",
+   "name": "0 股的變動不動均價"
+  },
+  {
+   "id": "plantest#75",
+   "name": "重播結果 106.666667"
+  },
+  {
+   "id": "plantest#76",
+   "name": "股數 1000 + 500 + 500 − 200 = 1800"
+  },
+  {
+   "id": "plantest#77",
+   "name": "重播兩次結果一樣"
+  },
+  {
+   "id": "plantest#78",
+   "name": "未確認的那筆（價格 999）沒有影響均價"
+  },
+  {
+   "id": "plantest#79",
+   "name": "股數也不含未確認的"
+  },
+  {
+   "id": "plantest#80",
+   "name": "起始沒填成本 → 之後買再多也算不出整體均價"
+  },
+  {
+   "id": "plantest#81",
+   "name": "不會拿後來那一筆的價格冒充整體均價"
+  },
+  {
+   "id": "plantest#82",
+   "name": "每一筆都有價格（或是 opening）→ 不顯示說明"
+  },
+  {
+   "id": "plantest#83",
+   "name": "兩次沒填價格"
+  },
+  {
+   "id": "plantest#84",
+   "name": "配股本來就沒有成交價，不算在內"
+  },
+  {
+   "id": "plantest#85",
+   "name": "未確認的不算"
+  },
+  {
+   "id": "plantest#86",
+   "name": "說明的觸發條件有對照組（正例 2、反例 4）"
+  },
+  {
+   "id": "plantest#87",
+   "name": "把百分比當比例填（0.1425）會被擋，真的比例（0.001425）放行（正例 9、反例 8）"
+  },
+  {
+   "id": "plantest#88",
+   "name": "訊息講得出「你填的等於幾 %」與「應該填什麼」：「手續費率 0.1425 代表 14.2500%，看起來是把百分比直接填進來了。券商說的「0.1425%」要填 0.001425。」"
+  },
+  {
+   "id": "plantest#89",
+   "name": "上限 0.01（＝1%）本身是放行的"
+  },
+  {
+   "id": "plantest#90",
+   "name": "超過一點點就擋"
+  },
+  {
+   "id": "plantest#91",
+   "name": "手算 (5000 − 7.125) ÷ 107.70 = 46.35… → 46 股"
+  },
+  {
+   "id": "plantest#92",
+   "name": "（對照）填錯單位的話會變成 39 股 —— 少 7 股，畫面上完全看不出來"
+  }
+ ]
+}

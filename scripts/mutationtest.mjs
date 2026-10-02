@@ -24,7 +24,7 @@ import { ok, eq, section, done , note } from './tap.mjs';
 import { closureReport, selectWithReason } from './affected.mjs';
 import { judge, countOf, applyMutation, hasSummary, expectProblems } from './mutjudge.mjs';
 import { makePending } from './mutpending.mjs';
-import { loadRegistry } from './assertreg.mjs';
+import { loadRegistry, loadStamps, versionOf, assertionNames } from './assertreg.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -2653,7 +2653,7 @@ const MUTATIONS = [
     find: '      if (!lines[i].startsWith(`${cat}：`) || !m || Number(m[1]) < 1) continue;',
     replace: '      if (!m || Number(m[1]) < 1) continue;',
     test: 'controltest',
-    expect: '閘門理由比對：',
+    expect: '閘門理由比對：命中行出現在 (b) 類底下，問 (a) 類',
   },
   {
     name: 'RS：閘門比對行首改成行中間也算',
@@ -2662,7 +2662,7 @@ const MUTATIONS = [
     find: "    return lines.some((l) => l.startsWith(p) && !(idTail && /[\\w.-]/.test(l[p.length] ?? '')));",
     replace: "    return lines.some((l) => l.includes(p) && !(idTail && /[\\w.-]/.test(l[p.length] ?? '')));",
     test: 'controltest',
-    expect: '閘門理由比對：',
+    expect: '閘門理由比對：判決行只出現在行中間',
   },
   {
     name: 'RS：閘門比對的檔名不對邊界',
@@ -2671,7 +2671,7 @@ const MUTATIONS = [
     find: "    return lines.some((l) => l.startsWith(p) && !(idTail && /[\\w.-]/.test(l[p.length] ?? '')));",
     replace: '    return lines.some((l) => l.startsWith(p));',
     test: 'controltest',
-    expect: '閘門理由比對：',
+    expect: '閘門理由比對：檔名只湊到前半',
   },
   {
     name: 'RS：狀況字眼不對邊界',
@@ -2763,8 +2763,8 @@ const MUTATIONS = [
     find: '  if (wrote) {\n    try {\n      fs.rmSync(tmp, { force: true });\n      problems.push(`${unit}：已清掉這次寫出的暫存檔 ${path.basename(tmp)}`);',
     replace: '  if (false) {\n    try {\n      fs.rmSync(tmp, { force: true });\n      problems.push(`${unit}：已清掉這次寫出的暫存檔 ${path.basename(tmp)}`);',
     test: 'buildtest',
-    expect: '（清掉了自己寫出的暫存檔，而且講出來）',
-    alsoRed: ['build-calendar 寫檔失敗：輸出檔換不上去', 'build-dividends 寫檔失敗：輸出檔換不上去', 'build-stocks 寫檔失敗：輸出檔換不上去', 'build-calendar 寫檔失敗：清理也失敗', 'build-dividends 寫檔失敗：清理也失敗', 'build-stocks 寫檔失敗：清理也失敗'],
+    expect: '（清掉了自己寫出的暫存檔，而且講出來）build-calendar 寫檔失敗：輸出檔換不上去',
+    alsoRed: ['（清掉了自己寫出的暫存檔，而且講出來）', 'build-calendar 寫檔失敗：輸出檔換不上去', 'build-dividends 寫檔失敗：輸出檔換不上去', 'build-stocks 寫檔失敗：輸出檔換不上去', 'build-calendar 寫檔失敗：清理也失敗', 'build-dividends 寫檔失敗：清理也失敗', 'build-stocks 寫檔失敗：清理也失敗'],
     alsoRedWhy: '不清就留下暫存檔（輸出目錄變了），「換不上去」那三格一起紅；「清理也失敗」那三格要的「清理也失敗」訊息也不會出現。',
   },
   {
@@ -2775,8 +2775,8 @@ const MUTATIONS = [
     replace: '    } catch (e) {\n      throw e;\n      problems.push(`${unit}：清理也失敗',
     test: 'buildtest',
     expect: 'build-calendar 寫檔失敗：清理也失敗',
-    alsoRed: ['build-dividends 寫檔失敗：清理也失敗', 'build-stocks 寫檔失敗：清理也失敗'],
-    alsoRedWhy: '三支建置工具共用同一段寫檔程式（buildguard），清理失敗時三支各自那一格都紅。',
+    alsoRed: ['build-dividends 寫檔失敗：清理也失敗', 'build-stocks 寫檔失敗：清理也失敗', '（輸出檔沒被蓋掉；留下的暫存檔有點名）'],
+    alsoRedWhy: '三支建置工具共用同一段寫檔程式（buildguard），清理失敗時三支各自那一格都紅；「輸出檔沒被蓋掉」那一條看的是同一次執行（2026-10-03 斷言登記表查到這段預期對到不只一條，改成唯一的那一條）。',
   },
   {
     name: 'WF：暫存檔的位置被佔住時連別人的東西一起刪',
@@ -2785,8 +2785,8 @@ const MUTATIONS = [
     find: '  if (wrote) {\n    try {\n      fs.rmSync(tmp, { force: true });',
     replace: '  if (true) {\n    try {\n      fs.rmSync(tmp, { force: true, recursive: true });',
     test: 'buildtest',
-    expect: '（佔位的資料夾與裡面的檔都還在）',
-    alsoRed: ['build-calendar 寫檔失敗：暫存檔的位置被資料夾佔住', 'build-dividends 寫檔失敗：暫存檔的位置被資料夾佔住', 'build-stocks 寫檔失敗：暫存檔的位置被資料夾佔住'],
+    expect: '（佔位的資料夾與裡面的檔都還在）build-calendar 寫檔失敗：暫存檔的位置被資料夾佔住',
+    alsoRed: ['（佔位的資料夾與裡面的檔都還在）', 'build-calendar 寫檔失敗：暫存檔的位置被資料夾佔住', 'build-dividends 寫檔失敗：暫存檔的位置被資料夾佔住', 'build-stocks 寫檔失敗：暫存檔的位置被資料夾佔住'],
     alsoRedWhy: '佔位的資料夾被刪掉，輸出目錄變了，那三格一起紅。',
   },
   {
@@ -2982,7 +2982,9 @@ const MUTATIONS = [
     find: '  if (list.length > 0 && byCode.size === 0) g.add(',
     replace: '  if (false) g.add(',
     test: 'buildtest',
-    expect: 'build-dividends 收進來 0 檔：',
+    expect: 'build-dividends 收進來 0 檔：代號全不合格式要擋',
+    alsoRed: ['build-dividends 收進來 0 檔：現金股利全空要擋'],
+    alsoRedWhy: '拿掉的是「收進來 0 檔就擋」那一道，代號全不合格式與現金股利全空兩種 0 檔都靠它（2026-10-03 斷言登記表查到這段預期對到不只一條，改成唯一的那一條）。',
   },
   {
     name: 'BG：股利上一次的輸出壞掉時當成第一次產',
@@ -3651,7 +3653,9 @@ const MUTATIONS = [
     find: '  if (before.bad.length) stop(',
     replace: '  if (false) stop(',
     test: 'buildverifytest',
-    expect: 'F9 登記・工作區有改動：',
+    expect: 'F9 登記・工作區有改動：回非 0、舊登記被刪、沒有新登記',
+    alsoRed: ['F9 登記・工作區有改動：理由（'],
+    alsoRedWhy: '同一個情境的兩條（回傳值與擋下的理由）看的是同一次執行，一起紅（2026-10-03 斷言登記表查到這段預期對到不只一條，改成唯一的那一條）。',
   },
   {
     name: 'F9：一開跑不刪舊登記',
@@ -3660,8 +3664,8 @@ const MUTATIONS = [
     find: '  fs.rmSync(REG, { force: true });   // 一開跑就刪',
     replace: '  // 突變：不刪舊登記',
     test: 'buildverifytest',
-    expect: 'F9 登記・驗法沒過：',
-    alsoRed: ['F9 登記・工作區有改動：', 'F9 登記・沒有全擋：', 'F9 登記・沒有總計：', 'F9 登記・總計不在該在的位置：', 'F9 登記・跑的期間改了檔：', 'F9 登記・相依不在清單上：', 'F9 登記・清單上的檔不見了：'],
+    expect: 'F9 登記・驗法沒過：回非 0、舊登記被刪、沒有新登記',
+    alsoRed: ['F9 登記・驗法沒過：理由（', 'F9 登記・工作區有改動：', 'F9 登記・沒有全擋：', 'F9 登記・沒有總計：', 'F9 登記・總計不在該在的位置：', 'F9 登記・跑的期間改了檔：', 'F9 登記・相依不在清單上：', 'F9 登記・清單上的檔不見了：'],
     alsoRedWhy: '每一種「不登記」的情境都先放了一份舊登記、再驗它被刪掉；不刪舊登記，這八種一起紅。',
   },
   {
@@ -3671,7 +3675,9 @@ const MUTATIONS = [
     find: '/^ {2}· 矩陣共',
     replace: '/ {2}· 矩陣共',
     test: 'buildverifytest',
-    expect: 'F9 登記・總計不在該在的位置：',
+    expect: 'F9 登記・總計不在該在的位置：回非 0、舊登記被刪、沒有新登記',
+    alsoRed: ['F9 登記・總計不在該在的位置：理由（'],
+    alsoRedWhy: '同一個情境的兩條（回傳值與擋下的理由）看的是同一次執行，一起紅（2026-10-03 斷言登記表查到這段預期對到不只一條，改成唯一的那一條）。',
   },
   {
     name: 'F9：沒有全部擋下也登記',
@@ -3680,7 +3686,9 @@ const MUTATIONS = [
     find: 'if (!(total > 0 && blocked === total)) stop(',
     replace: 'if (false) stop(',
     test: 'buildverifytest',
-    expect: 'F9 登記・沒有全擋：',
+    expect: 'F9 登記・沒有全擋：回非 0、舊登記被刪、沒有新登記',
+    alsoRed: ['F9 登記・沒有全擋：理由（'],
+    alsoRedWhy: '同一個情境的兩條（回傳值與擋下的理由）看的是同一次執行，一起紅（2026-10-03 斷言登記表查到這段預期對到不只一條，改成唯一的那一條）。',
   },
   {
     name: 'F9：相依不在清單上也登記',
@@ -3689,7 +3697,9 @@ const MUTATIONS = [
     find: '  if (orphan.length) stop(',
     replace: '  if (false) stop(',
     test: 'buildverifytest',
-    expect: 'F9 登記・相依不在清單上：',
+    expect: 'F9 登記・相依不在清單上：回非 0、舊登記被刪、沒有新登記',
+    alsoRed: ['F9 登記・相依不在清單上：理由（'],
+    alsoRedWhy: '同一個情境的兩條（回傳值與擋下的理由）看的是同一次執行，一起紅（2026-10-03 斷言登記表查到這段預期對到不只一條，改成唯一的那一條）。',
   },
   {
     name: 'F9：驗法跑的期間改了檔也登記',
@@ -3698,7 +3708,9 @@ const MUTATIONS = [
     find: '  if (after.bad.length) stop(',
     replace: '  if (false) stop(',
     test: 'buildverifytest',
-    expect: 'F9 登記・跑的期間改了檔：',
+    expect: 'F9 登記・跑的期間改了檔：回非 0、舊登記被刪、沒有新登記',
+    alsoRed: ['F9 登記・跑的期間改了檔：理由（'],
+    alsoRedWhy: '同一個情境的兩條（回傳值與擋下的理由）看的是同一次執行，一起紅（2026-10-03 斷言登記表查到這段預期對到不只一條，改成唯一的那一條）。',
   },
   {
     name: 'F9：推送前只看最後一個 commit 有沒有動到',
@@ -4087,6 +4099,26 @@ const MUTATIONS = [
     alsoRed: ['突變都還有效・find 剛好一次：'],
     alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
   },
+  {
+    name: 'RG：紅的那一場也拿來建登記表',
+    why: '結算行在紅的時候也會印；只認結算行的話，一場有斷言紅了的輸出照樣建表（2026-10-03 第一版就這樣建了 controltest 的表）。',
+    file: 'scripts/assertreg.mjs',
+    find: '  if (/項失敗/.test(summary)) throw new Error(',
+    replace: '  if (false) throw new Error(',
+    test: 'checkmutations',
+    expect: '登記表・建表：有斷言紅了的那一場',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
+  },
+  {
+    name: 'RG：基準不跟登記表比',
+    why: '測試新增或改了斷言、卻沒重建登記表，舊預期靜默繼續通過，其實沒涵蓋新的那一條（JLPT 2026-10-03）。',
+    file: 'scripts/mutationtest.mjs',
+    find: '    ok(now === reg.version, `（前提）斷言登記表跟這一場基準一致：${t}`,\n',
+    replace: '    ok(true, `（前提）斷言登記表跟這一場基準一致：${t}`,\n',
+    test: 'controltest',
+    expect: '預期需要複審・母體變了：',
+  },
   // ──── 斷言登記表（2026-10-03）：預期有歧義、需要複審、有表就對表檢查 ────
   {
     name: 'RG：不查預期有歧義',
@@ -4103,7 +4135,7 @@ const MUTATIONS = [
     name: 'RG：不比預期寫於哪一版登記表',
     why: '斷言母體長大了（新增斷言），舊預期靜默繼續通過、其實沒涵蓋新的那一條（JLPT 2026-10-03）。',
     file: 'scripts/mutjudge.mjs',
-    find: '  if (mut.regStamp !== reg.version) probs.push(',
+    find: '  if (stamp !== reg.version) probs.push(',
     replace: '  if (false) probs.push(',
     test: 'checkmutations',
     expect: '登記表・預期需要複審：',
@@ -4114,8 +4146,8 @@ const MUTATIONS = [
     name: 'RG：有登記表也不用',
     why: '退回對原始碼字面檢查：樣板在迴圈裡長出幾條斷言看不出來，GV 那種歧義就漏掉。',
     file: 'scripts/mutjudge.mjs',
-    find: '  if (reg) {\n    const probs = registryProblems(mut, reg);',
-    replace: '  if (false) {\n    const probs = registryProblems(mut, reg);',
+    find: '  if (reg) {\n    const probs = registryProblems(mut, reg, stamps);',
+    replace: '  if (false) {\n    const probs = registryProblems(mut, reg, stamps);',
     test: 'checkmutations',
     expect: '登記表・有表就對表檢查：',
     alsoRed: ['突變都還有效・find 剛好一次：', '每一條 expect 都是對應測試原始碼裡的一段字面'],
@@ -4313,7 +4345,9 @@ if (CHANGED) {
 // 只列不跑：node scripts/mutationtest.mjs --changed --list（秒級；不跑基準、不改任何檔）。印出挑了幾條、為什麼全跑，然後結束。
 if (process.argv.includes('--list')) {
   section('只列不跑（--list）');
-  note(`這次會跑 ${SELECTED.length}/${MUTATIONS.length} 條、跳過 ${MUTATIONS.length - SELECTED.length} 條；涵蓋 ${new Set(SELECTED.map((m) => m.test)).size} 支測試`);
+  // 跳過的直接數（§5.21 第 2 條：不要用總數減出來）
+  const skipped = MUTATIONS.filter((m) => !SELECTED.includes(m)).length;
+  note(`這次會跑 ${SELECTED.length}/${MUTATIONS.length} 條、跳過 ${skipped} 條（直接數的）；涵蓋 ${new Set(SELECTED.map((m) => m.test)).size} 支測試`);
   for (const t of [...new Set(SELECTED.map((m) => m.test))].sort()) note(`  ${t}：${SELECTED.filter((m) => m.test === t).length} 條`);
   done('mutationtest');
   // done() 只在有失敗時才結束程序；這裡一定要停，不然會往下跑基準（2026-10-03 第一版就這樣在 clone 裡跑了 60 秒的基準）
@@ -4333,6 +4367,17 @@ for (const t of BASELINE_TESTS) {
     ran ? r.out.split('\n').filter((l) => l.includes('✗')).join('\n      ')
       : `【情境未成立】${r.timedOut ? `逾時（${(TEST_TIMEOUT[t] ?? 180000) / 1000} 秒）` : `沒有 ${t} 自己的結算行（崩潰或沒跑起來）`}`)) {
     baselineOk = false;
+  }
+  // 預期需要複審（2026-10-03，JLPT 提出、Dispatch 給的做法）：這一場基準實跑出來的斷言母體，跟登記表那一版比。
+  // 測試新增或改了斷言、卻沒重建登記表，舊預期會靜默繼續通過——在這裡變成看得見：獨立的訊息，點名哪一支、幾條預期。
+  // （突變照跑：預期可能還是對的，要人複審後重建登記表、重戳。）
+  const reg = ran ? loadRegistry(t) : null;
+  if (reg) {
+    const now = versionOf(assertionNames(r.out));
+    const n = SELECTED.filter((m) => m.test === t && m.expect).length;
+    ok(now === reg.version, `（前提）斷言登記表跟這一場基準一致：${t}`,
+      `【預期需要複審】登記表是 ${reg.version}，這一場基準實跑出來是 ${now}——${t} 的斷言母體變了，它的 ${n} 條預期要複審，`
+      + `然後 node scripts/assertreg.mjs build／stamp ${t} 重建、重戳`);
   }
 }
 if (!baselineOk) {
@@ -4365,7 +4410,7 @@ for (const mut of SELECTED) {
   // 預期清單過期（2026-10-03，TripQuest 同日）：expect／alsoRed 在測試原始碼裡已經找不到——斷言訊息改了、斷言拿掉了。
   // 以前照跑，結果是「紅錯地方」，跟「不如預期」長得一樣，很容易被讀成程式有問題、去修一個沒壞的東西。
   // 所以不跑、用獨立的訊息與獨立的計數報出來。
-  const expProbs = expectProblems(mut, (rel) => (fs.existsSync(path.join(ROOT, rel)) ? readRel(rel) : null), loadRegistry(mut.test));
+  const expProbs = expectProblems(mut, (rel) => (fs.existsSync(path.join(ROOT, rel)) ? readRel(rel) : null), loadRegistry(mut.test), loadStamps());
   if (expProbs.length) {
     tally.staleExpect += 1;
     ok(false, `${mut.name}`, `【預期清單過期】${expProbs.join('；')}——不是突變沒被抓到，是預期寫的那一條已經不在測試裡；這一條沒有跑`);

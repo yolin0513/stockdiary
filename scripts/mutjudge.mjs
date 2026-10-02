@@ -110,23 +110,24 @@ export const atMessageStart = (src, s) => ["'", '"', '`'].some((q) => src.includ
  *   · 對不到任何一條：表過期或預期寫錯
  *   · 預期需要複審：預期戳著寫它的時候那一版登記表（regStamp），版本變了（母體長大了）而預期沒跟上
  */
-export function registryProblems(mut, reg) {
+export function registryProblems(mut, reg, stamps = {}) {
   const probs = [];
+  const stamp = mut.regStamp ?? stamps[mut.name];   // 清單裡寫了的以清單為準，其餘看 docs/assertions/stamps.json
   const hits = reg.assertions.filter((a) => a.name.startsWith(mut.expect));
   if (hits.length === 0) probs.push(`expect「${mut.expect}」在斷言登記表 ${mut.test}（${reg.version}）裡對不到任何一條斷言`);
   else if (hits.length > 1) probs.push(`預期有歧義：expect「${mut.expect}」對應到 ${hits.length} 條斷言（${hits.slice(0, 5).map((a) => a.id).join('、')}${hits.length > 5 ? '…' : ''}）——隨便哪一條紅都會算過`);
-  if (mut.regStamp !== reg.version) probs.push(`預期需要複審：這條預期寫於斷言登記表 ${mut.regStamp ?? '（沒戳版本）'}，現在的登記表是 ${reg.version}`);
+  if (stamp !== reg.version) probs.push(`預期需要複審：這條預期寫於斷言登記表 ${stamp ?? '（沒戳版本）'}，現在的登記表是 ${reg.version}`);
   for (const a of Array.isArray(mut.alsoRed) ? mut.alsoRed : []) {
     if (typeof a === 'string' && a.trim() !== '' && !reg.assertions.some((x) => x.name.startsWith(a))) probs.push(`alsoRed「${a}」在斷言登記表 ${mut.test} 裡對不到任何一條斷言`);
   }
   return probs;
 }
 
-export function expectProblems(mut, read, reg = null) {
+export function expectProblems(mut, read, reg = null, stamps = {}) {
   if (mut.expect == null) return [];
   if (typeof mut.expect !== 'string' || mut.expect.trim() === '') return ['expect 是空的'];
   if (reg) {
-    const probs = registryProblems(mut, reg);
+    const probs = registryProblems(mut, reg, stamps);
     if (mut.alsoRed != null && (typeof mut.alsoRedWhy !== 'string' || mut.alsoRedWhy.trim().length < 6)) probs.push('有 alsoRed 就要寫 alsoRedWhy（為什麼會連帶紅別組）');
     return probs;
   }

@@ -34,6 +34,9 @@ export const versionOf = (names) => `${names.length}:${crypto.createHash('sha256
 /** 建表；名稱重複或沒跑完就丟例外（不建一份不可信的表）。 */
 export function buildRegistry(test, out) {
   if (!hasSummary(out, test)) throw new Error(`${test} 這一份輸出沒有它自己的結算行（沒跑完），不建表`);
+  // 要全綠才建（2026-10-03：第一版只認結算行，一場有斷言紅了的輸出照樣建了表——結算行在紅的時候也會印）
+  const summary = String(out).replace(/\r/g, '').split('\n').find((l) => l.startsWith(`${test}：`) && /^\d+ 項通過/.test(l.slice(test.length + 1))) ?? '';
+  if (/項失敗/.test(summary)) throw new Error(`${test} 這一場不是全綠（${summary.trim()}），不建表`);
   const names = assertionNames(out);
   if (!names.length) throw new Error(`${test} 的輸出裡一條斷言都沒有`);
   const seen = new Map();
@@ -52,13 +55,45 @@ export function loadRegistry(test, dir = REG_DIR) {
 /** 以 prefix 開頭的斷言（判定比的是開頭，所以對應到的就是這些）。 */
 export const matchesOf = (reg, prefix) => reg.assertions.filter((a) => a.name.startsWith(prefix));
 
-function main() {
+/**
+ * 預期的版本戳記（突變名稱 → 寫那條預期時的登記表版本）。突變清單裡寫了 regStamp 的以清單為準。
+ * 由 `assertreg stamp <測試>` 寫：只戳「剛好對到 1 條、alsoRed 都對得到」的——有問題的不戳，留著讓檢查報出來。
+ */
+export const STAMPS = path.join(REG_DIR, 'stamps.json');
+export function loadStamps(file = STAMPS) {
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+}
+
+async function main() {
   const [cmd, test, log] = process.argv.slice(2);
-  if (cmd !== 'build' || !test || !log) { console.error('用法：node scripts/assertreg.mjs build <測試名> <log>'); process.exit(2); }
-  const reg = buildRegistry(test, fs.readFileSync(log, 'utf8'));
-  fs.mkdirSync(REG_DIR, { recursive: true });
-  fs.writeFileSync(path.join(REG_DIR, `${test}.json`), JSON.stringify(reg, null, 1) + '\n');
-  console.log(`斷言登記表：${test} ${reg.count} 條、版本 ${reg.version} → docs/assertions/${test}.json`);
+  if (cmd === 'build' && test && log) {
+    const reg = buildRegistry(test, fs.readFileSync(log, 'utf8'));
+    fs.mkdirSync(REG_DIR, { recursive: true });
+    fs.writeFileSync(path.join(REG_DIR, `${test}.json`), JSON.stringify(reg, null, 1) + '\n');
+    console.log(`斷言登記表：${test} ${reg.count} 條、版本 ${reg.version} → docs/assertions/${test}.json`);
+    return;
+  }
+  if (cmd === 'stamp' && test) {
+    // 複審完才戳：每一條帶 expect、測試是這一支的突變，剛好對到 1 條、alsoRed 都對得到，才記下這一版
+    const { loadMutations } = await import('./mutjudge.mjs');
+    const reg = loadRegistry(test);
+    if (!reg) { console.error(`${test} 沒有斷言登記表，先 build`); process.exit(1); }
+    const ver = /APP_VERSION = '([^']+)'/.exec(fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8'))[1];
+    const muts = loadMutations(fs.readFileSync(path.join(ROOT, 'scripts/mutationtest.mjs'), 'utf8'), ver).filter((m) => m.test === test && m.expect);
+    const stamps = loadStamps();
+    const skipped = [];
+    let stamped = 0;
+    for (const m of muts) {
+      const one = matchesOf(reg, m.expect).length === 1;
+      const also = (m.alsoRed || []).every((a) => matchesOf(reg, a).length > 0);
+      if (one && also) { stamps[m.name] = reg.version; stamped += 1; } else skipped.push(`${m.name}（${one ? 'alsoRed 對不到' : `對到 ${matchesOf(reg, m.expect).length} 條`}）`);
+    }
+    fs.writeFileSync(STAMPS, JSON.stringify(Object.fromEntries(Object.entries(stamps).sort()), null, 1) + '\n');
+    console.log(`戳記：${test} 帶 expect 的 ${muts.length} 條，戳了 ${stamped} 條（版本 ${reg.version}），沒戳 ${skipped.length} 條${skipped.length ? `：${skipped.join('、')}` : ''}`);
+    return;
+  }
+  console.error('用法：node scripts/assertreg.mjs build <測試名> <log>｜stamp <測試名>');
+  process.exit(2);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

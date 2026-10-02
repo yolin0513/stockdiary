@@ -1,0 +1,411 @@
+{
+ "test": "settletest",
+ "version": "101:b6bcee107170",
+ "count": 101,
+ "assertions": [
+  {
+   "id": "settletest#1",
+   "name": "2450 元"
+  },
+  {
+   "id": "settletest#2",
+   "name": "每股配息 0.125 元"
+  },
+  {
+   "id": "settletest#3",
+   "name": "負數"
+  },
+  {
+   "id": "settletest#4",
+   "name": "半個微元往上進位"
+  },
+  {
+   "id": "settletest#5",
+   "name": "負的半微元往下（遠離零）"
+  },
+  {
+   "id": "settletest#6",
+   "name": "無效輸入回 null（檢查了 6 項）"
+  },
+  {
+   "id": "settletest#7",
+   "name": "（對照）浮點數上 0.1 + 0.2 確實不等於 0.3"
+  },
+  {
+   "id": "settletest#8",
+   "name": "微元上 0.1 + 0.2 就是 0.3"
+  },
+  {
+   "id": "settletest#9",
+   "name": "0.1 加十次剛好是 1 元"
+  },
+  {
+   "id": "settletest#10",
+   "name": "（對照）浮點數加十次 0.1 不等於 1"
+  },
+  {
+   "id": "settletest#11",
+   "name": "總和裡有「不知道」就整個回 null，不當成 0 加進去"
+  },
+  {
+   "id": "settletest#12",
+   "name": "1000 股 × 2.5 元 = 2500 元"
+  },
+  {
+   "id": "settletest#13",
+   "name": "1234.4 → 1234"
+  },
+  {
+   "id": "settletest#14",
+   "name": "1234.5 → 1235"
+  },
+  {
+   "id": "settletest#15",
+   "name": "-1234.5 → -1235"
+  },
+  {
+   "id": "settletest#16",
+   "name": "一元是一百萬微元"
+  },
+  {
+   "id": "settletest#17",
+   "name": "一般日用前一交易日收盤"
+  },
+  {
+   "id": "settletest#18",
+   "name": "沒有前收就用「今收 − 漲跌價差」倒推"
+  },
+  {
+   "id": "settletest#19",
+   "name": "除權息日用參考價"
+  },
+  {
+   "id": "settletest#20",
+   "name": "除權息日拿不到參考價 → null，**不退回前一日收盤**（退回去會生出等於息值的假虧損）"
+  },
+  {
+   "id": "settletest#21",
+   "name": "什麼都沒有 → null"
+  },
+  {
+   "id": "settletest#22",
+   "name": "證交所公布的 → source 是 refPrice"
+  },
+  {
+   "id": "settletest#23",
+   "name": "依公式推導的 → source 是 refPriceDerived"
+  },
+  {
+   "id": "settletest#24",
+   "name": "兩者的 source 不一樣 —— 畫面才標得出來"
+  },
+  {
+   "id": "settletest#25",
+   "name": "推導不出來時仍然是 null —— **不會因為「有嘗試推導」就退回用前收**"
+  },
+  {
+   "id": "settletest#26",
+   "name": "證交所公布的文案"
+  },
+  {
+   "id": "settletest#27",
+   "name": "推導的文案有標示「試算」"
+  },
+  {
+   "id": "settletest#28",
+   "name": "推導的文案一定要有「試算」兩個字，使用者才知道這不是證交所直接給的"
+  },
+  {
+   "id": "settletest#29",
+   "name": "兩種都算「除息調整過」（檢查了 2 項）"
+  },
+  {
+   "id": "settletest#30",
+   "name": "一般日的基準價不算除息調整（檢查了 3 項）"
+  },
+  {
+   "id": "settletest#31",
+   "name": "「算不出基準價」的判斷有對照組（正例 3、反例 3）"
+  },
+  {
+   "id": "settletest#32",
+   "name": "當日損益 −14,000 元"
+  },
+  {
+   "id": "settletest#33",
+   "name": "市值 2,952,000 元"
+  },
+  {
+   "id": "settletest#34",
+   "name": "算進去 2 檔"
+  },
+  {
+   "id": "settletest#35",
+   "name": "排除 1 檔不支援報價"
+  },
+  {
+   "id": "settletest#36",
+   "name": "沒有「尚未取得」的"
+  },
+  {
+   "id": "settletest#37",
+   "name": "總和旁邊的文案"
+  },
+  {
+   "id": "settletest#38",
+   "name": "2330 單檔 −15,000"
+  },
+  {
+   "id": "settletest#39",
+   "name": "2317 單檔 +1,000"
+  },
+  {
+   "id": "settletest#40",
+   "name": "狀態是「不支援報價」"
+  },
+  {
+   "id": "settletest#41",
+   "name": "不支援報價：有對應的畫面文字"
+  },
+  {
+   "id": "settletest#42",
+   "name": "收盤價、基準價、損益、市值、股利全部是 null（檢查了 5 項）"
+  },
+  {
+   "id": "settletest#43",
+   "name": "所有不支援的列都沒有價格（檢查了 1 項）"
+  },
+  {
+   "id": "settletest#44",
+   "name": "價格部分是 0（股價跌的正好是息值）"
+  },
+  {
+   "id": "settletest#45",
+   "name": "應收股利 5,000 元"
+  },
+  {
+   "id": "settletest#46",
+   "name": "當日損益 +5,000 元（含股利）"
+  },
+  {
+   "id": "settletest#47",
+   "name": "基準價來自除權息參考價"
+  },
+  {
+   "id": "settletest#48",
+   "name": "關掉「含應收股利」時當日損益是 0"
+  },
+  {
+   "id": "settletest#49",
+   "name": "但股利金額還是算得出來，只是沒加進去"
+  },
+  {
+   "id": "settletest#50",
+   "name": "價格部分不是 −5,000（那是用錯基準價的結果）"
+  },
+  {
+   "id": "settletest#51",
+   "name": "含股利的當日損益不是 0（那也是用錯基準價的結果）"
+  },
+  {
+   "id": "settletest#52",
+   "name": "狀態是「除權息日，尚未取得參考價」"
+  },
+  {
+   "id": "settletest#53",
+   "name": "案例 C 除息日沒有參考價：有對應的畫面文字"
+  },
+  {
+   "id": "settletest#54",
+   "name": "案例 C：當日損益是 null"
+  },
+  {
+   "id": "settletest#55",
+   "name": "不是 −5,000（用前一日收盤當基準的假虧損）"
+  },
+  {
+   "id": "settletest#56",
+   "name": "也不是 0"
+  },
+  {
+   "id": "settletest#57",
+   "name": "沒有任何一檔算得出來"
+  },
+  {
+   "id": "settletest#58",
+   "name": "算成「尚未取得」1 檔"
+  },
+  {
+   "id": "settletest#59",
+   "name": "但市值算得出來（1000 × 2250）—— 市值不需要基準價"
+  },
+  {
+   "id": "settletest#60",
+   "name": "案例 D：當日損益是 null"
+  },
+  {
+   "id": "settletest#61",
+   "name": "不是 0 —— 顯示 0 會讓使用者以為今天沒賺沒賠"
+  },
+  {
+   "id": "settletest#62",
+   "name": "市值也是 null"
+  },
+  {
+   "id": "settletest#63",
+   "name": "一檔都沒算"
+  },
+  {
+   "id": "settletest#64",
+   "name": "兩檔都是「尚未取得」"
+  },
+  {
+   "id": "settletest#65",
+   "name": "文案講清楚"
+  },
+  {
+   "id": "settletest#66",
+   "name": "每一列都沒有價格也沒有損益（檢查了 2 項）"
+  },
+  {
+   "id": "settletest#67",
+   "name": "當日損益是 null，不是 0"
+  },
+  {
+   "id": "settletest#68",
+   "name": "市值是 null，不是 0"
+  },
+  {
+   "id": "settletest#69",
+   "name": "沒有任何排除就不顯示「不含」那行"
+  },
+  {
+   "id": "settletest#70",
+   "name": "當日損益 null"
+  },
+  {
+   "id": "settletest#71",
+   "name": "市值 null"
+  },
+  {
+   "id": "settletest#72",
+   "name": "硬塞的報價沒有被採用"
+  },
+  {
+   "id": "settletest#73",
+   "name": "文案"
+  },
+  {
+   "id": "settletest#74",
+   "name": "只算得出 2330 的 −15,000"
+  },
+  {
+   "id": "settletest#75",
+   "name": "算進去 1 檔"
+  },
+  {
+   "id": "settletest#76",
+   "name": "1 檔尚未取得"
+  },
+  {
+   "id": "settletest#77",
+   "name": "文案講清楚少了什麼"
+  },
+  {
+   "id": "settletest#78",
+   "name": "市值也只含 2330"
+  },
+  {
+   "id": "settletest#79",
+   "name": "基準價是倒推出來的"
+  },
+  {
+   "id": "settletest#80",
+   "name": "當日損益剛好 50 元，一分不差"
+  },
+  {
+   "id": "settletest#81",
+   "name": "轉回元也是 50"
+  },
+  {
+   "id": "settletest#82",
+   "name": "總和剛好 1 元（浮點數相加會是 0.9999999999999999）"
+  },
+  {
+   "id": "settletest#83",
+   "name": "休市日不會憑空生出當日損益"
+  },
+  {
+   "id": "settletest#84",
+   "name": "沒有任何一檔填了均價 → null"
+  },
+  {
+   "id": "settletest#85",
+   "name": "成本也是 null"
+  },
+  {
+   "id": "settletest#86",
+   "name": "報酬率也是 null"
+  },
+  {
+   "id": "settletest#87",
+   "name": "有填均價的檔數是 0"
+  },
+  {
+   "id": "settletest#88",
+   "name": "也不顯示「僅含 N 檔」"
+  },
+  {
+   "id": "settletest#89",
+   "name": "整組都是 null —— 畫面上不該出現任何未實現數字（檢查了 4 項）"
+  },
+  {
+   "id": "settletest#90",
+   "name": "未實現 +1,450,000 元"
+  },
+  {
+   "id": "settletest#91",
+   "name": "成本 1,000,000 元"
+  },
+  {
+   "id": "settletest#92",
+   "name": "報酬率 145%"
+  },
+  {
+   "id": "settletest#93",
+   "name": "只有 1 檔有填均價"
+  },
+  {
+   "id": "settletest#94",
+   "name": "而且只有 2330"
+  },
+  {
+   "id": "settletest#95",
+   "name": "文案講清楚只含哪些"
+  },
+  {
+   "id": "settletest#96",
+   "name": "不支援報價的持股就算填了均價也不算進去"
+  },
+  {
+   "id": "settletest#97",
+   "name": "成本 1,400,000"
+  },
+  {
+   "id": "settletest#98",
+   "name": "市值 2,952,000"
+  },
+  {
+   "id": "settletest#99",
+   "name": "未實現 +1,552,000"
+  },
+  {
+   "id": "settletest#100",
+   "name": "全部都填了就不顯示「僅含 N 檔」"
+  },
+  {
+   "id": "settletest#101",
+   "name": "沒有收盤價就算不出未實現，回 null 不回 0"
+  }
+ ]
+}

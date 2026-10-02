@@ -1,0 +1,131 @@
+{
+ "test": "fmttest",
+ "version": "31:3c3ea3d33ed0",
+ "count": 31,
+ "assertions": [
+  {
+   "id": "fmttest#1",
+   "name": "沒有值的顯示符號是全形破折號"
+  },
+  {
+   "id": "fmttest#2",
+   "name": "fmtMoney 對所有「沒有值」回「—」（檢查了 8 項）"
+  },
+  {
+   "id": "fmttest#3",
+   "name": "fmtPrice 對所有「沒有值」回「—」（檢查了 8 項）"
+  },
+  {
+   "id": "fmttest#4",
+   "name": "fmtPct 對所有「沒有值」回「—」（檢查了 8 項）"
+  },
+  {
+   "id": "fmttest#5",
+   "name": "fmtShares 對所有「沒有值」回「—」（檢查了 8 項）"
+  },
+  {
+   "id": "fmttest#6",
+   "name": "「沒有值」的輸出裡不含任何數字（檢查了 8 項）"
+  },
+  {
+   "id": "fmttest#7",
+   "name": "百分比也是（檢查了 8 項）"
+  },
+  {
+   "id": "fmttest#8",
+   "name": "金額 0 顯示成 0"
+  },
+  {
+   "id": "fmttest#9",
+   "name": "報酬率 0 顯示成 0.00%"
+  },
+  {
+   "id": "fmttest#10",
+   "name": "價格 0 顯示成 0.00"
+  },
+  {
+   "id": "fmttest#11",
+   "name": "真的是 0 不能顯示成「—」—— 不然這個測試分不出兩者"
+  },
+  {
+   "id": "fmttest#12",
+   "name": "「沒有值」與「值是 0」分得開（正例 3、反例 4）"
+  },
+  {
+   "id": "fmttest#13",
+   "name": "千分位"
+  },
+  {
+   "id": "fmttest#14",
+   "name": "百萬"
+  },
+  {
+   "id": "fmttest#15",
+   "name": "負數帶負號"
+  },
+  {
+   "id": "fmttest#16",
+   "name": "sign 開啟時正數帶正號"
+  },
+  {
+   "id": "fmttest#17",
+   "name": "sign 開啟時負數還是負號"
+  },
+  {
+   "id": "fmttest#18",
+   "name": "0 不加正號"
+  },
+  {
+   "id": "fmttest#19",
+   "name": "金額四捨五入到元"
+  },
+  {
+   "id": "fmttest#20",
+   "name": "負金額也四捨五入到元"
+  },
+  {
+   "id": "fmttest#21",
+   "name": "價格固定兩位小數"
+  },
+  {
+   "id": "fmttest#22",
+   "name": "個位數價格"
+  },
+  {
+   "id": "fmttest#23",
+   "name": "每股配息 0.125 顯示 0.13（兩位小數）"
+  },
+  {
+   "id": "fmttest#24",
+   "name": "負報酬率"
+  },
+  {
+   "id": "fmttest#25",
+   "name": "正報酬率帶正號、兩位小數"
+  },
+  {
+   "id": "fmttest#26",
+   "name": "股數千分位"
+  },
+  {
+   "id": "fmttest#27",
+   "name": "0 股就是 0 股"
+  },
+  {
+   "id": "fmttest#28",
+   "name": "股數四捨五入成整數"
+  },
+  {
+   "id": "fmttest#29",
+   "name": "ISO 日期顯示成 M/D"
+  },
+  {
+   "id": "fmttest#30",
+   "name": "不補零"
+  },
+  {
+   "id": "fmttest#31",
+   "name": "壞掉的日期顯示「—」，不顯示今天（檢查了 6 項）"
+  }
+ ]
+}

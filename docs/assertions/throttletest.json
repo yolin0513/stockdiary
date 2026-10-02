@@ -1,0 +1,91 @@
+{
+ "test": "throttletest",
+ "version": "21:ab1f90a5e411",
+ "count": 21,
+ "assertions": [
+  {
+   "id": "throttletest#1",
+   "name": "最小間隔是 2 秒（FEASIBILITY §1.2：3 次／5 秒會被封 IP）"
+  },
+  {
+   "id": "throttletest#2",
+   "name": "一次開頁最多 30 個請求（PLAN §2.3）"
+  },
+  {
+   "id": "throttletest#3",
+   "name": "五個請求都送出去了"
+  },
+  {
+   "id": "throttletest#4",
+   "name": "每一段間隔都 >= 120 ms（檢查了 4 項）"
+  },
+  {
+   "id": "throttletest#5",
+   "name": "沒有任何一段偷跑（檢查了 4 項）"
+  },
+  {
+   "id": "throttletest#6",
+   "name": "五個請求至少花了 480 ms"
+  },
+  {
+   "id": "throttletest#7",
+   "name": "計數正確"
+  },
+  {
+   "id": "throttletest#8",
+   "name": "五個都送出去了"
+  },
+  {
+   "id": "throttletest#9",
+   "name": "同時發出時每一段間隔還是 >= 120 ms（檢查了 4 項）"
+  },
+  {
+   "id": "throttletest#10",
+   "name": "第一個請求馬上送出（花了 0 ms）"
+  },
+  {
+   "id": "throttletest#11",
+   "name": "額度用完"
+  },
+  {
+   "id": "throttletest#12",
+   "name": "超過上限時丟 BudgetExceededError"
+  },
+  {
+   "id": "throttletest#13",
+   "name": "訊息告訴使用者接下來會怎樣：「這次已經向證交所查詢 3 次，先停在這裡。稍後再開一次 App 會接著補。」"
+  },
+  {
+   "id": "throttletest#14",
+   "name": "第四個請求真的沒有送出去"
+  },
+  {
+   "id": "throttletest#15",
+   "name": "失敗的那個把錯誤丟給呼叫端"
+  },
+  {
+   "id": "throttletest#16",
+   "name": "後面的請求照樣送得出去"
+  },
+  {
+   "id": "throttletest#17",
+   "name": "503 丟錯：「https://example.test/x → HTTP 503」"
+  },
+  {
+   "id": "throttletest#18",
+   "name": "全市場當日收盤"
+  },
+  {
+   "id": "throttletest#19",
+   "name": "個股當月逐日"
+  },
+  {
+   "id": "throttletest#20",
+   "name": "月份鍵"
+  },
+  {
+   "id": "throttletest#21",
+   "name": "日期用西元 yyyymmdd，不是民國"
+  }
+ ]
+}

@@ -1,0 +1,339 @@
+{
+ "test": "roctest",
+ "version": "83:0ca3cd37ff03",
+ "count": 83,
+ "assertions": [
+  {
+   "id": "roctest#1",
+   "name": "STOCK_DAY_ALL 的 7 碼格式"
+  },
+  {
+   "id": "roctest#2",
+   "name": "民國 99 年（7 碼補零）"
+  },
+  {
+   "id": "roctest#3",
+   "name": "民國 99 年（6 碼）"
+  },
+  {
+   "id": "roctest#4",
+   "name": "STOCK_DAY 的斜線格式"
+  },
+  {
+   "id": "roctest#5",
+   "name": "月日沒補零也要能解"
+  },
+  {
+   "id": "roctest#6",
+   "name": "中文年月日格式"
+  },
+  {
+   "id": "roctest#7",
+   "name": "anyRocToISO 認得中文格式"
+  },
+  {
+   "id": "roctest#8",
+   "name": "anyRocToISO 認得斜線格式"
+  },
+  {
+   "id": "roctest#9",
+   "name": "anyRocToISO 認得緊湊格式"
+  },
+  {
+   "id": "roctest#10",
+   "name": "壞掉的民國日期回 null（檢查了 10 項）"
+  },
+  {
+   "id": "roctest#11",
+   "name": "民國 115 年 2 月 30 日不存在 → null"
+  },
+  {
+   "id": "roctest#12",
+   "name": "2026 不是閏年，2/29 不存在 → null"
+  },
+  {
+   "id": "roctest#13",
+   "name": "2024 是閏年，2/29 存在"
+  },
+  {
+   "id": "roctest#14",
+   "name": "ISO → 7 碼民國"
+  },
+  {
+   "id": "roctest#15",
+   "name": "ISO → 斜線民國"
+  },
+  {
+   "id": "roctest#16",
+   "name": "ISO → 查詢參數用的 yyyymmdd"
+  },
+  {
+   "id": "roctest#17",
+   "name": "不合法的 ISO 回 null"
+  },
+  {
+   "id": "roctest#18",
+   "name": "不存在的日期回 null"
+  },
+  {
+   "id": "roctest#19",
+   "name": "緊湊格式來回轉回得去（檢查了 4 項）"
+  },
+  {
+   "id": "roctest#20",
+   "name": "斜線格式來回轉回得去（檢查了 4 項）"
+  },
+  {
+   "id": "roctest#21",
+   "name": "早上七點半仍然是 9/11"
+  },
+  {
+   "id": "roctest#22",
+   "name": "（對照）toISOString() 在這個時刻確實會給出不同的日期，所以不能用它"
+  },
+  {
+   "id": "roctest#23",
+   "name": "跨年前一分鐘仍然是 12/31"
+  },
+  {
+   "id": "roctest#24",
+   "name": "9/11 週五是交易日"
+  },
+  {
+   "id": "roctest#25",
+   "name": "9/12 週六不是交易日"
+  },
+  {
+   "id": "roctest#26",
+   "name": "9/25 中秋節不是交易日"
+  },
+  {
+   "id": "roctest#27",
+   "name": "日曆沒涵蓋的年份回 null，不是 false"
+  },
+  {
+   "id": "roctest#28",
+   "name": "2027 年不在這份日曆裡"
+  },
+  {
+   "id": "roctest#29",
+   "name": "休市判斷有對照組（正例 4、反例 4）"
+  },
+  {
+   "id": "roctest#30",
+   "name": "9/11 的前一交易日是 9/10"
+  },
+  {
+   "id": "roctest#31",
+   "name": "週一的前一交易日是上週五，不是週日"
+  },
+  {
+   "id": "roctest#32",
+   "name": "連假後第一天的前一交易日跨過 9/25 與 9/28"
+  },
+  {
+   "id": "roctest#33",
+   "name": "日曆最前面一天沒有前一交易日 → null"
+  },
+  {
+   "id": "roctest#34",
+   "name": "區間內的交易日不含休市日"
+  },
+  {
+   "id": "roctest#35",
+   "name": "交易日盤中 → 最新應有收盤是昨天"
+  },
+  {
+   "id": "roctest#36",
+   "name": "門檻前一分鐘 → 還是昨天"
+  },
+  {
+   "id": "roctest#37",
+   "name": "剛好到門檻 → 今天"
+  },
+  {
+   "id": "roctest#38",
+   "name": "晚上 → 今天"
+  },
+  {
+   "id": "roctest#39",
+   "name": "週六晚上 → 最後一個交易日是週五"
+  },
+  {
+   "id": "roctest#40",
+   "name": "中秋節晚上 → 9/24"
+  },
+  {
+   "id": "roctest#41",
+   "name": "門檻設定壞掉 → 回 null，不要自己選一天"
+  },
+  {
+   "id": "roctest#42",
+   "name": "收盤後、門檻前 → 今日收盤尚未公布"
+  },
+  {
+   "id": "roctest#43",
+   "name": "過了門檻就不是「尚未公布」"
+  },
+  {
+   "id": "roctest#44",
+   "name": "週六不是「今日收盤尚未公布」，是休市"
+  },
+  {
+   "id": "roctest#45",
+   "name": "中秋節不是「尚未公布」，是休市"
+  },
+  {
+   "id": "roctest#46",
+   "name": "15:00 是第 900 分鐘"
+  },
+  {
+   "id": "roctest#47",
+   "name": "00:00 是第 0 分鐘"
+  },
+  {
+   "id": "roctest#48",
+   "name": "一位數小時也要能解"
+  },
+  {
+   "id": "roctest#49",
+   "name": "壞掉的時間字串回 null（檢查了 7 項）"
+  },
+  {
+   "id": "roctest#50",
+   "name": "只差一天"
+  },
+  {
+   "id": "roctest#51",
+   "name": "跨連假的缺漏日不含 9/25 與 9/28"
+  },
+  {
+   "id": "roctest#52",
+   "name": "已經結算到今天就沒有缺漏"
+  },
+  {
+   "id": "roctest#53",
+   "name": "從來沒結算過時只回今天 —— 不要一次回補一整年（會被 TWSE 封 IP）"
+  },
+  {
+   "id": "roctest#54",
+   "name": "整個月的缺漏日裡沒有任何一天是休市日（檢查了 15 項）"
+  },
+  {
+   "id": "roctest#55",
+   "name": "兩個年份都讀進來了"
+  },
+  {
+   "id": "roctest#56",
+   "name": "交易日合併成一串，而且是排序好的"
+  },
+  {
+   "id": "roctest#57",
+   "name": "跨年份的日曆沒有單一「年份」—— 畫面要講範圍，不能講某一年"
+  },
+  {
+   "id": "roctest#58",
+   "name": "涵蓋 2026"
+  },
+  {
+   "id": "roctest#59",
+   "name": "也涵蓋 2027"
+  },
+  {
+   "id": "roctest#60",
+   "name": "2028 不在裡面"
+  },
+  {
+   "id": "roctest#61",
+   "name": "2025 也不在裡面"
+  },
+  {
+   "id": "roctest#62",
+   "name": "2027 第一個交易日的前一個交易日是 2026-12-31（跨年接得起來）"
+  },
+  {
+   "id": "roctest#63",
+   "name": "2027-01-04 是交易日"
+  },
+  {
+   "id": "roctest#64",
+   "name": "2027-01-01 不是（元旦）"
+  },
+  {
+   "id": "roctest#65",
+   "name": "跨年的區間也算得出來"
+  },
+  {
+   "id": "roctest#66",
+   "name": "跨年的缺漏日回補得出來（以前這裡會是空的）"
+  },
+  {
+   "id": "roctest#67",
+   "name": "（對照）只有 2026 的日曆涵蓋不到 2027"
+  },
+  {
+   "id": "roctest#68",
+   "name": "（對照）所以跨年那一步只能回 null"
+  },
+  {
+   "id": "roctest#69",
+   "name": "（對照）缺漏日也是空的 —— 這正是跨年停擺的樣子"
+  },
+  {
+   "id": "roctest#70",
+   "name": "最後一天當天剩 0 天"
+  },
+  {
+   "id": "roctest#71",
+   "name": "11/16 剩 45 天"
+  },
+  {
+   "id": "roctest#72",
+   "name": "11/17 剩 44 天"
+  },
+  {
+   "id": "roctest#73",
+   "name": "剛好 45 天就開始提醒"
+  },
+  {
+   "id": "roctest#74",
+   "name": "46 天的時候還不提醒"
+  },
+  {
+   "id": "roctest#75",
+   "name": "今天（9/17，剩 105 天）不提醒"
+  },
+  {
+   "id": "roctest#76",
+   "name": "已經過期就是負的"
+  },
+  {
+   "id": "roctest#77",
+   "name": "過期了當然要提醒"
+  },
+  {
+   "id": "roctest#78",
+   "name": "講得出涵蓋到哪一天"
+  },
+  {
+   "id": "roctest#79",
+   "name": "門檻放寬到 200 天，9/17 就會提醒了"
+  },
+  {
+   "id": "roctest#80",
+   "name": "門檻收緊到 10 天，11/16 就不提醒了"
+  },
+  {
+   "id": "roctest#81",
+   "name": "沒有日曆就回 null，不要猜一個天數出來"
+  },
+  {
+   "id": "roctest#82",
+   "name": "有 2027 的話，看的是 2027 的最後一天"
+  },
+  {
+   "id": "roctest#83",
+   "name": "補上 2027 之後，11/16 就不必再提醒了"
+  }
+ ]
+}

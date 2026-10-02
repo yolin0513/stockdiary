@@ -1,0 +1,183 @@
+{
+ "test": "plcaltest",
+ "version": "44:c9e0a72a554e",
+ "count": 44,
+ "assertions": [
+  {
+   "id": "plcaltest#1",
+   "name": "（前提）開休市日有資料：涵蓋 2026 年，243 個交易日"
+  },
+  {
+   "id": "plcaltest#2",
+   "name": "日曆狀態：有結算、算得出的日子 → value"
+  },
+  {
+   "id": "plcaltest#3",
+   "name": "日曆狀態：有結算但算不出（dayPL 是 null）→ uncomputable"
+  },
+  {
+   "id": "plcaltest#4",
+   "name": "日曆狀態：交易日、沒有紀錄、在最後一筆之前 → noData"
+  },
+  {
+   "id": "plcaltest#5",
+   "name": "日曆狀態：「算不出」與「無資料」顯示的字不一樣（算不出／無資料）"
+  },
+  {
+   "id": "plcaltest#6",
+   "name": "日曆狀態：交易日、在最後一筆結算之後、今天以前 → pending"
+  },
+  {
+   "id": "plcaltest#7",
+   "name": "日曆狀態：交易日沒有紀錄、但之後還有紀錄（中間漏了）→ noData，不是 pending"
+  },
+  {
+   "id": "plcaltest#8",
+   "name": "日曆狀態：週六 → closed"
+  },
+  {
+   "id": "plcaltest#9",
+   "name": "日曆狀態：國定假日（中秋）→ closed"
+  },
+  {
+   "id": "plcaltest#10",
+   "name": "日曆狀態：休市的名稱取自 data/calendar.json"
+  },
+  {
+   "id": "plcaltest#11",
+   "name": "日曆狀態：週末沒有名稱時寫週六／週日"
+  },
+  {
+   "id": "plcaltest#12",
+   "name": "日曆狀態：今天以後 → future"
+  },
+  {
+   "id": "plcaltest#13",
+   "name": "日曆狀態：有紀錄的日子照紀錄顯示，就算日曆說那天休市"
+  },
+  {
+   "id": "plcaltest#14",
+   "name": "（前提）九月裡有 23 格是沒有數字的狀態"
+  },
+  {
+   "id": "plcaltest#15",
+   "name": "日曆零值：沒有數字的每一格都顯示狀態字，不是 0、不是空白"
+  },
+  {
+   "id": "plcaltest#16",
+   "name": "日曆零值：沒有數字的格子 dayPL 是 null（不是被補成 0）"
+  },
+  {
+   "id": "plcaltest#17",
+   "name": "日曆零值：真的算出 0 的那天顯示 0（那是資料，不是沒資料）"
+  },
+  {
+   "id": "plcaltest#18",
+   "name": "日曆零值：無資料的字"
+  },
+  {
+   "id": "plcaltest#19",
+   "name": "日曆零值：算不出的字"
+  },
+  {
+   "id": "plcaltest#20",
+   "name": "日曆母體：九月有 4 筆紀錄（8/31、10/1 不算），畫出 4 格有資料"
+  },
+  {
+   "id": "plcaltest#21",
+   "name": "日曆母體：九月相等"
+  },
+  {
+   "id": "plcaltest#22",
+   "name": "日曆母體：九月畫出 30 天"
+  },
+  {
+   "id": "plcaltest#23",
+   "name": "日曆母體：月底（12/31）那一格畫得出來"
+  },
+  {
+   "id": "plcaltest#24",
+   "name": "日曆母體：跨年——十二月不含隔年一月的紀錄，而且相等"
+  },
+  {
+   "id": "plcaltest#25",
+   "name": "日曆母體：十二月的下一個月是隔年一月"
+  },
+  {
+   "id": "plcaltest#26",
+   "name": "日曆母體：一月的上一個月是前一年十二月"
+  },
+  {
+   "id": "plcaltest#27",
+   "name": "日曆母體：一般的下一個月"
+  },
+  {
+   "id": "plcaltest#28",
+   "name": "日曆母體：二月的天數（2028、2000 是閏年，2100 不是）"
+  },
+  {
+   "id": "plcaltest#29",
+   "name": "日曆母體：大月小月的天數"
+  },
+  {
+   "id": "plcaltest#30",
+   "name": "日曆母體：閏年二月畫出 29 天"
+  },
+  {
+   "id": "plcaltest#31",
+   "name": "日曆母體：閏年 2/29 的紀錄畫得出來"
+  },
+  {
+   "id": "plcaltest#32",
+   "name": "日曆母體：閏年二月相等"
+  },
+  {
+   "id": "plcaltest#33",
+   "name": "（對照）日曆母體：少畫月初那一天，母體檢查報不相等"
+  },
+  {
+   "id": "plcaltest#34",
+   "name": "（前提）開休市日沒有 2027 年"
+  },
+  {
+   "id": "plcaltest#35",
+   "name": "日曆未涵蓋：沒有紀錄的平日 → uncovered（不猜是不是交易日）"
+  },
+  {
+   "id": "plcaltest#36",
+   "name": "日曆未涵蓋：週末也標 uncovered（補班、休市都猜不得）"
+  },
+  {
+   "id": "plcaltest#37",
+   "name": "日曆未涵蓋：有結算紀錄的日子照樣顯示"
+  },
+  {
+   "id": "plcaltest#38",
+   "name": "日曆未涵蓋：顯示的字是「未涵蓋」，不是無資料、不是 0"
+  },
+  {
+   "id": "plcaltest#39",
+   "name": "2026-09-01 是週二（格子前面空兩格）"
+  },
+  {
+   "id": "plcaltest#40",
+   "name": "歷史的起點是最早那一筆"
+  },
+  {
+   "id": "plcaltest#41",
+   "name": "沒有紀錄時起點是 null"
+  },
+  {
+   "id": "plcaltest#42",
+   "name": "格子裡的金額：萬以上寫萬、正數帶 +、null 就是 null"
+  },
+  {
+   "id": "plcaltest#43",
+   "name": "日曆顏色：賺 v-up（紅）、賠 v-down（綠）、0 不上色、沒資料灰"
+  },
+  {
+   "id": "plcaltest#44",
+   "name": "算不出的原因講得出是哪一檔、缺什麼"
+  }
+ ]
+}

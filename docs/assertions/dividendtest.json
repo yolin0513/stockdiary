@@ -1,0 +1,511 @@
+{
+ "test": "dividendtest",
+ "version": "126:48c165f62709",
+ "count": 126,
+ "assertions": [
+  {
+   "id": "dividendtest#1",
+   "name": "「息」＝現金股利"
+  },
+  {
+   "id": "dividendtest#2",
+   "name": "「權」＝配股或現金增資"
+  },
+  {
+   "id": "dividendtest#3",
+   "name": "「權息」＝兩者都有"
+  },
+  {
+   "id": "dividendtest#4",
+   "name": "不認得的值回 null（檢查了 6 項）"
+  },
+  {
+   "id": "dividendtest#5",
+   "name": "判讀有對照組（正例 4、反例 4）"
+  },
+  {
+   "id": "dividendtest#6",
+   "name": "TWT48U 解析成功"
+  },
+  {
+   "id": "dividendtest#7",
+   "name": "72 筆"
+  },
+  {
+   "id": "dividendtest#8",
+   "name": "息 65、權 2、權息 5 —— 三種都有樣本"
+  },
+  {
+   "id": "dividendtest#9",
+   "name": "除權息日轉成 ISO（原始是「115年09月14日」）"
+  },
+  {
+   "id": "dividendtest#10",
+   "name": "00401A 是純除息"
+  },
+  {
+   "id": "dividendtest#11",
+   "name": "每股現金股利 0.125 元"
+  },
+  {
+   "id": "dividendtest#12",
+   "name": "沒有配股"
+  },
+  {
+   "id": "dividendtest#13",
+   "name": "1235 興泰是除權息"
+  },
+  {
+   "id": "dividendtest#14",
+   "name": "每股現金股利 0.5 元"
+  },
+  {
+   "id": "dividendtest#15",
+   "name": "無償配股率 0.04999999（每股配 0.05 股）"
+  },
+  {
+   "id": "dividendtest#16",
+   "name": "6830 汎銓是除權"
+  },
+  {
+   "id": "dividendtest#17",
+   "name": "沒有現金股利"
+  },
+  {
+   "id": "dividendtest#18",
+   "name": "也沒有無償配股"
+  },
+  {
+   "id": "dividendtest#19",
+   "name": "它是現金增資（配股率 0.10963641）"
+  },
+  {
+   "id": "dividendtest#20",
+   "name": "認購價 500 元"
+  },
+  {
+   "id": "dividendtest#21",
+   "name": "「權」不一定是配股 —— 也可能只是現金增資，兩者要分得開"
+  },
+  {
+   "id": "dividendtest#22",
+   "name": "每一筆的除權息日都是 ISO 日期（檢查了 72 項）"
+  },
+  {
+   "id": "dividendtest#23",
+   "name": "配息與配股率都不是負的（檢查了 72 項）"
+  },
+  {
+   "id": "dividendtest#24",
+   "name": "有配息待公告的筆：35 筆的配息金額還沒公告"
+  },
+  {
+   "id": "dividendtest#25",
+   "name": "這些筆的 cashPerShare 全部是 null，沒有一筆是 0（檢查了 35 項）"
+  },
+  {
+   "id": "dividendtest#26",
+   "name": "每一筆都帶得出原因（cashNote）（檢查了 35 項）"
+  },
+  {
+   "id": "dividendtest#27",
+   "name": "例如「待公告實際收益分配金額」"
+  },
+  {
+   "id": "dividendtest#28",
+   "name": "cashNote 裡沒有殘留的 HTML 標記（檢查了 35 項）"
+  },
+  {
+   "id": "dividendtest#29",
+   "name": "（對照）另外 37 筆有實際金額"
+  },
+  {
+   "id": "dividendtest#30",
+   "name": "有公告的都是數字（檢查了 37 項）"
+  },
+  {
+   "id": "dividendtest#31",
+   "name": "金額未公告的事件算不出預估金額（回 null，不是 0 元）（檢查了 5 項）"
+  },
+  {
+   "id": "dividendtest#32",
+   "name": "有筆數的認購價欄位是「尚未公告」→ null"
+  },
+  {
+   "id": "dividendtest#33",
+   "name": "TWT48U 欄位對不上 → 丟錯"
+  },
+  {
+   "id": "dividendtest#34",
+   "name": "查無資料回 ok=false"
+  },
+  {
+   "id": "dividendtest#35",
+   "name": "TWT49U 解析成功"
+  },
+  {
+   "id": "dividendtest#36",
+   "name": "6 筆"
+  },
+  {
+   "id": "dividendtest#37",
+   "name": "資料日期轉成 ISO"
+  },
+  {
+   "id": "dividendtest#38",
+   "name": "名稱"
+  },
+  {
+   "id": "dividendtest#39",
+   "name": "除權息前收盤價 19.55"
+  },
+  {
+   "id": "dividendtest#40",
+   "name": "除權息參考價 18.55"
+  },
+  {
+   "id": "dividendtest#41",
+   "name": "權值+息值 1.00"
+  },
+  {
+   "id": "dividendtest#42",
+   "name": "是除息"
+  },
+  {
+   "id": "dividendtest#43",
+   "name": "每一筆都有前收、參考價、權值息值（檢查了 6 項）"
+  },
+  {
+   "id": "dividendtest#44",
+   "name": "參考價都低於前收（除權息本來就會扣掉）（檢查了 6 項）"
+  },
+  {
+   "id": "dividendtest#45",
+   "name": "參考價逐筆對得上：2062 橋椿（cash）：19.55 − 1 = 18.55"
+  },
+  {
+   "id": "dividendtest#46",
+   "name": "參考價逐筆對得上：4912 聯德控股-KY（cash）：97.5 − 0.800477 = 96.69"
+  },
+  {
+   "id": "dividendtest#47",
+   "name": "參考價逐筆對得上：5906 台南-KY（both）：41.55 − 2.169048 = 39.38"
+  },
+  {
+   "id": "dividendtest#48",
+   "name": "參考價逐筆對得上：6504 南六（cash）：37.9 − 1 = 36.9"
+  },
+  {
+   "id": "dividendtest#49",
+   "name": "參考價逐筆對得上：9802 鈺齊-KY（cash）：71.2 − 3.1 = 68.1"
+  },
+  {
+   "id": "dividendtest#50",
+   "name": "參考價逐筆對得上：9906 欣巴巴（stock）：41.4 − 0.348374 = 41.05"
+  },
+  {
+   "id": "dividendtest#51",
+   "name": "六筆全部一致（檢查了 6 項）"
+  },
+  {
+   "id": "dividendtest#52",
+   "name": "（對照）前收跟參考價每一筆都不一樣，所以用錯基準價一定會算錯（檢查了 6 項）"
+  },
+  {
+   "id": "dividendtest#53",
+   "name": "96.699523 捨去成 96.69（不是四捨五入的 96.70）"
+  },
+  {
+   "id": "dividendtest#54",
+   "name": "沒有前收就回 null"
+  },
+  {
+   "id": "dividendtest#55",
+   "name": "沒有權值息值也回 null"
+  },
+  {
+   "id": "dividendtest#56",
+   "name": "TWT49U 欄位對不上 → 丟錯"
+  },
+  {
+   "id": "dividendtest#57",
+   "name": "有 6 筆配對樣本"
+  },
+  {
+   "id": "dividendtest#58",
+   "name": "三種都有：息 4、權 1、權息 1"
+  },
+  {
+   "id": "dividendtest#59",
+   "name": "2062 橋椿（cash）：前收 19.55、現金股利 1、配股率 0 → 18.55"
+  },
+  {
+   "id": "dividendtest#60",
+   "name": "4912 聯德控股-KY（cash）：前收 97.5、現金股利 0.800477、配股率 0 → 96.69"
+  },
+  {
+   "id": "dividendtest#61",
+   "name": "5906 台南-KY（both）：前收 41.55、現金股利 0.2、配股率 0.05000001 → 39.38"
+  },
+  {
+   "id": "dividendtest#62",
+   "name": "6504 南六（cash）：前收 37.9、現金股利 1、配股率 0 → 36.9"
+  },
+  {
+   "id": "dividendtest#63",
+   "name": "9802 鈺齊-KY（cash）：前收 71.2、現金股利 3.1、配股率 0 → 68.1"
+  },
+  {
+   "id": "dividendtest#64",
+   "name": "9906 欣巴巴（stock）：前收 41.4、現金股利 0、配股率 0.00848624 → 41.05"
+  },
+  {
+   "id": "dividendtest#65",
+   "name": "每一筆推導出來的參考價都跟證交所公布值一模一樣（檢查了 6 項）"
+  },
+  {
+   "id": "dividendtest#66",
+   "name": "（對照）把現金股利改成 0，每一筆都算不出公布的參考價（檢查了 5 項）"
+  },
+  {
+   "id": "dividendtest#67",
+   "name": "（對照）浮點數上 1 − 0.34 捨去到兩位會得到 0.65 —— 少一分"
+  },
+  {
+   "id": "dividendtest#68",
+   "name": "整數運算得到正確的 0.66"
+  },
+  {
+   "id": "dividendtest#69",
+   "name": "refPriceFromExValue 也是 0.66"
+  },
+  {
+   "id": "dividendtest#70",
+   "name": "其他幾個浮點數會出錯的組合也都算對（檢查了 4 項）"
+  },
+  {
+   "id": "dividendtest#71",
+   "name": "沒有前收 → null"
+  },
+  {
+   "id": "dividendtest#72",
+   "name": "配息還沒公告（null）→ null，**不當成 0 元配息**"
+  },
+  {
+   "id": "dividendtest#73",
+   "name": "而且不是「參考價等於前收」"
+  },
+  {
+   "id": "dividendtest#74",
+   "name": "配股率是 null → null"
+  },
+  {
+   "id": "dividendtest#75",
+   "name": "增資配股率是 null → null"
+  },
+  {
+   "id": "dividendtest#76",
+   "name": "有現金增資卻沒有認購價 → null"
+  },
+  {
+   "id": "dividendtest#77",
+   "name": "（對照）配息真的是 0（純除權沒配股也沒增資）→ 參考價等於前收"
+  },
+  {
+   "id": "dividendtest#78",
+   "name": "（對照）沒有現金增資時，認購價是不是 null 都無所謂"
+  },
+  {
+   "id": "dividendtest#79",
+   "name": "「推導得出來嗎」的判斷有對照組（正例 3、反例 3）"
+  },
+  {
+   "id": "dividendtest#80",
+   "name": "匯費 10 元"
+  },
+  {
+   "id": "dividendtest#81",
+   "name": "補充保費門檻 20,000 元"
+  },
+  {
+   "id": "dividendtest#82",
+   "name": "1000 股 × 0.5 = 500 元"
+  },
+  {
+   "id": "dividendtest#83",
+   "name": "關閉自動扣費時，實收就是 500 元（一毛都不扣）"
+  },
+  {
+   "id": "dividendtest#84",
+   "name": "沒有匯費"
+  },
+  {
+   "id": "dividendtest#85",
+   "name": "沒有補充保費"
+  },
+  {
+   "id": "dividendtest#86",
+   "name": "扣匯費 10 元"
+  },
+  {
+   "id": "dividendtest#87",
+   "name": "500 元沒到 2 萬，不扣補充保費"
+  },
+  {
+   "id": "dividendtest#88",
+   "name": "實收 490 元"
+  },
+  {
+   "id": "dividendtest#89",
+   "name": "10000 股 × 5 = 50,000 元"
+  },
+  {
+   "id": "dividendtest#90",
+   "name": "補充保費 50,000 × 2.11% = 1,055 元"
+  },
+  {
+   "id": "dividendtest#91",
+   "name": "實收 48,935 元"
+  },
+  {
+   "id": "dividendtest#92",
+   "name": "剛好 20,000 元要扣 422 元"
+  },
+  {
+   "id": "dividendtest#93",
+   "name": "實收 19,568 元"
+  },
+  {
+   "id": "dividendtest#94",
+   "name": "19,999.99 元"
+  },
+  {
+   "id": "dividendtest#95",
+   "name": "差一分錢就不扣補充保費"
+  },
+  {
+   "id": "dividendtest#96",
+   "name": "門檻判斷有對照組（正例 3、反例 4）"
+  },
+  {
+   "id": "dividendtest#97",
+   "name": "沒有股數 → null"
+  },
+  {
+   "id": "dividendtest#98",
+   "name": "沒有配息 → null"
+  },
+  {
+   "id": "dividendtest#99",
+   "name": "算不出來時不是 0（檢查了 1 項）"
+  },
+  {
+   "id": "dividendtest#100",
+   "name": "1000 股配 50 股"
+  },
+  {
+   "id": "dividendtest#101",
+   "name": "沒有餘數"
+  },
+  {
+   "id": "dividendtest#102",
+   "name": "每仟股配 50 股"
+  },
+  {
+   "id": "dividendtest#103",
+   "name": "1234 股 × 0.05 = 61.7 → 加 61 股"
+  },
+  {
+   "id": "dividendtest#104",
+   "name": "餘數 0.7 股（實際 0.7）"
+  },
+  {
+   "id": "dividendtest#105",
+   "name": "1000 股 × 0.04999999 = 49.99999 → 加 49 股，不是 50"
+  },
+  {
+   "id": "dividendtest#106",
+   "name": "現金找零不進位：餘數 0.99999 股以現金找零 —— 不會自己進位成 50 股"
+  },
+  {
+   "id": "dividendtest#107",
+   "name": "配股率 0 就不加股數"
+  },
+  {
+   "id": "dividendtest#108",
+   "name": "沒有股數回 null"
+  },
+  {
+   "id": "dividendtest#109",
+   "name": "總計 11,490 元"
+  },
+  {
+   "id": "dividendtest#110",
+   "name": "三筆算得出金額"
+  },
+  {
+   "id": "dividendtest#111",
+   "name": "一筆已確認但沒有金額（0050）"
+  },
+  {
+   "id": "dividendtest#112",
+   "name": "用的是實收 3,490 不是預估 3,500"
+  },
+  {
+   "id": "dividendtest#113",
+   "name": "2026 年 8,490 元"
+  },
+  {
+   "id": "dividendtest#114",
+   "name": "分年度，新的在前"
+  },
+  {
+   "id": "dividendtest#115",
+   "name": "分代號，金額大的在前"
+  },
+  {
+   "id": "dividendtest#116",
+   "name": "2330 累積 3,000 ＋ 3,490 = 6,490 元"
+  },
+  {
+   "id": "dividendtest#117",
+   "name": "已忽略（dismissed）的不算（檢查了 2 項）"
+  },
+  {
+   "id": "dividendtest#118",
+   "name": "沒有金額的不算進分類（檢查了 2 項）"
+  },
+  {
+   "id": "dividendtest#119",
+   "name": "（前提）分類不是空的"
+  },
+  {
+   "id": "dividendtest#120",
+   "name": "總計是 null"
+  },
+  {
+   "id": "dividendtest#121",
+   "name": "年度也是 null"
+  },
+  {
+   "id": "dividendtest#122",
+   "name": "算得出金額的筆數是 0"
+  },
+  {
+   "id": "dividendtest#123",
+   "name": "不是 0 —— 「還沒領過」跟「領到 0 元」不一樣"
+  },
+  {
+   "id": "dividendtest#124",
+   "name": "完全沒有事件也是 null"
+  },
+  {
+   "id": "dividendtest#125",
+   "name": "8 股 × 0.125 = 剛好 1 元"
+  },
+  {
+   "id": "dividendtest#126",
+   "name": "1234 股 × 0.800477 = 987.788618 元，一微元不差"
+  }
+ ]
+}

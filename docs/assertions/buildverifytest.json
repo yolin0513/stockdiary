@@ -1,0 +1,163 @@
+{
+ "test": "buildverifytest",
+ "version": "39:61ed8f1fde02",
+ "count": 39,
+ "assertions": [
+  {
+   "id": "buildverifytest#1",
+   "name": "（對照）lineOf：行首是那個開頭 → 抽得到"
+  },
+  {
+   "id": "buildverifytest#2",
+   "name": "（對照）lineOf：只在行中間出現 → 不算"
+  },
+  {
+   "id": "buildverifytest#3",
+   "name": "F9 登記・乾淨而且全擋：回 0、寫入登記"
+  },
+  {
+   "id": "buildverifytest#4",
+   "name": "F9 登記・乾淨而且全擋：登記的是 HEAD 那個 commit"
+  },
+  {
+   "id": "buildverifytest#5",
+   "name": "F9 登記・乾淨而且全擋：每一支的雜湊＝HEAD 那一版"
+  },
+  {
+   "id": "buildverifytest#6",
+   "name": "（前提）F9 登記・工作區有改動：跑之前先放了一份舊登記"
+  },
+  {
+   "id": "buildverifytest#7",
+   "name": "F9 登記・工作區有改動：回非 0、舊登記被刪、沒有新登記"
+  },
+  {
+   "id": "buildverifytest#8",
+   "name": "F9 登記・工作區有改動：理由（【不登記】那一行）是「工作區跟 HEAD 不一樣：js/twse.js」"
+  },
+  {
+   "id": "buildverifytest#9",
+   "name": "（前提）F9 登記・驗法沒過：跑之前先放了一份舊登記"
+  },
+  {
+   "id": "buildverifytest#10",
+   "name": "F9 登記・驗法沒過：回非 0、舊登記被刪、沒有新登記"
+  },
+  {
+   "id": "buildverifytest#11",
+   "name": "F9 登記・驗法沒過：理由（【不登記】那一行）是「驗法沒過」"
+  },
+  {
+   "id": "buildverifytest#12",
+   "name": "（前提）F9 登記・沒有全擋：跑之前先放了一份舊登記"
+  },
+  {
+   "id": "buildverifytest#13",
+   "name": "F9 登記・沒有全擋：回非 0、舊登記被刪、沒有新登記"
+  },
+  {
+   "id": "buildverifytest#14",
+   "name": "F9 登記・沒有全擋：理由（【不登記】那一行）是「驗法沒有全部擋下：矩陣共 54 格，擋 53」"
+  },
+  {
+   "id": "buildverifytest#15",
+   "name": "（前提）F9 登記・沒有總計：跑之前先放了一份舊登記"
+  },
+  {
+   "id": "buildverifytest#16",
+   "name": "F9 登記・沒有總計：回非 0、舊登記被刪、沒有新登記"
+  },
+  {
+   "id": "buildverifytest#17",
+   "name": "F9 登記・沒有總計：理由（【不登記】那一行）是「驗法的輸出裡找不到矩陣總計那一行」"
+  },
+  {
+   "id": "buildverifytest#18",
+   "name": "（前提）F9 登記・總計不在該在的位置：跑之前先放了一份舊登記"
+  },
+  {
+   "id": "buildverifytest#19",
+   "name": "F9 登記・總計不在該在的位置：回非 0、舊登記被刪、沒有新登記"
+  },
+  {
+   "id": "buildverifytest#20",
+   "name": "F9 登記・總計不在該在的位置：理由（【不登記】那一行）是「驗法的輸出裡找不到矩陣總計那一行」"
+  },
+  {
+   "id": "buildverifytest#21",
+   "name": "（前提）F9 登記・跑的期間改了檔：跑之前先放了一份舊登記"
+  },
+  {
+   "id": "buildverifytest#22",
+   "name": "F9 登記・跑的期間改了檔：回非 0、舊登記被刪、沒有新登記"
+  },
+  {
+   "id": "buildverifytest#23",
+   "name": "F9 登記・跑的期間改了檔：理由（【不登記】那一行）是「驗法跑的期間，工作區的檔變了：scripts/buildguard.mjs」"
+  },
+  {
+   "id": "buildverifytest#24",
+   "name": "（前提）F9 登記・相依不在清單上：跑之前先放了一份舊登記"
+  },
+  {
+   "id": "buildverifytest#25",
+   "name": "F9 登記・相依不在清單上：回非 0、舊登記被刪、沒有新登記"
+  },
+  {
+   "id": "buildverifytest#26",
+   "name": "F9 登記・相依不在清單上：理由（【不登記】那一行）是「build 或驗法用到、卻不在登記清單上的檔：js/extra.js」"
+  },
+  {
+   "id": "buildverifytest#27",
+   "name": "（前提）F9 登記・拿掉清單上的檔之前：js/roc.js 原本在（已 commit）"
+  },
+  {
+   "id": "buildverifytest#28",
+   "name": "（前提）F9 登記・清單上的檔不見了：跑之前先放了一份舊登記"
+  },
+  {
+   "id": "buildverifytest#29",
+   "name": "F9 登記・清單上的檔不見了：回非 0、舊登記被刪、沒有新登記"
+  },
+  {
+   "id": "buildverifytest#30",
+   "name": "F9 登記・清單上的檔不見了：理由（【不登記】那一行）是「登記清單上的檔不存在：js/roc.js」"
+  },
+  {
+   "id": "buildverifytest#31",
+   "name": "（前提）F9 比對・沒動到：沒有登記檔"
+  },
+  {
+   "id": "buildverifytest#32",
+   "name": "F9 比對・沒動到：不看登記、放行"
+  },
+  {
+   "id": "buildverifytest#33",
+   "name": "F9 比對・動到而沒有登記：擋下"
+  },
+  {
+   "id": "buildverifytest#34",
+   "name": "（前提）F9 比對・前一個 commit 動到：起點那一版登記成驗過"
+  },
+  {
+   "id": "buildverifytest#35",
+   "name": "（前提）F9 比對・前一個 commit 動到：最後一個 commit 只動 README.md"
+  },
+  {
+   "id": "buildverifytest#36",
+   "name": "F9 比對・前一個 commit 動到：最後一個乾淨也照樣擋下"
+  },
+  {
+   "id": "buildverifytest#37",
+   "name": "（前提）F9 比對・登記相符：改完 commit 之後重跑驗法、登記成功"
+  },
+  {
+   "id": "buildverifytest#38",
+   "name": "F9 比對・登記相符：放行"
+  },
+  {
+   "id": "buildverifytest#39",
+   "name": "F9 比對・範圍算不出：擋下（不當成沒動到）"
+  }
+ ]
+}

@@ -1,0 +1,79 @@
+{
+ "test": "gatescan",
+ "version": "18:d7b98da59c8a",
+ "count": 18,
+ "assertions": [
+  {
+   "id": "gatescan#1",
+   "name": "pipe・對照：正例 12 個都抓到、反例 3 個都沒誤抓"
+  },
+  {
+   "id": "gatescan#2",
+   "name": "or-true・對照：正例 2 個都抓到、反例 2 個都沒誤抓"
+  },
+  {
+   "id": "gatescan#3",
+   "name": "empty-catch・對照：正例 2 個都抓到、反例 2 個都沒誤抓"
+  },
+  {
+   "id": "gatescan#4",
+   "name": "plus3-header・對照：正例 3 個都抓到、反例 2 個都沒誤抓"
+  },
+  {
+   "id": "gatescan#5",
+   "name": "format-no-meta・對照：正例 3 個都抓到、反例 2 個都沒誤抓"
+  },
+  {
+   "id": "gatescan#6",
+   "name": "env-switch・對照：正例 2 個都抓到、反例 3 個都沒誤抓"
+  },
+  {
+   "id": "gatescan#7",
+   "name": "absent-assert・對照：正例 4 個都抓到、反例 2 個都沒誤抓"
+  },
+  {
+   "id": "gatescan#8",
+   "name": "shell-backslash・對照：正例 4 個都抓到、反例 2 個都沒誤抓"
+  },
+  {
+   "id": "gatescan#9",
+   "name": "（前提）登記的 8 支共掃了 1462 行"
+  },
+  {
+   "id": "gatescan#10",
+   "name": "登記的閘門、自查、驗法腳本裡沒有已知的壞寫法（登記的例外除外）"
+  },
+  {
+   "id": "gatescan#11",
+   "name": "登記的 9 條例外都還對得到命中（對不到的就是過期，要拿掉）"
+  },
+  {
+   "id": "gatescan#12",
+   "name": "gatescan 孤兒對照一：沒登記、帶 | tail -1 的推送腳本要報出來"
+  },
+  {
+   "id": "gatescan#13",
+   "name": "gatescan 孤兒對照二：檔名帶 push 的腳本要報出來"
+  },
+  {
+   "id": "gatescan#14",
+   "name": "gatescan 孤兒對照三（必過）：已登記的、只在註解提到的、node_modules 裡的都不報"
+  },
+  {
+   "id": "gatescan#15",
+   "name": "gatescan 孤兒對照四：理由寫給一支不存在（或不像閘門）的腳本，要報出來"
+  },
+  {
+   "id": "gatescan#16",
+   "name": "（前提）走訪了 162 支腳本"
+  },
+  {
+   "id": "gatescan#17",
+   "name": "gatescan 孤兒：repo 裡看起來是推送、自查、閘門的腳本都登記了（或寫了理由）"
+  },
+  {
+   "id": "gatescan#18",
+   "name": "gatescan 理由過期：ORPHAN_SKIP 的每一條都還對得到一支像閘門的腳本"
+  }
+ ]
+}

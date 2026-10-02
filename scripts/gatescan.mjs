@@ -284,7 +284,7 @@ eq(real.map((h) => `${h.rel}:${h.line} [${h.rule}] ${h.text.slice(0, 80)}`), [],
 // 例外不能默默留著：每一條都要對得到一個真的命中
 const stale = EXCEPTIONS.filter((e) => !hits.some((h) => h.rel === e.file && h.rule === e.rule && h.text.includes(e.lineIncludes)));
 eq(stale.map((e) => `${e.file} [${e.rule}] ${e.lineIncludes}`), [], `登記的 ${EXCEPTIONS.length} 條例外都還對得到命中（對不到的就是過期，要拿掉）`);
-note(`初篩命中經登記例外放行 ${hits.length - real.length} 條（理由寫在這支檔的 EXCEPTIONS）`);
+note(`初篩命中經登記例外放行 ${hits.filter(isExcepted).length} 條（直接數的；理由寫在這支檔的 EXCEPTIONS）`);
 
 // ---------------------------------------------------------------------------
 // 孤兒檢查（SPEC_檢查器修補 S5，F4）：登記制的洞是「沒登記的不會被掃」——v9 盤點實測：丟一支帶 `| tail -1`、

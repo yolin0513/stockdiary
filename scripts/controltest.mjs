@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ok, eq, section, done } from './tap.mjs';
+import { ok, eq, section, done, note } from './tap.mjs';
 import { controls as auditControls, chainOf, auditOrphans } from './auditjudge.mjs';
 import { controls as sweepControls } from './sweepjudge.mjs';
 import { controls as liveControls, stageControls as liveStageControls, endpointsIn, endpointOrphans } from './livejudge.mjs';
@@ -160,7 +160,7 @@ section('公開前自查取 commit 訊息與作者欄（scripts/precheck.mjs 的
     '指認詞「使用者的」', '指認詞「他的」', '指認詞「你的」', '指認詞「Yolin 的」', '指認詞「我的定期定額」',
     '代號 00 開頭', '代號四位數', '金額（沒有千分位）', '沒有指認詞不算', '有指認詞、沒有代號也沒有金額不算',
   ], '（前提）第五類對照：每個分支一個樣本，登記的 10 個都在');
-  for (const c of pc) ok(c.ok, `第五類對照：${c.label}：判對`);
+  for (const c of pc) ok(c.ok, `${c.label}：第五類對照判對`);   // 標籤在開頭（突變的 expect 比開頭；2026-10-03 斷言登記表查到 8 條對不到）
   // 真的 git（F10 第 1b 點第 1 種）：正常的 HEAD 放行；GIT_DIR 指向不存在的目錄，真的 git 失敗，要擋
   const realGit = (env) => (args) => execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   eq(commitMeta(realGit({}), 'HEAD').problem, null, '自查訊息與作者（必過）：真的 git、真的 HEAD → 放行');
@@ -284,12 +284,17 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     "done('sleeptest');",
     '',
   ].join('\n');
-  const runFake = (marker, timeoutMs, exit0 = false, expect = null) => {
+  const runFake = (marker, timeoutMs, exit0 = false, expect = null, regVersion = null) => {
     fs.rmSync(C, { recursive: true, force: true });
     for (const d of ['scripts', 'js']) fs.cpSync(path.join(ROOT, d), path.join(C, d), { recursive: true });
     fs.rmSync(path.join(C, 'scripts', '.mutation-pending.json'), { force: true });
     fs.writeFileSync(path.join(C, 'scripts', 'sleeptest.mjs'), fakeTest);
     if (exit0) fs.writeFileSync(path.join(C, 'scripts', 'sleeptest.exit0'), '');
+    if (regVersion) {   // 假測試的斷言登記表（只有一條斷言）；版本給對或給錯，驗「預期需要複審」兩個方向
+      fs.mkdirSync(path.join(C, 'docs', 'assertions'), { recursive: true });
+      fs.writeFileSync(path.join(C, 'docs', 'assertions', 'sleeptest.json'),
+        JSON.stringify({ test: 'sleeptest', version: regVersion, count: 1, assertions: [{ id: 'sleeptest#1', name: '假測試：版本行沒有 PROBE_RED 標記' }] }));
+    }
     const F = path.join(C, 'scripts', 'mutationtest.mjs');
     let s = fs.readFileSync(F, 'utf8');
     const swap = (a, b) => { if (s.split(a).length !== 2) throw new Error(`逾時對照：mutationtest.mjs 的錨點不是剛好一次：${a.slice(0, 50)}`); s = s.split(a).join(b); };
@@ -341,6 +346,15 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
       && cc.problems.length === 0 && cc.counts['紅在對的地方'] === 1 && cc.verdictLines === 1,
       'log 逐行數・真實入口：逾時那一場數成「情境未成立 1」、真的紅那一場數成「紅在對的地方 1」，挑選、結果、判定行各 1',
       JSON.stringify({ a: ca, c: cc }).slice(0, 400));
+    // 預期需要複審（JLPT 2026-10-03）：這一場基準實跑出來的斷言母體跟登記表那一版比；兩個方向
+    const { versionOf } = await import('./assertreg.mjs');
+    const RIGHT = versionOf(['假測試：版本行沒有 PROBE_RED 標記']);
+    const g1 = runFake('PROBE_RED', 10000, false, null, '1:舊版本');
+    ok((detailOf(g1.out, '  ✗ （前提）斷言登記表跟這一場基準一致：sleeptest') ?? '').startsWith('      【預期需要複審】登記表是 1:舊版本，這一場基準實跑出來是 ' + RIGHT),
+      '預期需要複審・母體變了：登記表跟這一場基準實跑出來的不一樣 → 獨立報出來、點名哪一支', linesOf(g1.out).filter((l) => /登記表|需要複審/.test(l)).join(' ⏎ ').slice(0, 300));
+    const g2 = runFake('PROBE_RED', 10000, false, null, RIGHT);
+    ok(has(g2.out, '  ✓ （前提）斷言登記表跟這一場基準一致：sleeptest') && !linesOf(g2.out).some((l) => l.includes('【預期需要複審】')),
+      '預期需要複審（必過）：登記表就是這一版 → 不報', linesOf(g2.out).filter((l) => /登記表/.test(l)).join(' ⏎ ').slice(0, 300));
     // 預期清單過期（2026-10-03，TripQuest 同日）：expect 在測試裡找不到 → 獨立的結果，不是「紅錯地方」；找得到 → 照常判
     const e = runFake('PROBE_RED', 10000, false, '不存在的標籤：zz');
     ok((detailOf(e.out, '  ✗ 假突變：逾時對照') ?? '').startsWith('      【預期清單過期】') && tallyOf(e.out).includes('；預期清單過期 1 條；')
@@ -427,7 +441,9 @@ section('bash 解成完整路徑、拒絕 WSL（scripts/resolvebin.mjs）');
   ok(acceptableBash(GIT, W) && !acceptableBash(DRV.toLowerCase() + '\\windows\\System32\\BASH.EXE', W), 'bash 解析・大小寫不同的系統目錄也擋（Windows 路徑不分大小寫）');
   if (process.platform === 'win32') {
     const real = resolveBash();
-    ok(acceptableBash(real) && fs.existsSync(real), `bash 解析・這台機器（必過）：解到的是 ${real}，不是 WSL、檔案存在`);
+    // 判定行不嵌實際路徑（換一台機器名稱就不同、斷言登記表的版本跟著變；路徑也會被公開前自查擋）：路徑放說明行
+    ok(acceptableBash(real) && fs.existsSync(real), 'bash 解析・這台機器（必過）：解到的不是 WSL、檔案存在', real);
+    note(`bash 解析・這台機器解到：${real}`);
   }
 }
 
@@ -501,14 +517,19 @@ section('長跑的包裝（scripts/longrun.mjs）：跑完只認結算行、資�
       // 讀 log 判成沒跑完。讀完才把留下來的子孫清掉。（第一版用 killTargets 由下往上殺：子孫先死，包裝來得及寫判定行——情境沒成立）
       const spawnedAt = Date.now();
       const c = spawn(process.execPath, ['scripts/longrun.mjs', `ctl-longrun-${process.pid}-c`, 'fakerun', '--every', '500', '--', process.execPath, fake, 'long'], { cwd: ROOT, stdio: 'ignore' });
-      await new Promise((r) => setTimeout(r, 3000));
+      // 等到真的寫進第一行樣本才殺（第一版固定等 3 秒：機器忙時一次取樣要好幾秒，殺的時候還沒有樣本——情境沒成立就判定，偶發紅）
+      const sampled = () => read('c', '.res.txt').split('\n').some((l) => /\t工作程序 \d/.test(l));
+      for (let i = 0; i < 40 && !sampled(); i++) await new Promise((r) => setTimeout(r, 500));
+      ok(sampled(), '（前提）長跑・中途被殺：殺之前已經寫進至少一行樣本（20 秒內）——沒有就是情境未成立，下一條不算數');
       c.kill();
       await new Promise((r) => setTimeout(r, 500));
       const resC = read('c', '.res.txt');
       const logC = read('c', '.log');
       killTargets(c.pid, spawnedAt, ['node.exe']);   // 清掉包裝死後留下的假長跑與它的子程序
       ok(resC.split('\n').filter((l) => /\t工作程序 \d/.test(l)).length >= 1 && !logC.includes('判定：') && judgeRun(logC, 'fakerun') === 'not-done',
-        '長跑・中途被殺：已經取的樣本都寫進檔了、沒有判定行、讀 log 判成沒跑完', `取樣 ${resC.split('\n').filter((l) => /\t工作程序/.test(l)).length} 行；log 結尾：${logC.slice(-120).split('\n').join(' ⏎ ')}`);
+        '長跑・中途被殺：已經取的樣本都寫進檔了、沒有判定行、讀 log 判成沒跑完',
+        `取樣 ${resC.split('\n').filter((l) => /\t工作程序 \d/.test(l)).length} 行（全部 ${resC.split('\n').length} 行）；判定行 ${logC.includes('判定：')}；judgeRun=${judgeRun(logC, 'fakerun')}；`
+        + `res 開頭：${resC.slice(0, 160).split('\n').join(' ⏎ ')}`);
     } finally {
       for (const t of ['a', 'b', 'c', 'd']) for (const f of logsOf(t)) fs.rmSync(f, { force: true });
       fs.rmSync(W, { recursive: true, force: true });

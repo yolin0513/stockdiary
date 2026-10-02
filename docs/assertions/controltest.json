@@ -1,0 +1,623 @@
+{
+ "test": "controltest",
+ "version": "154:8e71042922fe",
+ "count": 154,
+ "assertions": [
+  {
+   "id": "controltest#1",
+   "name": "（前提）assertaudit 的對照組有 8 組，登記的是 8 組"
+  },
+  {
+   "id": "controltest#2",
+   "name": "assertaudit 對照一：一條一定失敗的斷言，要判成紅了但資料有寫出來"
+  },
+  {
+   "id": "controltest#3",
+   "name": "assertaudit 對照二：空母體的 noneOf，它那一筆要被母體 ≤ 2 挑出來"
+  },
+  {
+   "id": "controltest#4",
+   "name": "assertaudit 對照三：寫出資料前就崩掉，要判成沒收到任何資料"
+  },
+  {
+   "id": "controltest#5",
+   "name": "assertaudit 對照四（必過）：母體 3 的乾淨測試，要判成通過、不被挑出來"
+  },
+  {
+   "id": "controltest#6",
+   "name": "assertaudit 對照五：鏈上多了一支沒登記的，要報出它"
+  },
+  {
+   "id": "controltest#7",
+   "name": "assertaudit 對照六：清單裡有一支不在鏈上，要報出它"
+  },
+  {
+   "id": "controltest#8",
+   "name": "assertaudit 對照七：不收的理由寫給不在鏈上的，要報出它"
+  },
+  {
+   "id": "controltest#9",
+   "name": "assertaudit 對照八（必過）：鏈上全部登記或寫了理由，什麼都不報"
+  },
+  {
+   "id": "controltest#10",
+   "name": "（前提）從 package.json 的 npm test 取到 39 支"
+  },
+  {
+   "id": "controltest#11",
+   "name": "assertaudit 孤兒：npm test 鏈上的每一支，都在 assertaudit 的清單裡或寫了不收的理由"
+  },
+  {
+   "id": "controltest#12",
+   "name": "assertaudit 過期：assertaudit 清單裡的每一支都還在 npm test 鏈上"
+  },
+  {
+   "id": "controltest#13",
+   "name": "assertaudit 理由過期：寫了不收理由的每一支都還在 npm test 鏈上"
+  },
+  {
+   "id": "controltest#14",
+   "name": "（前提）sweep 的對照組有 6 組，登記的是 6 組"
+  },
+  {
+   "id": "controltest#15",
+   "name": "sweep 對照一：線上 sw.js 是舊版，版本比對要報 sw.js"
+  },
+  {
+   "id": "controltest#16",
+   "name": "sweep 對照二：線上 index.html 載入舊版，版本比對要報 index.html"
+  },
+  {
+   "id": "controltest#17",
+   "name": "sweep 對照三：sw.js 讀不到版本，要報、不能當成一致"
+  },
+  {
+   "id": "controltest#18",
+   "name": "sweep 對照四：還留著舊版的快取，要挑出那一個"
+  },
+  {
+   "id": "controltest#19",
+   "name": "sweep 對照五：不是新聞上游的錯誤，要算進真的錯誤"
+  },
+  {
+   "id": "controltest#20",
+   "name": "sweep 對照六（必過）：全部一致、只有新聞上游 502，什麼都不報"
+  },
+  {
+   "id": "controltest#21",
+   "name": "（前提）livecheck 的對照組有 12 組，登記的是 12 組"
+  },
+  {
+   "id": "controltest#22",
+   "name": "livecheck 對照一：CORS 標頭不見，要報"
+  },
+  {
+   "id": "controltest#23",
+   "name": "livecheck 對照二：STOCK_DAY_ALL 的表裡少了 2330，要報"
+  },
+  {
+   "id": "controltest#24",
+   "name": "livecheck 對照三：STOCK_DAY 的除權息標記不見，要報"
+  },
+  {
+   "id": "controltest#25",
+   "name": "livecheck 對照四：上櫃代號查得到資料了，要報"
+  },
+  {
+   "id": "controltest#26",
+   "name": "livecheck 對照五：TWT48U 的欄位改名，要報格式變了"
+  },
+  {
+   "id": "controltest#27",
+   "name": "livecheck 對照六：參考價跟公式差 0.01，要挑出那一筆"
+  },
+  {
+   "id": "controltest#28",
+   "name": "livecheck 對照七：證交所那個月少一個交易日，要報出是哪一天"
+  },
+  {
+   "id": "controltest#29",
+   "name": "livecheck 對照八：市場上多了一檔代號表沒有的，要報出那一檔"
+  },
+  {
+   "id": "controltest#30",
+   "name": "livecheck 對照九：請求間隔不到 2 秒或一個都沒量到，要報"
+  },
+  {
+   "id": "controltest#31",
+   "name": "livecheck 對照十：日曆休市日多年格式要讀得到、認不得的格式要拋錯"
+  },
+  {
+   "id": "controltest#32",
+   "name": "livecheck 對照十二：FMTQIK 的欄位改名，要報格式變了"
+  },
+  {
+   "id": "controltest#33",
+   "name": "livecheck 對照十三：app 多用一個沒登記的端點要報、登記了卻沒打的也要報"
+  },
+  {
+   "id": "controltest#34",
+   "name": "（前提）app 端 42 支檔用到 5 個證交所端點：STOCK_DAY_ALL、STOCK_DAY、TWT48U、TWT49U、FMTQIK"
+  },
+  {
+   "id": "controltest#35",
+   "name": "端點孤兒：app 用到的每一個證交所端點都登記了（或寫了不打的理由）"
+  },
+  {
+   "id": "controltest#36",
+   "name": "端點沒打：登記的每一個端點 livecheck 都真的有打"
+  },
+  {
+   "id": "controltest#37",
+   "name": "端點理由過期：寫了不打理由的每一個，app 都還在用"
+  },
+  {
+   "id": "controltest#38",
+   "name": "（前提）livecheck 段落 的對照組有 1 組，登記的是 1 組"
+  },
+  {
+   "id": "controltest#39",
+   "name": "livecheck 對照十一：中間一段崩了，要記成那一段失敗、講出段名，後面照跑"
+  },
+  {
+   "id": "controltest#40",
+   "name": "（前提）路由清單 的對照組有 4 組，登記的是 4 組"
+  },
+  {
+   "id": "controltest#41",
+   "name": "路由對照一（必過）：註冊的全部登記或寫了理由，什麼都不報；註解裡的 route 不算"
+  },
+  {
+   "id": "controltest#42",
+   "name": "路由對照二：多註冊一條沒登記的，要報出它"
+  },
+  {
+   "id": "controltest#43",
+   "name": "路由對照三：清單裡有一條沒註冊的，要報出它"
+  },
+  {
+   "id": "controltest#44",
+   "name": "路由對照四：不巡的理由寫給沒註冊的，要報出它"
+  },
+  {
+   "id": "controltest#45",
+   "name": "（前提）從 js/app.js 取到 9 條註冊的路由"
+  },
+  {
+   "id": "controltest#46",
+   "name": "路由孤兒：js/app.js 註冊的每一條路由，都在逐頁清單裡或寫了不巡的理由"
+  },
+  {
+   "id": "controltest#47",
+   "name": "路由過期：逐頁清單裡的每一條都還註冊著"
+  },
+  {
+   "id": "controltest#48",
+   "name": "路由理由過期：寫了不巡理由的每一條都還註冊著"
+  },
+  {
+   "id": "controltest#49",
+   "name": "（前提）理由比對的對照有 10 組"
+  },
+  {
+   "id": "controltest#50",
+   "name": "閘門理由比對：命中行出現在 (b) 類底下，問 (a) 類 → 不算"
+  },
+  {
+   "id": "controltest#51",
+   "name": "閘門理由比對：同一行，問 (b) 類 → 算"
+  },
+  {
+   "id": "controltest#52",
+   "name": "閘門理由比對：來源對不上（問 commit 訊息，命中在新增行）→ 不算"
+  },
+  {
+   "id": "controltest#53",
+   "name": "閘門理由比對：作者欄的命中在 (b) 類底下 → 算"
+  },
+  {
+   "id": "controltest#54",
+   "name": "閘門理由比對：判決行只出現在行中間 → 不算"
+  },
+  {
+   "id": "controltest#55",
+   "name": "閘門理由比對：判決行從行首起 → 算"
+  },
+  {
+   "id": "controltest#56",
+   "name": "閘門理由比對：(a) 類標頭是「目標命中 0 ✔」，問「對照組命中 1 ✔｜目標命中 1」的開頭 → 不算"
+  },
+  {
+   "id": "controltest#57",
+   "name": "閘門理由比對：空的輸出 → 不算"
+  },
+  {
+   "id": "controltest#58",
+   "name": "閘門理由比對：檔名只湊到前半（scripts/gatepush.sh 對上 scripts/gatepush.sh.orig）→ 不算"
+  },
+  {
+   "id": "controltest#59",
+   "name": "閘門理由比對：檔名後面接的是標點 → 算"
+  },
+  {
+   "id": "controltest#60",
+   "name": "自查訊息與作者（必過）：2 個 commit、取到 2 組作者與提交者 → 放行、6 行"
+  },
+  {
+   "id": "controltest#61",
+   "name": "自查訊息與作者（必過）：範圍裡 0 個 commit、取到空的 → 放行（沒有東西要推）"
+  },
+  {
+   "id": "controltest#62",
+   "name": "自查訊息與作者：有 commit 卻取到空的 → 擋（檢查器壞了）"
+  },
+  {
+   "id": "controltest#63",
+   "name": "自查訊息與作者：只取到一部分 → 擋"
+  },
+  {
+   "id": "controltest#64",
+   "name": "自查訊息與作者：取訊息的 git 失敗 → 擋並講明（不丟給外層當崩潰）"
+  },
+  {
+   "id": "controltest#65",
+   "name": "自查訊息與作者：數 commit 的 git 失敗 → 擋"
+  },
+  {
+   "id": "controltest#66",
+   "name": "自查訊息與作者：commit 數算不出來 → 擋"
+  },
+  {
+   "id": "controltest#67",
+   "name": "自查訊息與作者：單一 commit 兩個子指令都只看那一個（-1）"
+  },
+  {
+   "id": "controltest#68",
+   "name": "（前提）自查對照：每個分支一個樣本，登記的 13 個都在（母體用登記制）"
+  },
+  {
+   "id": "controltest#69",
+   "name": "a gh 權杖：自查對照判對"
+  },
+  {
+   "id": "controltest#70",
+   "name": "a sk-ant 金鑰：自查對照判對"
+  },
+  {
+   "id": "controltest#71",
+   "name": "a AIza 金鑰：自查對照判對"
+  },
+  {
+   "id": "controltest#72",
+   "name": "a xox 權杖：自查對照判對"
+  },
+  {
+   "id": "controltest#73",
+   "name": "b 一般信箱：自查對照判對"
+  },
+  {
+   "id": "controltest#74",
+   "name": "b noreply@github.com 不算：自查對照判對"
+  },
+  {
+   "id": "controltest#75",
+   "name": "b noreply@anthropic.com 不算：自查對照判對"
+  },
+  {
+   "id": "controltest#76",
+   "name": "b users.noreply.github.com 不算：自查對照判對"
+  },
+  {
+   "id": "controltest#77",
+   "name": "c 本機使用者名稱：自查對照判對"
+  },
+  {
+   "id": "controltest#78",
+   "name": "d 磁碟機（反斜線）：自查對照判對"
+  },
+  {
+   "id": "controltest#79",
+   "name": "d 磁碟機（斜線）：自查對照判對"
+  },
+  {
+   "id": "controltest#80",
+   "name": "d /home/ 家目錄：自查對照判對"
+  },
+  {
+   "id": "controltest#81",
+   "name": "d /Users/ 家目錄：自查對照判對"
+  },
+  {
+   "id": "controltest#82",
+   "name": "（前提）第五類對照：每個分支一個樣本，登記的 10 個都在"
+  },
+  {
+   "id": "controltest#83",
+   "name": "指認詞「使用者的」：第五類對照判對"
+  },
+  {
+   "id": "controltest#84",
+   "name": "指認詞「他的」：第五類對照判對"
+  },
+  {
+   "id": "controltest#85",
+   "name": "指認詞「你的」：第五類對照判對"
+  },
+  {
+   "id": "controltest#86",
+   "name": "指認詞「Yolin 的」：第五類對照判對"
+  },
+  {
+   "id": "controltest#87",
+   "name": "指認詞「我的定期定額」：第五類對照判對"
+  },
+  {
+   "id": "controltest#88",
+   "name": "代號 00 開頭：第五類對照判對"
+  },
+  {
+   "id": "controltest#89",
+   "name": "代號四位數：第五類對照判對"
+  },
+  {
+   "id": "controltest#90",
+   "name": "金額（沒有千分位）：第五類對照判對"
+  },
+  {
+   "id": "controltest#91",
+   "name": "沒有指認詞不算：第五類對照判對"
+  },
+  {
+   "id": "controltest#92",
+   "name": "有指認詞、沒有代號也沒有金額不算：第五類對照判對"
+  },
+  {
+   "id": "controltest#93",
+   "name": "自查訊息與作者（必過）：真的 git、真的 HEAD → 放行"
+  },
+  {
+   "id": "controltest#94",
+   "name": "自查訊息與作者：真的 git 失敗（GIT_DIR 指向不存在的目錄）→ 擋"
+  },
+  {
+   "id": "controltest#95",
+   "name": "（前提）殘留突變：登記的 5 種狀態都有樣本"
+  },
+  {
+   "id": "controltest#96",
+   "name": "殘留突變判斷・沒有紀錄：判成 none"
+  },
+  {
+   "id": "controltest#97",
+   "name": "殘留突變判斷・有效紀錄：判成 pending"
+  },
+  {
+   "id": "controltest#98",
+   "name": "殘留突變判斷・紀錄解析不了：判成 broken"
+  },
+  {
+   "id": "controltest#99",
+   "name": "殘留突變判斷・紀錄缺欄位：判成 broken"
+  },
+  {
+   "id": "controltest#100",
+   "name": "殘留突變判斷・紀錄讀不了：判成 broken"
+  },
+  {
+   "id": "controltest#101",
+   "name": "殘留突變判斷・有效紀錄：取得出被改壞的檔與原檔內容"
+  },
+  {
+   "id": "controltest#102",
+   "name": "殘留突變訊息：有紀錄時點名被改壞的那一支（閘門的驗法用這個開頭比對）"
+  },
+  {
+   "id": "controltest#103",
+   "name": "殘留突變訊息：紀錄壞了時講明是紀錄壞了"
+  },
+  {
+   "id": "controltest#104",
+   "name": "（前提）殘留突變還原・一：檔案真的被改壞了"
+  },
+  {
+   "id": "controltest#105",
+   "name": "殘留突變還原・一：有紀錄 → 寫回原檔、刪掉紀錄、回 0"
+  },
+  {
+   "id": "controltest#106",
+   "name": "殘留突變還原・二（必過）：沒有紀錄 → 不動任何檔、回 0"
+  },
+  {
+   "id": "controltest#107",
+   "name": "殘留突變還原・三：紀錄壞了 → 停下、講明、紀錄留著"
+  },
+  {
+   "id": "controltest#108",
+   "name": "（前提）殘留突變還原・四：檔案真的寫不進去"
+  },
+  {
+   "id": "controltest#109",
+   "name": "殘留突變還原・四：寫回失敗 → 非 0、紀錄留著"
+  },
+  {
+   "id": "controltest#110",
+   "name": "（前提）逾時對照：找得到 js/version.js 的版本行（假突變要改它）"
+  },
+  {
+   "id": "controltest#111",
+   "name": "（對照）逾時對照的擷取：已知的輸出抽得到細節行與分類行"
+  },
+  {
+   "id": "controltest#112",
+   "name": "（對照）逾時對照的擷取：✓ 行訊息裡帶 ✗、說明裡提到同一句，都不算"
+  },
+  {
+   "id": "controltest#113",
+   "name": "逾時對照・一a：測試逾時 → 判成「情境未成立」，理由是逾時（不是別的）"
+  },
+  {
+   "id": "controltest#114",
+   "name": "逾時對照・一b：情境沒成立就重跑，到上限（2 次）才放棄"
+  },
+  {
+   "id": "controltest#115",
+   "name": "逾時對照・一c：不算紅也不算過（不印 ✓、分開數成「未成立 1」、整支非 0）"
+  },
+  {
+   "id": "controltest#116",
+   "name": "逾時對照・二（同一條、不逾時）：判成「沒紅」——上一條的「不算數」是逾時造成的"
+  },
+  {
+   "id": "controltest#117",
+   "name": "逾時對照・三（必過）：真的紅、沒逾時 → 判成紅（這套情境分得出紅）"
+  },
+  {
+   "id": "controltest#118",
+   "name": "逾時對照・四：基準 exit 0 卻沒有結算行（沒跑完）→ 不算通過、停下、一條突變都不跑"
+  },
+  {
+   "id": "controltest#119",
+   "name": "log 逐行數・真實入口：逾時那一場數成「情境未成立 1」、真的紅那一場數成「紅在對的地方 1」，挑選、結果、判定行各 1"
+  },
+  {
+   "id": "controltest#120",
+   "name": "預期需要複審・母體變了：登記表跟這一場基準實跑出來的不一樣 → 獨立報出來、點名哪一支"
+  },
+  {
+   "id": "controltest#121",
+   "name": "預期需要複審（必過）：登記表就是這一版 → 不報"
+  },
+  {
+   "id": "controltest#122",
+   "name": "預期清單過期・執行時：expect 在測試裡找不到 → 獨立報成「預期清單過期」、不算紅錯地方"
+  },
+  {
+   "id": "controltest#123",
+   "name": "預期清單過期・執行時（必過）：expect 找得到 → 照常判紅"
+  },
+  {
+   "id": "controltest#124",
+   "name": "判對時也印出實際紅在哪：判成紅的那一條，下一行說明實際紅的是哪幾條斷言（這裡剛好 1 條）"
+  },
+  {
+   "id": "controltest#125",
+   "name": "殺程序樹・正常的樹：根、子、孫都殺"
+  },
+  {
+   "id": "controltest#126",
+   "name": "殺程序樹・PID 重用的舊程序：記著同一個父 PID、卻比父程序早建立的，就算名稱在清單裡也不殺"
+  },
+  {
+   "id": "controltest#127",
+   "name": "殺程序樹・不在清單：名稱不在可殺清單的不殺、只印出來，它底下的也不往下認"
+  },
+  {
+   "id": "controltest#128",
+   "name": "殺程序樹・根程序被重用：根的建立時刻跟開它的時刻對不上 → 一個都不殺"
+  },
+  {
+   "id": "controltest#129",
+   "name": "殺程序樹・根程序已結束：殼不在了，開它之後才建立的子孫照樣殺（不留殭屍）"
+  },
+  {
+   "id": "controltest#130",
+   "name": "（前提）殺程序樹・真的程序表：讀得到我們開的子程序與它開的孫程序"
+  },
+  {
+   "id": "controltest#131",
+   "name": "殺程序樹・真的程序表：挑出來的剛好是我們開的子程序與孫程序"
+  },
+  {
+   "id": "controltest#132",
+   "name": "殺程序樹・真的程序表：不含 controltest 自己"
+  },
+  {
+   "id": "controltest#133",
+   "name": "殺程序樹・真的程序表：殺完之後子程序與孫程序都不在了（同一個 PID＋同一個建立時刻）"
+  },
+  {
+   "id": "controltest#134",
+   "name": "bash 解析・WSL 排在前面：跳過系統目錄與 WindowsApps 的，挑到 Git 的那一支"
+  },
+  {
+   "id": "controltest#135",
+   "name": "bash 解析・只有 WSL：解不出來（呼叫端判成情境未成立，不是照跑）"
+  },
+  {
+   "id": "controltest#136",
+   "name": "bash 解析・大小寫不同的系統目錄也擋（Windows 路徑不分大小寫）"
+  },
+  {
+   "id": "controltest#137",
+   "name": "bash 解析・這台機器（必過）：解到的不是 WSL、檔案存在"
+  },
+  {
+   "id": "controltest#138",
+   "name": "長跑資源紀錄・取樣：工作程序只數 node（bash 不算）、PID 重用的舊程序不數進這棵樹"
+  },
+  {
+   "id": "controltest#139",
+   "name": "長跑資源紀錄・記憶體拆三份：這棵樹／樹外的 node／樹外的非 node（被 PID 重用騙進來的舊程序算在樹外）"
+  },
+  {
+   "id": "controltest#140",
+   "name": "長跑・逐一計數的重播：同時活著的才疊（工作 5、全部 6），陸續開的不疊上去"
+  },
+  {
+   "id": "controltest#141",
+   "name": "長跑判定・只有 exit= 沒有結算行：判成沒跑完"
+  },
+  {
+   "id": "controltest#142",
+   "name": "長跑判定（必過）・有自己的結算行：判成跑完"
+  },
+  {
+   "id": "controltest#143",
+   "name": "長跑・跑完：有結算行 → 判成跑完；跑著的時候資源紀錄記到的工作程序不是 0"
+  },
+  {
+   "id": "controltest#144",
+   "name": "長跑・逐一計數：只活 0.8 秒的子程序，逐一計數算到峰值 2（自己＋1），取樣一次都取不到——兩種峰值並列印出"
+  },
+  {
+   "id": "controltest#145",
+   "name": "長跑・沒有結算行：以 0 結束也判成沒跑完、回 3"
+  },
+  {
+   "id": "controltest#146",
+   "name": "（前提）長跑・中途被殺：殺之前已經寫進至少一行樣本（20 秒內）——沒有就是情境未成立，下一條不算數"
+  },
+  {
+   "id": "controltest#147",
+   "name": "長跑・中途被殺：已經取的樣本都寫進檔了、沒有判定行、讀 log 判成沒跑完"
+  },
+  {
+   "id": "controltest#148",
+   "name": "判斷得出範圍（必過）：照相依挑、不全跑——改 js/money.js 只挑 a1（at 經由 settle.js 碰得到）"
+  },
+  {
+   "id": "controltest#149",
+   "name": "判斷不出範圍・讀不到中間的模組：記成理由，不是跳過"
+  },
+  {
+   "id": "controltest#150",
+   "name": "判斷不出範圍・讀不到測試檔：記成理由"
+  },
+  {
+   "id": "controltest#151",
+   "name": "判斷不出範圍・動態路徑：樣板字串的路徑裡有 ${…}，記成理由"
+  },
+  {
+   "id": "controltest#152",
+   "name": "判斷不出範圍・版本參數不算動態（必過）：`./js/c.js${V}` 的路徑是固定的"
+  },
+  {
+   "id": "controltest#153",
+   "name": "判斷不出範圍 → 全跑：一支測試的範圍算不出來，就全部都跑，並講出是哪一支、為什麼"
+  },
+  {
+   "id": "controltest#154",
+   "name": "判斷不出範圍・真實入口：--changed --list 在現在的 repo 上講出「全跑」與理由（dcatest 的動態路徑），而且沒有跑基準"
+  }
+ ]
+}

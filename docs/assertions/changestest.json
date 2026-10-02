@@ -1,0 +1,151 @@
+{
+ "test": "changestest",
+ "version": "36:a29f8f27c2a7",
+ "count": 36,
+ "assertions": [
+  {
+   "id": "changestest#1",
+   "name": "1000 + 500 + 300 − 200 = 1600"
+  },
+  {
+   "id": "changestest#2",
+   "name": "沒有把未確認的 400 股算進去（那會是 2000）"
+  },
+  {
+   "id": "changestest#3",
+   "name": "沒有任何變動 → 0 股"
+  },
+  {
+   "id": "changestest#4",
+   "name": "全部都未確認 → 0 股"
+  },
+  {
+   "id": "changestest#5",
+   "name": "（前提）測試資料裡的未確認變動不是 0 股，不然上一條證明不了什麼（檢查了 1 項）"
+  },
+  {
+   "id": "changestest#6",
+   "name": "買進前一天：0 股"
+  },
+  {
+   "id": "changestest#7",
+   "name": "買進當天就算進去（當天收盤已經持有）"
+  },
+  {
+   "id": "changestest#8",
+   "name": "第二次扣款前：1000 股"
+  },
+  {
+   "id": "changestest#9",
+   "name": "第二次扣款當天：1500 股"
+  },
+  {
+   "id": "changestest#10",
+   "name": "六月底：1800 股"
+  },
+  {
+   "id": "changestest#11",
+   "name": "賣出當天：1600 股"
+  },
+  {
+   "id": "changestest#12",
+   "name": "年底仍是 1600（9/16 那筆還沒確認）"
+  },
+  {
+   "id": "changestest#13",
+   "name": "未確認的變動不會因為日期過了就自己生效"
+  },
+  {
+   "id": "changestest#14",
+   "name": "時間線上每一天的股數都不是負的（檢查了 6 項）"
+  },
+  {
+   "id": "changestest#15",
+   "name": "時間線最後一天的股數等於「已確認總和」"
+  },
+  {
+   "id": "changestest#16",
+   "name": "（前提）時間線上的股數真的有變動過：0 → 1000 → 1500 → 1800 → 1600 → 1600"
+  },
+  {
+   "id": "changestest#17",
+   "name": "一筆待確認"
+  },
+  {
+   "id": "changestest#18",
+   "name": "就是 9/16 那筆"
+  },
+  {
+   "id": "changestest#19",
+   "name": "清單裡全部都是 pending（檢查了 1 項）"
+  },
+  {
+   "id": "changestest#20",
+   "name": "沒有混進已確認的（檢查了 1 項）"
+  },
+  {
+   "id": "changestest#21",
+   "name": "照日期排序"
+  },
+  {
+   "id": "changestest#22",
+   "name": "正常的變動通過"
+  },
+  {
+   "id": "changestest#23",
+   "name": "沒代號"
+  },
+  {
+   "id": "changestest#24",
+   "name": "日期格式不對"
+  },
+  {
+   "id": "changestest#25",
+   "name": "民國年不是 ISO 日期"
+  },
+  {
+   "id": "changestest#26",
+   "name": "0 股的變動沒有意義"
+  },
+  {
+   "id": "changestest#27",
+   "name": "非數字"
+  },
+  {
+   "id": "changestest#28",
+   "name": "不能有小數股"
+  },
+  {
+   "id": "changestest#29",
+   "name": "負數（賣出）是合法的"
+  },
+  {
+   "id": "changestest#30",
+   "name": "不認得的類型"
+  },
+  {
+   "id": "changestest#31",
+   "name": "不認得的狀態"
+  },
+  {
+   "id": "changestest#32",
+   "name": "檢查器有對照組（正例 4、反例 4）"
+  },
+  {
+   "id": "changestest#33",
+   "name": "變動類型：opening、manual、dca、dividendReinvest、stockDividend（檢查了 5 項）"
+  },
+  {
+   "id": "changestest#34",
+   "name": "狀態只有兩種"
+  },
+  {
+   "id": "changestest#35",
+   "name": "有「快速設定持股」用的 opening"
+  },
+  {
+   "id": "changestest#36",
+   "name": "定期定額、配息再投入、配股的類型都先留好了"
+  }
+ ]
+}

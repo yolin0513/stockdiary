@@ -4,7 +4,7 @@
 // 被 TWSE 封 IP 的後果是「這個使用者接下來一段時間完全打不開 App」，
 // 所以這條要用實際間隔證明。
 
-import { ok, eq, section, done, everyOf, noneOf } from './tap.mjs';
+import { ok, eq, section, done, everyOf, noneOf, note } from './tap.mjs';
 import { createClient, MIN_GAP_MS, MAX_REQUESTS, BudgetExceededError } from '../js/twseclient.js';
 import { URL_DAY_ALL, urlStockDay, monthOf } from '../js/prices.js';
 
@@ -33,9 +33,13 @@ section(`連續請求的實際間隔 >= ${GAP} ms`);
 
   eq(f.calls.length, 5, '五個請求都送出去了');
   const measured = f.calls.slice(1).map((c, i) => c.at - f.calls[i].at);
-  everyOf(measured, (g) => g >= GAP - 5, `每一段間隔都 >= ${GAP} ms（實測 ${measured.join('、')} ms）`);
+  // 判定行只放固定的要求，實測值放在下一行的說明（2026-10-03）：實測值每次不同，嵌在判定行裡的話，
+  // 斷言名稱每跑一次就變——斷言登記表的版本跟著變，預期天天被報「需要複審」。說明行通過時也印，證據不會少。
+  everyOf(measured, (g) => g >= GAP - 5, `每一段間隔都 >= ${GAP} ms`);
+  note(`實測間隔：${measured.join('、')} ms`);
   noneOf(measured, (g) => g < GAP - 5, '沒有任何一段偷跑');
-  ok(total >= GAP * 4 - 20, `五個請求至少花了 ${GAP * 4} ms（實測 ${total} ms）`);
+  ok(total >= GAP * 4 - 20, `五個請求至少花了 ${GAP * 4} ms`, `實測 ${total} ms`);
+  note(`實測總共：${total} ms`);
   eq(client.stats().count, 5, '計數正確');
 }
 
@@ -47,8 +51,8 @@ section('同時發出的請求也要排隊，不能一起衝出去');
   await Promise.all([0, 1, 2, 3, 4].map((i) => client.getText(`https://example.test/p${i}`)));
   const measured = f.calls.slice(1).map((c, i) => c.at - f.calls[i].at);
   eq(f.calls.length, 5, '五個都送出去了');
-  everyOf(measured, (g) => g >= GAP - 5,
-    `同時發出時每一段間隔還是 >= ${GAP} ms（實測 ${measured.join('、')} ms）`);
+  everyOf(measured, (g) => g >= GAP - 5, `同時發出時每一段間隔還是 >= ${GAP} ms`);
+  note(`實測間隔：${measured.join('、')} ms`);
 }
 
 section('第一個請求不必等');

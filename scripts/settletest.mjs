@@ -112,7 +112,7 @@ eq(A.byCode.find((r) => r.code === '2317').plMicro.toString(), yuan(1000).toStri
 section('不支援報價的持股，任何欄位都不能有價格');
 const otcRow = A.byCode.find((r) => r.code === '6488');
 eq(otcRow.status, 'unsupported', '狀態是「不支援報價」');
-eq(STATUS_TEXT[otcRow.status], '不支援報價', '有對應的畫面文字');
+eq(STATUS_TEXT[otcRow.status], '不支援報價', '不支援報價：有對應的畫面文字');
 noneOf(
   [otcRow.close, otcRow.basis, otcRow.plMicro, otcRow.valueMicro, otcRow.dividendMicro],
   (v) => v != null,
@@ -151,8 +151,8 @@ const C = settleDay({
   quotes: { 2330: { close: 2250, prevClose: 2255, exDay: true, refPrice: null } },
 });
 eq(C.byCode[0].status, 'exNoRef', '狀態是「除權息日，尚未取得參考價」');
-eq(STATUS_TEXT.exNoRef, '除權息日，尚未取得參考價', '有對應的畫面文字');
-eq(C.dayPLMicro, null, '當日損益是 null');
+eq(STATUS_TEXT.exNoRef, '除權息日，尚未取得參考價', '案例 C 除息日沒有參考價：有對應的畫面文字');
+eq(C.dayPLMicro, null, '案例 C：當日損益是 null');
 ok(C.dayPLMicro !== yuan(-5000), '不是 −5,000（用前一日收盤當基準的假虧損）');
 ok(C.dayPLMicro !== 0n, '也不是 0');
 eq(C.counted, 0, '沒有任何一檔算得出來');
@@ -161,7 +161,7 @@ eq(C.marketValueMicro.toString(), yuan(2250000).toString(), '但市值算得出�
 
 section('案例 D：今日收盤尚未公布');
 const D = settleDay({ date: '2026-09-11', holdings: [H('2330', 1000), H('2317', 2000)], quotes: {} });
-eq(D.dayPLMicro, null, '當日損益是 null');
+eq(D.dayPLMicro, null, '案例 D：當日損益是 null');
 ok(D.dayPLMicro !== 0n, '不是 0 —— 顯示 0 會讓使用者以為今天沒賺沒賠');
 eq(D.marketValueMicro, null, '市值也是 null');
 eq(D.counted, 0, '一檔都沒算');

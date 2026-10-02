@@ -415,7 +415,7 @@ try {
     const c = valid[script]({ TESTFS_RM_FAIL: '1' });
     cell(labels.cleanup, c, unit, ['清理也失敗'], { allowChanged: true });
     ok(fs.readFileSync(out).equals(outBefore) && fs.existsSync(`${out}.tmp`) && reasonsOf(c.out).some((x) => x.includes(`${path.basename(out)}.tmp 刪不掉`)),
-      `${labels.cleanup}（輸出檔沒被蓋掉；留下的暫存檔有點名）`, JSON.stringify(reasonsOf(c.out)));
+      `（輸出檔沒被蓋掉；留下的暫存檔有點名）${labels.cleanup}`, JSON.stringify(reasonsOf(c.out)));   // 固定說明在開頭：不然「…清理也失敗」是這一條的前半，預期分不開兩條
   }
   restoreData();
 

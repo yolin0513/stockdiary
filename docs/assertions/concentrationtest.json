@@ -1,0 +1,155 @@
+{
+ "test": "concentrationtest",
+ "version": "37:1090e4c048fd",
+ "count": 37,
+ "assertions": [
+  {
+   "id": "concentrationtest#1",
+   "name": "四檔都算得出市值"
+  },
+  {
+   "id": "concentrationtest#2",
+   "name": "沒有被排除的"
+  },
+  {
+   "id": "concentrationtest#3",
+   "name": "總市值 2,240,000 元"
+  },
+  {
+   "id": "concentrationtest#4",
+   "name": "由大到小排"
+  },
+  {
+   "id": "concentrationtest#5",
+   "name": "同產業的代號併在一起"
+  },
+  {
+   "id": "concentrationtest#6",
+   "name": "半導體業 1,600,000 / 2,240,000 ＝ 71.4%"
+  },
+  {
+   "id": "concentrationtest#7",
+   "name": "其他電子業 400,000 / 2,240,000 ＝ 17.8%"
+  },
+  {
+   "id": "concentrationtest#8",
+   "name": "金融保險業 240,000 / 2,240,000 ＝ 10.7%"
+  },
+  {
+   "id": "concentrationtest#9",
+   "name": "三等分加起來 99.89999999999999%（整數運算，不會漂掉）"
+  },
+  {
+   "id": "concentrationtest#10",
+   "name": "每一份都是 33.3%（檢查了 3 項）"
+  },
+  {
+   "id": "concentrationtest#11",
+   "name": "七等分加起來 99.4%"
+  },
+  {
+   "id": "concentrationtest#12",
+   "name": "只有一檔算得出市值"
+  },
+  {
+   "id": "concentrationtest#13",
+   "name": "分母只有那一檔"
+  },
+  {
+   "id": "concentrationtest#14",
+   "name": "只有一個產業出現"
+  },
+  {
+   "id": "concentrationtest#15",
+   "name": "它就是 100%"
+  },
+  {
+   "id": "concentrationtest#16",
+   "name": "三檔被排除"
+  },
+  {
+   "id": "concentrationtest#17",
+   "name": "不支援報價的原因寫對"
+  },
+  {
+   "id": "concentrationtest#18",
+   "name": "沒有收盤價的原因寫對"
+  },
+  {
+   "id": "concentrationtest#19",
+   "name": "沒有股數的原因寫對"
+  },
+  {
+   "id": "concentrationtest#20",
+   "name": "**不支援報價的持股就算 quotes 裡有價，也不計入** —— 那個價不可信"
+  },
+  {
+   "id": "concentrationtest#21",
+   "name": "排除說明列出每一檔"
+  },
+  {
+   "id": "concentrationtest#22",
+   "name": "也講出原因"
+  },
+  {
+   "id": "concentrationtest#23",
+   "name": "而且說清楚分母只有幾檔：「以下 3 檔不計入：6488（不支援報價）；9999（沒有收盤價）；0050（沒有股數）。這裡的百分比只算得出市值的 1 檔。」"
+  },
+  {
+   "id": "concentrationtest#24",
+   "name": "沒有被排除的就不顯示說明"
+  },
+  {
+   "id": "concentrationtest#25",
+   "name": "沒有持股就沒有列"
+  },
+  {
+   "id": "concentrationtest#26",
+   "name": "總額 0"
+  },
+  {
+   "id": "concentrationtest#27",
+   "name": "也沒有說明要顯示"
+  },
+  {
+   "id": "concentrationtest#28",
+   "name": "沒有產業的歸到「產業未知」，不是丟掉"
+  },
+  {
+   "id": "concentrationtest#29",
+   "name": "分母 0 時回 null，不是 NaN 也不是 0"
+  },
+  {
+   "id": "concentrationtest#30",
+   "name": "分子 0 是 0%"
+  },
+  {
+   "id": "concentrationtest#31",
+   "name": "程式碼裡沒有任何帶評價意味的字（檢查了 7 項）"
+  },
+  {
+   "id": "concentrationtest#32",
+   "name": "（母體）檢查了 7 個帶評價意味的詞"
+  },
+  {
+   "id": "concentrationtest#33",
+   "name": "ETF 自成一格：ETF、半導體業、產業未知"
+  },
+  {
+   "id": "concentrationtest#34",
+   "name": "而且就是那兩檔 ETF"
+  },
+  {
+   "id": "concentrationtest#35",
+   "name": "（對照）查不到產業又不是 ETF 的，還是叫產業未知"
+  },
+  {
+   "id": "concentrationtest#36",
+   "name": "而且只有那一檔"
+  },
+  {
+   "id": "concentrationtest#37",
+   "name": "ETF 一檔都沒有掉進「產業未知」（檢查了 1 項）"
+  }
+ ]
+}

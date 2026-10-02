@@ -1,0 +1,327 @@
+{
+ "test": "buildtest",
+ "version": "80:6f0c761fcc20",
+ "count": 80,
+ "assertions": [
+  {
+   "id": "buildtest#1",
+   "name": "（對照）擷取擋下理由的程式：只取「不寫檔：」後面的問題清單，進度輸出裡的同名字、別處印的同一行都不算"
+  },
+  {
+   "id": "buildtest#2",
+   "name": "（對照）擷取擋下理由的程式：「寫檔失敗：」後面的清單也抓得到"
+  },
+  {
+   "id": "buildtest#3",
+   "name": "（對照）狀況字眼對邊界：「0 筆」抓得到，「10 筆」湊不到"
+  },
+  {
+   "id": "buildtest#4",
+   "name": "（對照）堆疊的判斷：有「    at …:行:欄」就算吐了堆疊，設計好的訊息不算"
+  },
+  {
+   "id": "buildtest#5",
+   "name": "（對照）目錄雜湊：多一個暫存檔、改一個字都會變，改回原樣就相同"
+  },
+  {
+   "id": "buildtest#6",
+   "name": "（對照）目錄雜湊：子目錄裡改一個字也會變"
+  },
+  {
+   "id": "buildtest#7",
+   "name": "（對照）堆疊的判斷：不帶括號的那一種（模組頂層崩掉）也算吐了堆疊"
+  },
+  {
+   "id": "buildtest#8",
+   "name": "（前提）build-stocks 的來源單位＝腳本裡的 SOURCES（多一份、少一份都會紅）"
+  },
+  {
+   "id": "buildtest#9",
+   "name": "（前提）每一個單位都有全部的情境（一格都不挑掉）"
+  },
+  {
+   "id": "buildtest#10",
+   "name": "（前提）「上一次的輸出壞掉」三支各一格"
+  },
+  {
+   "id": "buildtest#11",
+   "name": "（前提）「寫檔失敗」三支各三格"
+  },
+  {
+   "id": "buildtest#12",
+   "name": "（前提）錄好的休市日公告有 27 筆"
+  },
+  {
+   "id": "buildtest#13",
+   "name": "build-calendar 對照：錄好的原樣要寫檔"
+  },
+  {
+   "id": "buildtest#14",
+   "name": "build-calendar 矩陣：holidaySchedule × empty"
+  },
+  {
+   "id": "buildtest#15",
+   "name": "build-calendar 矩陣：holidaySchedule × missing"
+  },
+  {
+   "id": "buildtest#16",
+   "name": "build-calendar 矩陣：holidaySchedule × renamed"
+  },
+  {
+   "id": "buildtest#17",
+   "name": "build-calendar 矩陣：holidaySchedule × unparsable"
+  },
+  {
+   "id": "buildtest#18",
+   "name": "build-calendar 矩陣：holidaySchedule × shrink"
+  },
+  {
+   "id": "buildtest#19",
+   "name": "build-calendar 沒有這一年：2027 要擋"
+  },
+  {
+   "id": "buildtest#20",
+   "name": "build-calendar 新的一年變少：2027 只有 1 天平日休市要擋"
+  },
+  {
+   "id": "buildtest#21",
+   "name": "（前提）上一次成功的 dividends.json 有 877 檔"
+  },
+  {
+   "id": "buildtest#22",
+   "name": "build-dividends 對照：跟上一次一樣多的合成資料要寫檔"
+  },
+  {
+   "id": "buildtest#23",
+   "name": "build-dividends 矩陣：t187ap45_L × empty"
+  },
+  {
+   "id": "buildtest#24",
+   "name": "build-dividends 矩陣：t187ap45_L × missing"
+  },
+  {
+   "id": "buildtest#25",
+   "name": "build-dividends 矩陣：t187ap45_L × renamed"
+  },
+  {
+   "id": "buildtest#26",
+   "name": "build-dividends 矩陣：t187ap45_L × unparsable"
+  },
+  {
+   "id": "buildtest#27",
+   "name": "build-dividends 矩陣：t187ap45_L × shrink"
+  },
+  {
+   "id": "buildtest#28",
+   "name": "build-dividends 欄位對不上：只有後面幾筆改名也要擋"
+  },
+  {
+   "id": "buildtest#29",
+   "name": "build-dividends 收進來 0 檔：代號全不合格式要擋"
+  },
+  {
+   "id": "buildtest#30",
+   "name": "build-dividends 收進來 0 檔：現金股利全空要擋"
+  },
+  {
+   "id": "buildtest#31",
+   "name": "build-stocks 對照：合成的六份來源要寫檔"
+  },
+  {
+   "id": "buildtest#32",
+   "name": "（前提）對照產出的各市場檔數＝合成的「上一次成功」（下面的「變少」才是只少那一個市場）"
+  },
+  {
+   "id": "buildtest#33",
+   "name": "build-stocks 矩陣：twseCompanies × empty"
+  },
+  {
+   "id": "buildtest#34",
+   "name": "build-stocks 矩陣：twseCompanies × missing"
+  },
+  {
+   "id": "buildtest#35",
+   "name": "build-stocks 矩陣：twseCompanies × renamed"
+  },
+  {
+   "id": "buildtest#36",
+   "name": "build-stocks 矩陣：twseCompanies × unparsable"
+  },
+  {
+   "id": "buildtest#37",
+   "name": "build-stocks 矩陣：tpexCompanies × empty"
+  },
+  {
+   "id": "buildtest#38",
+   "name": "build-stocks 矩陣：tpexCompanies × missing"
+  },
+  {
+   "id": "buildtest#39",
+   "name": "build-stocks 矩陣：tpexCompanies × renamed"
+  },
+  {
+   "id": "buildtest#40",
+   "name": "build-stocks 矩陣：tpexCompanies × unparsable"
+  },
+  {
+   "id": "buildtest#41",
+   "name": "build-stocks 矩陣：stockDayAll × empty"
+  },
+  {
+   "id": "buildtest#42",
+   "name": "build-stocks 矩陣：stockDayAll × missing"
+  },
+  {
+   "id": "buildtest#43",
+   "name": "build-stocks 矩陣：stockDayAll × renamed"
+  },
+  {
+   "id": "buildtest#44",
+   "name": "build-stocks 矩陣：stockDayAll × unparsable"
+  },
+  {
+   "id": "buildtest#45",
+   "name": "build-stocks 矩陣：isinListed × empty"
+  },
+  {
+   "id": "buildtest#46",
+   "name": "build-stocks 矩陣：isinListed × missing"
+  },
+  {
+   "id": "buildtest#47",
+   "name": "build-stocks 矩陣：isinListed × renamed"
+  },
+  {
+   "id": "buildtest#48",
+   "name": "build-stocks 矩陣：isinListed × unparsable"
+  },
+  {
+   "id": "buildtest#49",
+   "name": "build-stocks 矩陣：isinOtc × empty"
+  },
+  {
+   "id": "buildtest#50",
+   "name": "build-stocks 矩陣：isinOtc × missing"
+  },
+  {
+   "id": "buildtest#51",
+   "name": "build-stocks 矩陣：isinOtc × renamed"
+  },
+  {
+   "id": "buildtest#52",
+   "name": "build-stocks 矩陣：isinOtc × unparsable"
+  },
+  {
+   "id": "buildtest#53",
+   "name": "build-stocks 矩陣：isinEmerging × empty"
+  },
+  {
+   "id": "buildtest#54",
+   "name": "build-stocks 矩陣：isinEmerging × missing"
+  },
+  {
+   "id": "buildtest#55",
+   "name": "build-stocks 矩陣：isinEmerging × renamed"
+  },
+  {
+   "id": "buildtest#56",
+   "name": "build-stocks 矩陣：isinEmerging × unparsable"
+  },
+  {
+   "id": "buildtest#57",
+   "name": "build-stocks 矩陣：上市 × shrink"
+  },
+  {
+   "id": "buildtest#58",
+   "name": "build-stocks 矩陣：上櫃 × shrink"
+  },
+  {
+   "id": "buildtest#59",
+   "name": "build-stocks 矩陣：興櫃 × shrink"
+  },
+  {
+   "id": "buildtest#60",
+   "name": "build-calendar 上一次的輸出壞掉：要擋、點名它"
+  },
+  {
+   "id": "buildtest#61",
+   "name": "build-dividends 上一次的輸出壞掉：要擋、點名它"
+  },
+  {
+   "id": "buildtest#62",
+   "name": "build-stocks 上一次的輸出壞掉：要擋、點名它"
+  },
+  {
+   "id": "buildtest#63",
+   "name": "build-calendar 寫檔失敗：暫存檔的位置被資料夾佔住"
+  },
+  {
+   "id": "buildtest#64",
+   "name": "（佔位的資料夾與裡面的檔都還在）build-calendar 寫檔失敗：暫存檔的位置被資料夾佔住"
+  },
+  {
+   "id": "buildtest#65",
+   "name": "build-calendar 寫檔失敗：輸出檔換不上去"
+  },
+  {
+   "id": "buildtest#66",
+   "name": "（清掉了自己寫出的暫存檔，而且講出來）build-calendar 寫檔失敗：輸出檔換不上去"
+  },
+  {
+   "id": "buildtest#67",
+   "name": "build-calendar 寫檔失敗：清理也失敗"
+  },
+  {
+   "id": "buildtest#68",
+   "name": "（輸出檔沒被蓋掉；留下的暫存檔有點名）build-calendar 寫檔失敗：清理也失敗"
+  },
+  {
+   "id": "buildtest#69",
+   "name": "build-dividends 寫檔失敗：暫存檔的位置被資料夾佔住"
+  },
+  {
+   "id": "buildtest#70",
+   "name": "（佔位的資料夾與裡面的檔都還在）build-dividends 寫檔失敗：暫存檔的位置被資料夾佔住"
+  },
+  {
+   "id": "buildtest#71",
+   "name": "build-dividends 寫檔失敗：輸出檔換不上去"
+  },
+  {
+   "id": "buildtest#72",
+   "name": "（清掉了自己寫出的暫存檔，而且講出來）build-dividends 寫檔失敗：輸出檔換不上去"
+  },
+  {
+   "id": "buildtest#73",
+   "name": "build-dividends 寫檔失敗：清理也失敗"
+  },
+  {
+   "id": "buildtest#74",
+   "name": "（輸出檔沒被蓋掉；留下的暫存檔有點名）build-dividends 寫檔失敗：清理也失敗"
+  },
+  {
+   "id": "buildtest#75",
+   "name": "build-stocks 寫檔失敗：暫存檔的位置被資料夾佔住"
+  },
+  {
+   "id": "buildtest#76",
+   "name": "（佔位的資料夾與裡面的檔都還在）build-stocks 寫檔失敗：暫存檔的位置被資料夾佔住"
+  },
+  {
+   "id": "buildtest#77",
+   "name": "build-stocks 寫檔失敗：輸出檔換不上去"
+  },
+  {
+   "id": "buildtest#78",
+   "name": "（清掉了自己寫出的暫存檔，而且講出來）build-stocks 寫檔失敗：輸出檔換不上去"
+  },
+  {
+   "id": "buildtest#79",
+   "name": "build-stocks 寫檔失敗：清理也失敗"
+  },
+  {
+   "id": "buildtest#80",
+   "name": "（輸出檔沒被蓋掉；留下的暫存檔有點名）build-stocks 寫檔失敗：清理也失敗"
+  }
+ ]
+}

@@ -30,7 +30,7 @@ detects((v) => kindOf(v) !== null,
 // ---------- TWT48U 預告表 ----------
 section('TWT48U：除權除息預告表（日曆用的那張）');
 const f = parseTwt48u(read('twt48u-forecast.json'));
-eq(f.ok, true, '解析成功');
+eq(f.ok, true, 'TWT48U 解析成功');
 eq(f.rows.length, 72, '72 筆');
 const kinds = {};
 for (const r of f.rows) kinds[r.kind] = (kinds[r.kind] ?? 0) + 1;
@@ -86,13 +86,13 @@ void noPrice;
 
 section('TWT48U 欄位順序變了就拒收');
 throws(() => parseTwt48u({ stat: 'OK', fields: ['除權除息日期', '名稱'], data: [] }),
-  /TWT48U 欄位與預期不同/, '欄位對不上 → 丟錯');
+  /TWT48U 欄位與預期不同/, 'TWT48U 欄位對不上 → 丟錯');
 eq(parseTwt48u({ stat: '很抱歉，沒有符合條件的資料!' }).ok, false, '查無資料回 ok=false');
 
 // ---------- TWT49U 結果表 ----------
 section('TWT49U：除權除息計算結果表（參考價用的那張）');
 const g = parseTwt49u(read('twt49u-result.json'));
-eq(g.ok, true, '解析成功');
+eq(g.ok, true, 'TWT49U 解析成功');
 eq(g.rows.length, 6, '6 筆');
 const r2062 = g.rows.find((r) => r.code === '2062');
 eq(r2062.date, '2026-09-10', '資料日期轉成 ISO');
@@ -123,7 +123,7 @@ eq(refPriceFromExValue({ prevClose: null, exValue: 1 }), null, '沒有前收就�
 eq(refPriceFromExValue({ prevClose: 100, exValue: null }), null, '沒有權值息值也回 null');
 
 throws(() => parseTwt49u({ stat: 'OK', fields: ['資料日期'], data: [] }),
-  /TWT49U 欄位與預期不同/, '欄位對不上 → 丟錯');
+  /TWT49U 欄位與預期不同/, 'TWT49U 欄位對不上 → 丟錯');
 
 // ---------- 從預告表推導參考價（配對樣本驗證） ----------
 section('從 TWT48U 的資料推算參考價（目前 App 沒有在用，這裡是驗證）');

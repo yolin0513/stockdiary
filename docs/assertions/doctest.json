@@ -1,0 +1,187 @@
+{
+ "test": "doctest",
+ "version": "45:5ad18eff28b0",
+ "count": 45,
+ "assertions": [
+  {
+   "id": "doctest#1",
+   "name": "（前提）npm test 鏈裡解析得出 39 支"
+  },
+  {
+   "id": "doctest#2",
+   "name": "（前提）README 測試表格解析得出 42 列"
+  },
+  {
+   "id": "doctest#3",
+   "name": "npm test 跑的每一支都列在 README 表格裡（漏了的話，沒人知道它存在）"
+  },
+  {
+   "id": "doctest#4",
+   "name": "README 有但 npm test 沒有的，就是刻意排除的那幾支（workertest：要 wrangler、會碰一次上游；upgradecheck：要起兩次伺服器模擬換版，慢；gateselftest：推送閘門驗法的自我測試，要跑六次驗法、約 7 分鐘；改過閘門或驗法時跑）"
+  },
+  {
+   "id": "doctest#5",
+   "name": "提到的每一支測試，scripts/ 底下都真的有那個檔（檢查了 81 項）"
+  },
+  {
+   "id": "doctest#6",
+   "name": "package.json 裡都有對應的 npm script（檢查了 81 項）"
+  },
+  {
+   "id": "doctest#7",
+   "name": "（前提）mutationtest.mjs 裡數得出 474 條突變"
+  },
+  {
+   "id": "doctest#8",
+   "name": "（前提）npm test 鏈裡有 38 支測試（不含 mutationtest）"
+  },
+  {
+   "id": "doctest#9",
+   "name": "（對照）「N 條突變」與「突變 N 條」兩種寫法都認得"
+  },
+  {
+   "id": "doctest#10",
+   "name": "（對照）前面有「當時」的是歷史紀錄，跳過"
+  },
+  {
+   "id": "doctest#11",
+   "name": "（對照）「14 個測試檔」「突變達 25 條」這種不是總數，不會被認成總數"
+  },
+  {
+   "id": "doctest#12",
+   "name": "（對照）「N 支＋」「全套 N 支」「完整 N 支」「N 支測試」都認得"
+  },
+  {
+   "id": "doctest#13",
+   "name": "（前提）文件裡找得到 6 處寫突變總數的地方"
+  },
+  {
+   "id": "doctest#14",
+   "name": "文件裡每一處寫的突變條數都等於實際的 474 條（檢查了 6 項）"
+  },
+  {
+   "id": "doctest#15",
+   "name": "（前提）文件裡找得到 6 處寫測試支數的地方"
+  },
+  {
+   "id": "doctest#16",
+   "name": "文件裡每一處寫的測試支數都等於實際的 38 支（檢查了 6 項）"
+  },
+  {
+   "id": "doctest#17",
+   "name": "js/version.js：stockdiary-v0.7.25"
+  },
+  {
+   "id": "doctest#18",
+   "name": "shelltest 裡真的有「版本號四個地方必須一致」那一段"
+  },
+  {
+   "id": "doctest#19",
+   "name": "STATUS 的上線檢查清單有說這件事由 shelltest 守"
+  },
+  {
+   "id": "doctest#20",
+   "name": "（前提）STATUS 提到 23 個 npm run 指令"
+  },
+  {
+   "id": "doctest#21",
+   "name": "STATUS 提到的每一個 npm run 指令，package.json 裡都有"
+  },
+  {
+   "id": "doctest#22",
+   "name": "（前提）STATUS 直接點名 21 支 scripts/*.mjs"
+  },
+  {
+   "id": "doctest#23",
+   "name": "STATUS 點名的每一支 scripts/*.mjs 都存在"
+  },
+  {
+   "id": "doctest#24",
+   "name": "STATUS 的元件慣例表裡，每一條禁用規則都還在（檢查了 2 項）"
+  },
+  {
+   "id": "doctest#25",
+   "name": "（前提）掃 41 支程式"
+  },
+  {
+   "id": "doctest#26",
+   "name": "程式裡沒有任何一處用到被禁用的元件"
+  },
+  {
+   "id": "doctest#27",
+   "name": "（對照）每一條判準都認得出自己要抓的東西（檢查了 2 項）"
+  },
+  {
+   "id": "doctest#28",
+   "name": "（前提）掃 scripts/ 底下 78 支"
+  },
+  {
+   "id": "doctest#29",
+   "name": "禁用詞清單只有一份：沒有任何測試另外抄一份"
+  },
+  {
+   "id": "doctest#30",
+   "name": "（對照）拿 banned.mjs 那一行去餵，判準認得出它是一份清單"
+  },
+  {
+   "id": "doctest#31",
+   "name": "（對照）只提到其中幾個詞的別種清單（insighttest 那種）不算另抄一份"
+  },
+  {
+   "id": "doctest#32",
+   "name": "（前提）SPEC_全面優化.md 裡找得到 §0 的凍結條文"
+  },
+  {
+   "id": "doctest#33",
+   "name": "（前提）從 §0 讀出 8 個檔、19 個凍結單位（整檔 3、函式 16）"
+  },
+  {
+   "id": "doctest#34",
+   "name": "每個凍結單位都切得出來（檔案在、函式找得到、括號平衡）（檢查了 19 項）"
+  },
+  {
+   "id": "doctest#35",
+   "name": "凍結區裡沒有任何一個檔案或函式被改過（連註解也不行）（檢查了 19 項）"
+  },
+  {
+   "id": "doctest#36",
+   "name": "快照涵蓋的單位＝§0 列出的單位（§0 改了清單，快照要跟著重產）"
+  },
+  {
+   "id": "doctest#37",
+   "name": "（對照）條文解析：整檔與函式分得開"
+  },
+  {
+   "id": "doctest#38",
+   "name": "（對照）切得出完整的函式，不會切到下一個"
+  },
+  {
+   "id": "doctest#39",
+   "name": "（對照）函式裡只改一行註解，雜湊就不一樣"
+  },
+  {
+   "id": "doctest#40",
+   "name": "（對照）改的是別的函式，這個函式的雜湊不變（函式層級的凍結不會誤殺同檔的其他程式）"
+  },
+  {
+   "id": "doctest#41",
+   "name": "（前提）scripts/evidence/ 裡有 24 支（母體不是空的）"
+  },
+  {
+   "id": "doctest#42",
+   "name": "一次性量測腳本：每一支都登記了、登記的都在、檔頭＝登記、證據檔裡找得到那一段"
+  },
+  {
+   "id": "doctest#43",
+   "name": "（對照）乾淨的合成目錄 → 沒有問題"
+  },
+  {
+   "id": "doctest#44",
+   "name": "（對照）沒登記、登記了卻不在、檔頭不一樣、證據檔沒有那一段 → 四種都報"
+  },
+  {
+   "id": "doctest#45",
+   "name": "登記 24 支＝目錄裡 24 支"
+  }
+ ]
+}

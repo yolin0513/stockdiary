@@ -1,0 +1,59 @@
+{
+ "test": "taptest",
+ "version": "13:8fcc777f18cc",
+ "count": 13,
+ "assertions": [
+  {
+   "id": "taptest#1",
+   "name": "（對照）取紅的理由：字眼只出現在斷言名稱或 ✓ 行 → 不算；出現在 ✗ 底下的細節行 → 算"
+  },
+  {
+   "id": "taptest#2",
+   "name": "（前提）判定行：碰巧的樣本真的印在輸出裡（只是不在行首）"
+  },
+  {
+   "id": "taptest#3",
+   "name": "（對照）判定行的前提：樣本放在註解裡、沒印出來 → 判成情境未成立"
+  },
+  {
+   "id": "taptest#4",
+   "name": "判定行・細節不會出現在行首：細節裡子程序的「  ✗ 」行不被當成這支的失敗斷言"
+  },
+  {
+   "id": "taptest#5",
+   "name": "判定行・訊息裡的換行壓成一行：通過的斷言訊息裡的換行，不會在行首長出一行「  ✗ 」"
+  },
+  {
+   "id": "taptest#6",
+   "name": "（對照）母體非空、沒有命中的 noneOf 放行（exit 0）"
+  },
+  {
+   "id": "taptest#7",
+   "name": "（對照）母體非空、全部符合的 everyOf 放行（exit 0）"
+  },
+  {
+   "id": "taptest#8",
+   "name": "（對照）正反例都有、都判對的 detects 放行（exit 0）"
+  },
+  {
+   "id": "taptest#9",
+   "name": "空母體的 noneOf 必須紅，而且講明是母體是空的（exit 1）"
+  },
+  {
+   "id": "taptest#10",
+   "name": "空母體的 everyOf 必須紅，而且講明是母體是空的（exit 1）"
+  },
+  {
+   "id": "taptest#11",
+   "name": "沒有反例的 detects 必須紅，而且講明沒有給反例（exit 1）"
+  },
+  {
+   "id": "taptest#12",
+   "name": "沒有正例的 detects 必須紅，而且講明沒有給正例（exit 1）"
+  },
+  {
+   "id": "taptest#13",
+   "name": "有命中的 noneOf 必須紅，而且講得出命中幾項（exit 1）"
+  }
+ ]
+}
