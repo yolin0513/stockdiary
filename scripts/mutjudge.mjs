@@ -29,18 +29,39 @@ export function failedAssertions(out) {
  *   'extra-red'   紅在含 expect 的那一條，**但別組也一起紅了**（extra 列出多紅的那幾條）——
  *                 保證不了「只紅對應的那一種」。這條突變若本來就該連帶紅別組（例如整道關卡失效），
  *                 要在突變上用 alsoRed 明列那幾組的固定標籤，並在 why 講清楚為什麼。
- * 沒帶 expect 的突變照舊：只看 exit code。
+ *   'not-counted' 情境未成立（2026-10-03）：測試逾時、或沒有印出它自己的結算行（「<測試名>：N 項通過」，
+ *                 tap.mjs 的 done() 印的）——崩潰、沒跑起來、被殺。**不算紅、不算通過、也不算跑過**，
+ *                 而且排在 exit code 之前判：以前逾時的 exit code 非 0，沒帶 expect 的突變就被判成「變紅」，
+ *                 gateselftest（實測約 55 分鐘、逾時 15 分鐘）的兩條突變每次都這樣被記成被抓到。
+ * 沒帶 expect 的突變（而且情境有成立）：只看 exit code。
  *
  * 2026-09-24 以前只要「有一條」對上 expect 就判 red，不看別組有沒有一起紅（統籌者驗收指出）：
  * 負責判斷「過了沒」的這一層，自己不夠嚴。
+ *
+ * r.test 是測試名（必填，用來找結算行）；r.timedOut 由執行器依子程序是不是被逾時殺掉填。
  */
-export function judge({ code, out }, expect, alsoRed = []) {
+export function judge({ code, out, test, timedOut = false }, expect, alsoRed = []) {
+  if (timedOut) return { verdict: 'not-counted', why: '逾時', failed: [], extra: [] };
+  if (!hasSummary(out, test)) return { verdict: 'not-counted', why: `沒有 ${test} 自己的結算行（崩潰、沒跑起來或被殺）`, failed: [], extra: [] };
   if (code === 0) return { verdict: 'not-red', failed: [], extra: [] };
   const failed = failedAssertions(out);
   if (!expect) return { verdict: 'red', failed, extra: [] };
   if (!failed.some((f) => f.includes(expect))) return { verdict: 'wrong-place', failed, extra: [] };
   const extra = failed.filter((f) => !f.includes(expect) && !alsoRed.some((a) => f.includes(a)));
   return { verdict: extra.length ? 'extra-red' : 'red', failed, extra };
+}
+
+/**
+ * 測試跑完了嗎：輸出裡有沒有它自己的結算行（行首「<測試名>：N 項通過」；tap.mjs 的 done() 印的）。
+ * 測試名沒給就當成沒有（不猜）；只認行首、只認這支測試的名字（子程序印的別支結算行不算）。
+ */
+export function hasSummary(out, test) {
+  if (!test) return false;
+  const head = `${test}：`;
+  return String(out || '').split('\n').some((l) => {
+    const t = l.replace(/\r$/, '');
+    return t.startsWith(head) && /^\d+ 項通過/.test(t.slice(head.length));
+  });
 }
 
 /** find 在內容裡出現幾次。突變只在「剛好 1 次」時才有意義。 */

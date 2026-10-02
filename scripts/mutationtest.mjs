@@ -21,8 +21,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done , note } from './tap.mjs';
-import { selectAffected, moduleClosure } from './affected.mjs';
-import { judge, countOf, applyMutation } from './mutjudge.mjs';
+import { closureReport, selectWithReason } from './affected.mjs';
+import { judge, countOf, applyMutation, hasSummary } from './mutjudge.mjs';
 import { makePending } from './mutpending.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -2266,8 +2266,8 @@ const MUTATIONS = [
     replace: '',
     test: 'checkmutations',
     expect: '對照：紅了，但 expect 只出現在細節行、不在任何 ✗ 行',
-    alsoRed: ["對照：測試直接崩了","對照：expect 寫錯成另一組存在的標籤","條突變都還有效（find 剛好一次"],
-    alsoRedWhy: "判定一律回 red，「紅錯地方」的兩組對照都紅；checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
+    alsoRed: ["對照：expect 寫錯成另一組存在的標籤","條突變都還有效（find 剛好一次"],
+    alsoRedWhy: "判定一律回 red，「紅錯地方」的另一組對照也紅（2026-10-03 起崩潰的樣本在這之前就判成不算數，不再連帶）；checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——凡是指向 checkmutations 的突變都會這樣，是機制上必然的連帶。",
   },
   {
     name: 'A：細節行也被當成失敗的斷言',
@@ -3807,24 +3807,155 @@ const MUTATIONS = [
     test: 'controltest',
     expect: '殘留突變還原・一',
   },
+  // ──── 情境未成立（2026-10-03）：逾時、沒有自己的結算行 → 不算紅、不算過；重試有上限；基準也要情境成立 ────
+  // 打 mutationtest.mjs 的幾條，find 都帶換行：清單裡寫的是跳脫序列 \n，才不會在清單的字面裡再出現一次（剛好 1 次）。
+  {
+    name: 'NC：判定不看逾時',
+    why: '逾時的測試若剛好已經印了結算行（例：done() 之後還有沒關掉的連線，程序結束不了），就會照 exit code 判成紅。',
+    file: 'scripts/mutjudge.mjs',
+    find: "  if (timedOut) return { verdict: 'not-counted', why: '逾時', failed: [], extra: [] };",
+    replace: "  if (false) return { verdict: 'not-counted', why: '逾時', failed: [], extra: [] };",
+    test: 'checkmutations',
+    expect: '情境未成立・逾時：',
+    alsoRed: ['情境未成立・逾時（沒帶 expect）：', '條突變都還有效（find 剛好一次'],
+    alsoRedWhy: '有沒有 expect 兩組樣本走的是同一行；checkmutations 讀到被改壞的 mutjudge，會把這條突變本身判成過期（指向 checkmutations 的突變都會這樣）。',
+  },
+  {
+    name: 'NC：判定不看結算行',
+    why: '崩潰、沒跑起來、中途被殺的測試沒有跑到結算，exit code 非 0 就被當成紅——什麼都沒證明卻記成被抓到。',
+    file: 'scripts/mutjudge.mjs',
+    find: '  if (!hasSummary(out, test)) return',
+    replace: '  if (false) return',
+    test: 'checkmutations',
+    expect: '情境未成立・沒有結算行：',
+    alsoRed: ['情境未成立・崩潰：', '情境未成立・別支的結算行：', '情境未成立・結算行不在行首：', '條突變都還有效（find 剛好一次'],
+    alsoRedWhy: '崩潰、別支的結算行、不在行首三種樣本都靠「有沒有自己的結算行」這一道；最後一條同上（checkmutations 讀到被改壞的檔）。',
+  },
+  {
+    name: 'NC：結算行不看是哪一支、也不看行首',
+    why: '子程序印的別支測試的結算行（例：驗法跑閘門、閘門跑自查）會被當成這支跑完了。',
+    file: 'scripts/mutjudge.mjs',
+    find: '    return t.startsWith(head) && /^\\d+ 項通過/.test(t.slice(head.length));',
+    replace: '    return /：\\d+ 項通過/.test(t);',
+    test: 'checkmutations',
+    expect: '情境未成立・別支的結算行：',
+    alsoRed: ['情境未成立・結算行不在行首：', '條突變都還有效（find 剛好一次'],
+    alsoRedWhy: '「是哪一支」與「在行首」是同一行比對；最後一條同上（checkmutations 讀到被改壞的檔）。',
+  },
+  {
+    name: 'NC：執行器不回報逾時',
+    why: '被逾時殺掉的測試就只剩「沒有結算行」這一道在擋；理由會寫錯，而且印了結算行才逾時的那種就擋不到。',
+    file: 'scripts/mutationtest.mjs',
+    find: "timedOut: e.code === 'ETIMEDOUT' };\n  }",
+    replace: "timedOut: false };\n  }",
+    test: 'controltest',
+    expect: '逾時對照・一a',
+  },
+  {
+    name: 'NC：情境沒成立不重跑',
+    why: '偶發的逾時或崩潰一次就定案；重試有上限才分得出「這次剛好」與「每次都這樣」。',
+    file: 'scripts/mutationtest.mjs',
+    find: 'const MAX_ATTEMPTS = 2;\n',
+    replace: 'const MAX_ATTEMPTS = 1;\n',
+    test: 'controltest',
+    expect: '逾時對照・一b',
+  },
+  {
+    name: 'NC：情境未成立也印成通過',
+    why: '「不算數」被當成紅：逾時又變回「被抓到」，2026-10-03 以前 gateselftest 那兩條就是這樣。',
+    file: 'scripts/mutationtest.mjs',
+    find: "  ok(verdict === 'red', label,\n",
+    replace: "  ok(verdict === 'red' || verdict === 'not-counted', label,\n",
+    test: 'controltest',
+    expect: '逾時對照・一c',
+  },
+  {
+    name: 'NC：基準不看結算行',
+    why: '基準的測試沒跑完（exit 0 卻沒有結算行）也算綠，後面每一條突變的「紅」都沒有意義。',
+    file: 'scripts/mutationtest.mjs',
+    find: '  const ran = !r.timedOut && hasSummary(r.out, t);\n',
+    replace: '  const ran = true;\n',
+    test: 'controltest',
+    expect: '逾時對照・四',
+  },
+  // ──── 挑選器判斷不出範圍就全跑（2026-10-03）：讀不到的檔、動態組出來的 import 路徑 ────
+  {
+    name: 'AF：讀不到中間的模組就跳過',
+    why: '2026-10-03 以前的寫法：範圍默默變小（實測改 js/avgcost.js 從 168 條變成 11 條，回傳 0、沒有任何訊息）。',
+    file: 'scripts/affected.mjs',
+    find: '    try { s = readFile(rel); } catch { unresolved.push(`讀不到 ${rel}`); return; }',
+    replace: '    try { s = readFile(rel); } catch { return; }',
+    test: 'controltest',
+    expect: '判斷不出範圍・讀不到中間的模組',
+    alsoRed: ['判斷不出範圍 → 全跑'],
+    alsoRedWhy: '「全跑」那個樣本就是用「中間的模組讀不到」造的：理由沒記下來，就不會全跑。',
+  },
+  {
+    name: 'AF：讀不到測試檔就當成沒有相依',
+    why: '測試檔讀不到時回空的範圍：改到它碰得到的任何模組都挑不到它。',
+    file: 'scripts/affected.mjs',
+    find: '  try { src = readFile(testRel); } catch { return { modules: [], unresolved: [`讀不到測試檔 ${testRel}`] }; }',
+    replace: '  try { src = readFile(testRel); } catch { return { modules: [], unresolved: [] }; }',
+    test: 'controltest',
+    expect: '判斷不出範圍・讀不到測試檔',
+  },
+  {
+    name: 'AF：看不出動態組出來的 import 路徑',
+    why: '`./js/views/${m}.js` 能載入哪一支，要到執行時才知道；當成沒有，改到任何一支 view 都可能漏挑（dcatest、eventtest 就是這樣寫）。',
+    file: 'scripts/affected.mjs',
+    find: '    if (!/\\.m?js$/.test(m[1])) out.push(m[1]);',
+    replace: '    if (false) out.push(m[1]);',
+    test: 'controltest',
+    expect: '判斷不出範圍・動態路徑',
+    alsoRed: ['判斷不出範圍・真實入口'],
+    alsoRedWhy: '真實入口那一條斷言的理由正是 dcatest 的動態路徑；看不出來時，只剩「讀不到 js/views/」那一個理由。',
+  },
+  {
+    name: 'AF：版本參數也當成動態路徑',
+    why: '`./views/home.js${V}` 的路徑是固定的；當成動態的話，凡是這樣寫的都會讓挑選器永遠全跑（從寬過頭，範圍化就沒有意義）。',
+    file: 'scripts/affected.mjs',
+    find: '    if (!/\\.m?js$/.test(m[1])) out.push(m[1]);',
+    replace: '    if (true) out.push(m[1]);',
+    test: 'controltest',
+    expect: '判斷不出範圍・版本參數不算動態',
+  },
+  {
+    name: 'AF：有判斷不出的理由也照相依挑',
+    why: '理由記下來了卻不全跑，跟以前「讀不到就跳過」一樣是少跑，只是多印了一行字。',
+    file: 'scripts/affected.mjs',
+    find: '  if (reasons.length) return { selected: mutations, all: true, reasons };',
+    replace: '  if (false) return { selected: mutations, all: true, reasons };',
+    test: 'controltest',
+    expect: '判斷不出範圍 → 全跑',
+    alsoRed: ['判斷不出範圍・真實入口'],
+    alsoRedWhy: '真實入口在現在的 repo 上本來就該全跑；不全跑就印不出「判斷不出範圍 → 全跑」。',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
 
-// 每支測試的逾時。gateselftest（推送閘門驗法的自我測試）要跑約 7 分鐘，180 秒會讓基準直接被判成不綠（2026-09-24 踩到）。
-const TEST_TIMEOUT = { gateselftest: 15 * 60 * 1000 };
+// 每支測試的逾時。gateselftest（推送閘門驗法的自我測試）的實測耗時一路變長：7 → 17 → 31 → 48 → 約 55 分鐘
+// （2026-09-24～25，證據檔與 .logs/gateselftest-*.log）。2026-10-03 以前這裡還是 15 分鐘：它的基準與兩條突變每次都逾時，
+// 而逾時的 exit code 非 0，兩條突變就被判成「變紅」——從來沒有證明過任何事。現在逾時判成「情境未成立」（mutjudge），
+// 逾時改成實測的 1.6 倍（90 分鐘）；它再變長，就會以「情境未成立」停下，而不是被記成紅。
+const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000 };
 function runTest(name) {
   try {
-    execFileSync(process.execPath, [path.join(ROOT, 'scripts', `${name}.mjs`)], {
+    const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', `${name}.mjs`)], {
       cwd: ROOT,
       stdio: 'pipe',
+      encoding: 'utf8',
       timeout: TEST_TIMEOUT[name] ?? 180000,
     });
-    return { code: 0, out: '' };
+    // 成功時也留下輸出：判定要看「這支測試自己的結算行」在不在（情境有沒有成立），不能只看 exit code
+    return { test: name, code: 0, out: String(out || ''), timedOut: false };
   } catch (e) {
-    return { code: e.status ?? 1, out: String(e.stdout || '') + String(e.stderr || '') };
+    // 被逾時殺掉：execFileSync 丟的錯誤 code 是 ETIMEDOUT
+    return { test: name, code: e.status ?? 1, out: String(e.stdout || '') + String(e.stderr || ''), timedOut: e.code === 'ETIMEDOUT' };
   }
 }
+/** 情境沒成立（逾時、沒有結算行）就重跑，最多這麼多次；還是沒成立就硬失敗、不算數。 */
+const MAX_ATTEMPTS = 2;
 
 // 被改壞的檔案一定要還原，就算中途被 Ctrl-C、丟例外或硬殺。紀錄與還原在 scripts/mutpending.mjs（為什麼搬出去見那支檔開頭）：
 // 每改一支先寫紀錄；被硬殺時下一次啟動（或 --restore）照紀錄寫回；紀錄在的期間推送閘門與自查都擋。
@@ -3899,13 +4030,16 @@ const readRel = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 // 只跑帶 expect 的：node scripts/mutationtest.mjs --expect-only（除錯用；判定「只紅對應的那一種」時用它盤點）
 const EXPECT_ONLY = process.argv.includes('--expect-only');
+let PICK = null;   // --changed 時：{ selected, all, reasons }
 const SELECTED = (() => {
   if (EXPECT_ONLY) return MUTATIONS.filter((m) => m.expect);
   if (ONLY) {
     return MUTATIONS.filter((m) => m.name.includes(ONLY) || m.test.includes(ONLY) || m.file.includes(ONLY));
   }
   if (CHANGED) {
-    return selectAffected(MUTATIONS, CHANGED.files, (t) => moduleClosure(`scripts/${t}.mjs`, readRel));
+    // 判斷不出範圍（讀不到的檔、動態組出來的 import 路徑）就全跑，理由印在下面（2026-10-03；以前讀不到就跳過、範圍默默變小）
+    PICK = selectWithReason(MUTATIONS, CHANGED.files, (t) => closureReport(`scripts/${t}.mjs`, readRel));
+    return PICK.selected;
   }
   return MUTATIONS;
 })();
@@ -3930,7 +4064,21 @@ if (CHANGED) {
   ok(SELECTED.length > 0,
     `挑出 ${SELECTED.length} 條（全部 ${MUTATIONS.length} 條），涵蓋 ${new Set(SELECTED.map((m) => m.test)).size} 支測試`,
     '一條都沒挑到 —— 改到的檔案跟任何突變都沾不上邊，確認一下是不是漏了什麼');
-  note(`**這不是全綠**：這次只驗了 ${SELECTED.length}/${MUTATIONS.length} 條，其餘沒有跑。`);
+  if (PICK?.all) {
+    note(`判斷不出範圍 → 全跑（${PICK.reasons.length} 個理由）：${PICK.reasons.slice(0, 5).join('；')}${PICK.reasons.length > 5 ? '…' : ''}`);
+  } else {
+    note(`**這不是全綠**：這次只驗了 ${SELECTED.length}/${MUTATIONS.length} 條，其餘沒有跑。`);
+  }
+}
+
+// 只列不跑：node scripts/mutationtest.mjs --changed --list（秒級；不跑基準、不改任何檔）。印出挑了幾條、為什麼全跑，然後結束。
+if (process.argv.includes('--list')) {
+  section('只列不跑（--list）');
+  note(`這次會跑 ${SELECTED.length}/${MUTATIONS.length} 條、跳過 ${MUTATIONS.length - SELECTED.length} 條；涵蓋 ${new Set(SELECTED.map((m) => m.test)).size} 支測試`);
+  for (const t of [...new Set(SELECTED.map((m) => m.test))].sort()) note(`  ${t}：${SELECTED.filter((m) => m.test === t).length} 條`);
+  done('mutationtest');
+  // done() 只在有失敗時才結束程序；這裡一定要停，不然會往下跑基準（2026-10-03 第一版就這樣在 clone 裡跑了 60 秒的基準）
+  process.exit(0);
 }
 
 section('基準：沒有任何突變時，測試必須全綠');
@@ -3940,7 +4088,11 @@ let baselineOk = true;
 const BASELINE_TESTS = [...new Set(SELECTED.map((m) => m.test))];
 for (const t of BASELINE_TESTS) {
   const r = runTest(t);
-  if (!ok(r.code === 0, `${t} 在乾淨的程式碼上通過`, r.out.split('\n').filter((l) => l.includes('✗')).join('\n      '))) {
+  // 基準也要情境成立：逾時或沒有結算行，就算 exit code 是 0 也不算通過（沒跑完的綠不是綠）
+  const ran = !r.timedOut && hasSummary(r.out, t);
+  if (!ok(r.code === 0 && ran, `${t} 在乾淨的程式碼上通過`,
+    ran ? r.out.split('\n').filter((l) => l.includes('✗')).join('\n      ')
+      : `【情境未成立】${r.timedOut ? `逾時（${(TEST_TIMEOUT[t] ?? 180000) / 1000} 秒）` : `沒有 ${t} 自己的結算行（崩潰或沒跑起來）`}`)) {
     baselineOk = false;
   }
 }
@@ -3950,6 +4102,8 @@ if (!baselineOk) {
 }
 
 section(`${SELECTED.length} 條突變：每一條都必須讓對應的測試變紅`);
+// 結果分開數（2026-10-03）：「情境未成立」不算紅、不算沒紅，也不算跑過——回報寫「成立 N、未成立 M（不算）」
+const tally = { red: 0, 'not-red': 0, 'wrong-place': 0, 'extra-red': 0, 'not-counted': 0, stale: 0, restoreBroke: 0 };
 for (const mut of SELECTED) {
   const abs = path.join(ROOT, mut.file);
   const original = fs.readFileSync(abs, 'utf8');
@@ -3959,28 +4113,41 @@ for (const mut of SELECTED) {
     ok(false, `${mut.name}`,
       `要改的程式碼在 ${mut.file} 裡出現 ${occurrences} 次（需要剛好 1 次）—— 這條突變過期了，` +
       '表示對應的斷言已經很久沒有被驗證過。請更新突變或確認該邏輯還在。');
+    tally.stale += 1;
     continue;
   }
 
-  backups.set(mut.file, original);
-  writePending(mut.file, original);          // 被硬殺掉也還原得回來
-  fs.writeFileSync(abs, applyMutation(original, mut.find, mut.replace), 'utf8');
-  const r = runTest(mut.test);
-  fs.writeFileSync(abs, original, 'utf8');
-  backups.delete(mut.file);
-  clearPending();
-
-  const restored = fs.readFileSync(abs, 'utf8');
-  if (restored !== original) {
+  // 套突變、跑測試、還原。情境沒成立（逾時、沒有結算行）就重跑，最多 MAX_ATTEMPTS 次
+  let result = null;
+  let attempts = 0;
+  let restoreBroke = false;
+  while (attempts < MAX_ATTEMPTS) {
+    attempts += 1;
+    backups.set(mut.file, original);
+    writePending(mut.file, original);          // 被硬殺掉也還原得回來（寫不進去就丟例外、不改）
+    fs.writeFileSync(abs, applyMutation(original, mut.find, mut.replace), 'utf8');
+    const r = runTest(mut.test);
+    fs.writeFileSync(abs, original, 'utf8');
+    backups.delete(mut.file);
+    clearPending();
+    if (fs.readFileSync(abs, 'utf8') !== original) { restoreBroke = true; break; }
+    result = judge(r, mut.expect, mut.alsoRed);
+    if (result.verdict !== 'not-counted') break;
+  }
+  if (restoreBroke) {
+    tally.restoreBroke += 1;
     ok(false, `${mut.name}：還原失敗`, `${mut.file} 的內容跟原檔不一樣了`);
     continue;
   }
 
-  // 判定：沒帶 expect 只看 exit code；帶了的，還要紅在含 expect 的那一條（mutjudge.mjs）
-  const { verdict, failed, extra } = judge(r, mut.expect, mut.alsoRed);
+  // 判定：情境要先成立；沒帶 expect 只看 exit code；帶了的，還要紅在含 expect 的那一條（mutjudge.mjs）
+  const { verdict, failed, extra } = result;
+  tally[verdict] += 1;
   const label = mut.expect ? `${mut.name} → ${mut.test} 紅在「${mut.expect}」` : `${mut.name} → ${mut.test} 變紅`;
   ok(verdict === 'red', label,
-    verdict === 'not-red'
+    verdict === 'not-counted'
+      ? `【情境未成立】${result.why}；重跑了 ${attempts} 次都沒成立。不算紅、不算沒紅、也不算跑過——這一條這次什麼都沒證明`
+      : verdict === 'not-red'
       ? `【沒紅】改壞了 ${mut.file} 但 ${mut.test} 還是綠的。原因：${mut.why}\n      ` +
         '→ 這代表對應的斷言沒有真的在檢查這件事。'
       : verdict === 'wrong-place'
@@ -3991,6 +4158,16 @@ for (const mut of SELECTED) {
           ? `【多紅了別組】紅在「${mut.expect}」，但別組也一起紅：${extra.slice(0, 4).join('／')}${extra.length > 4 ? ` 等 ${extra.length} 條` : ''}\n      ` +
             '→ 保證不了「只紅對應的那一種」。本來就該連帶紅的，在突變上用 alsoRed 明列、並在 why 講理由。'
           : '');
+}
+
+{
+  const counted = tally.red + tally['not-red'] + tally['wrong-place'] + tally['extra-red'];
+  note(`結果分開數：情境成立 ${counted} 條（紅在對的地方 ${tally.red}、沒紅 ${tally['not-red']}、紅錯地方 ${tally['wrong-place']}、多紅了別組 ${tally['extra-red']}）；`
+    + `情境未成立 ${tally['not-counted']} 條（不算）；過期 ${tally.stale} 條；還原失敗 ${tally.restoreBroke} 條`);
+  // 分類加總要等於這次挑的條數，不等就是有一條沒被分到任何一類（v11.3：只報總數的檢查要分類、加總核對母體）
+  const sum = counted + tally['not-counted'] + tally.stale + tally.restoreBroke;
+  ok(SELECTED.length > 0 && sum === SELECTED.length, `結果分類加總：${sum} 條＝這次挑的 ${SELECTED.length} 條`,
+    `差了 ${SELECTED.length - sum} 條沒被分到任何一類`);
 }
 
 section('突變清單本身');

@@ -45,25 +45,41 @@ export function moduleRefsOf(rawSource) {
 }
 
 /**
- * 一支測試「碰得到」的全部模組：它直接引用的，加上那些模組遞移 import 的。
+ * 動態組出來的 import 路徑：樣板字串裡，`${` 出現在路徑的 `.js` 之前（例：`./js/views/${m}.js`）。
+ * 只有版本參數接在 `.js` 後面的（`./views/home.js${V}`）不算——路徑本身是固定的。
+ */
+export function dynamicImportsOf(rawSource) {
+  const out = [];
+  for (const m of stripComments(rawSource).matchAll(/\bimport\(\s*`([^`]*?)\$\{/g)) {
+    if (!/\.m?js$/.test(m[1])) out.push(m[1]);
+  }
+  return out;
+}
+
+/**
+ * 一支測試「碰得到」的全部模組，加上**判斷不出範圍的理由**（unresolved）。
  *
  * readFile 是參數而不是直接 fs.readFileSync —— 測試才能用假的檔案系統驗證這個展開
  * 真的有遞移下去（只展開一層的話，改 js/money.js 就挑不到任何東西，因為沒有測試
  * 直接 import 它，全是經由 settle.js／dividend.js 間接用到）。
  *
- * 讀不到的檔案直接跳過：測試檔裡的 import 字串有可能指向不存在的路徑
- * （例如字串拼接出來的），那不該讓整個挑選器爆掉。
+ * **讀不到、動態路徑，不是「沒有關係」**（共用慣例 §5.13、§5.18 第 1 點；2026-10-03）：
+ * 以前讀不到的檔直接跳過，範圍默默變小——實測一支中間的模組讀不到，改 js/avgcost.js 從 168 條變成 11 條，
+ * 回傳 0、沒有任何訊息。現在讀不到的檔、動態組出來的 import 路徑都記進 unresolved，呼叫端照它全跑。
  */
-export function moduleClosure(testRel, readFile) {
+export function closureReport(testRel, readFile) {
+  const unresolved = [];
   let src;
-  try { src = readFile(testRel); } catch { return []; }
+  try { src = readFile(testRel); } catch { return { modules: [], unresolved: [`讀不到測試檔 ${testRel}`] }; }
+  for (const d of dynamicImportsOf(src)) unresolved.push(`${testRel} 有動態組出來的 import 路徑（${d}…）`);
 
   const seen = new Set();
   const walk = (rel) => {
     if (seen.has(rel)) return;
     seen.add(rel);
     let s;
-    try { s = readFile(rel); } catch { return; }
+    try { s = readFile(rel); } catch { unresolved.push(`讀不到 ${rel}`); return; }
+    for (const d of dynamicImportsOf(s)) unresolved.push(`${rel} 有動態組出來的 import 路徑（${d}…）`);
     for (const spec of moduleRefsOf(s)) walk(spec);
     // js/ 模組之間是正常的相對 import（'./money.js'），要相對它自己的目錄解析
     for (const m of stripComments(s).matchAll(/\bfrom\s+'(\.[^']+)'/g)) {
@@ -73,7 +89,26 @@ export function moduleClosure(testRel, readFile) {
   };
 
   for (const spec of moduleRefsOf(src)) walk(spec);
-  return [...seen];
+  return { modules: [...seen], unresolved };
+}
+
+/** 只要模組清單（判斷不出範圍的理由另外看 closureReport）。 */
+export function moduleClosure(testRel, readFile) {
+  return closureReport(testRel, readFile).modules;
+}
+
+/**
+ * 挑選的入口（mutationtest --changed 用）：**任何一支測試判斷不出範圍，就全跑**，並回傳理由。
+ * reportOf(testName) → closureReport 的結果。回傳 { selected, all, reasons }。
+ * 寧可多跑、不可少跑（§5.18 第 1 點）：一支測試的範圍算不出來，就不知道這次的改動有沒有碰到它。
+ */
+export function selectWithReason(mutations, changedFiles, reportOf) {
+  const cache = new Map();
+  const rep = (t) => { if (!cache.has(t)) cache.set(t, reportOf(t)); return cache.get(t); };
+  const reasons = [];
+  for (const t of new Set(mutations.map((m) => m.test))) for (const u of rep(t).unresolved) reasons.push(`${t}：${u}`);
+  if (reasons.length) return { selected: mutations, all: true, reasons };
+  return { selected: selectAffected(mutations, changedFiles, (t) => rep(t).modules), all: false, reasons };
 }
 
 /**

@@ -33,25 +33,36 @@ const OUT_ELSEWHERE = '\n— 某段 —\n  ✗ 別的斷言\n      細節裡提�
 const OUT_CRASH = 'file:///x.mjs:3\nTypeError: 目標斷言 is not a function\n    at x.mjs:3:1';
 
 eq(failedAssertions(OUT_HIT), ['目標斷言：數字對得上（檢查了 3 項）'], '從輸出取出失敗的斷言訊息（只取 ✗ 行，不取 ✓ 與細節行）');
-eq(judge({ code: 1, out: OUT_HIT }, '目標斷言').verdict, 'red', '帶 expect、紅在含 expect 的那一條 → 合格');
-eq(judge({ code: 1, out: OUT_ELSEWHERE }, '目標斷言').verdict, 'wrong-place',
+eq(judge({ test: 'x', code: 1, out: OUT_HIT }, '目標斷言').verdict, 'red', '帶 expect、紅在含 expect 的那一條 → 合格');
+eq(judge({ test: 'x', code: 1, out: OUT_ELSEWHERE }, '目標斷言').verdict, 'wrong-place',
   '對照：紅了，但 expect 只出現在細節行、不在任何 ✗ 行 → 判成「紅錯地方」');
-eq(judge({ code: 1, out: OUT_CRASH }, '目標斷言').verdict, 'wrong-place',
-  '對照：測試直接崩了（沒有 ✗ 行，expect 只出現在例外訊息裡）→ 判成「紅錯地方」');
-eq(judge({ code: 0, out: '' }, '目標斷言').verdict, 'not-red', '對照：完全沒紅 → 判成「沒紅」，跟「紅錯地方」分得開');
+eq(judge({ test: 'x', code: 1, out: OUT_CRASH }, '目標斷言').verdict, 'not-counted',
+  '情境未成立・崩潰：測試直接崩了（沒有結算行，expect 只出現在例外訊息裡）→ 判成「不算數」（2026-10-03 以前是紅錯地方）');
+// 情境未成立（2026-10-03）：逾時、沒有自己的結算行 → 不算紅、不算通過；排在 exit code 之前判
+eq(judge({ test: 'x', code: 1, out: OUT_HIT, timedOut: true }, '目標斷言').verdict, 'not-counted',
+  '情境未成立・逾時：就算輸出裡已經有紅在目標斷言的 ✗ 行，逾時一律判成「不算數」');
+eq(judge({ test: 'x', code: 1, out: OUT_HIT, timedOut: true }).verdict, 'not-counted',
+  '情境未成立・逾時（沒帶 expect）：不能被 exit code 判成紅（gateselftest 那兩條就是這樣被記成被抓到）');
+eq(judge({ test: 'x', code: 1, out: '\n— 某段 —\n  ✗ 目標斷言：紅了\n' }, '目標斷言').verdict, 'not-counted',
+  '情境未成立・沒有結算行：有 ✗ 行但沒跑到結算（中途崩了或被殺）→ 不算數');
+eq(judge({ test: 'x', code: 1, out: '\n  ✗ 目標斷言：紅了\n\ny：0 項通過，1 項失敗' }, '目標斷言').verdict, 'not-counted',
+  '情境未成立・別支的結算行：結算行是別支測試的（子程序印的）→ 不算數');
+eq(judge({ test: 'x', code: 1, out: '\n  ✗ 目標斷言：紅了\n  說明 x：0 項通過，1 項失敗' }, '目標斷言').verdict, 'not-counted',
+  '情境未成立・結算行不在行首：只在行中間出現 → 不算');
+eq(judge({ test: 'x', code: 0, out: '\n— 某段 —\n  ✓ 目標斷言\n\nx：1 項通過' }, '目標斷言').verdict, 'not-red', '對照：完全沒紅 → 判成「沒紅」，跟「紅錯地方」分得開');
 // 2026-09-24 Dispatch：232 條沒寫 expect 的要分批補，先做這個對照——故意把一條的 expect 寫成**另一組真的存在的標籤**，判定必須報出來
-eq(judge({ code: 1, out: OUT_HIT }, '無關的那條').verdict, 'wrong-place',
+eq(judge({ test: 'x', code: 1, out: OUT_HIT }, '無關的那條').verdict, 'wrong-place',
   '對照：expect 寫錯成另一組存在的標籤（那一組沒紅）→ 判成「紅錯地方」');
-eq(judge({ code: 1, out: OUT_ELSEWHERE }).verdict, 'red', '沒帶 expect 的照舊：只要紅就算');
+eq(judge({ test: 'x', code: 1, out: OUT_ELSEWHERE }).verdict, 'red', '沒帶 expect 的照舊：情境有成立（有結算行）、只要紅就算');
 // 「只紅對應的那一種」（2026-09-24，統籌者驗收指出：以前只要有一條對上 expect 就判 red，不看別組有沒有一起紅）
 const OUT_BOTH = '\n— 某段 —\n  ✗ 目標斷言：數字對得上（檢查了 3 項）\n      命中 1 項\n  ✗ 另一組：也紅了\n\nx：0 項通過，2 項失敗';
 {
-  const both = judge({ code: 1, out: OUT_BOTH }, '目標斷言');
+  const both = judge({ test: 'x', code: 1, out: OUT_BOTH }, '目標斷言');
   ok(both.verdict === 'extra-red' && both.extra.length === 1 && both.extra[0] === '另一組：也紅了',
     '只紅對應：紅在對的那一條、別組也一起紅 → 判成「多紅了別組」，並列出多紅的那一條', JSON.stringify(both));
-  eq(judge({ code: 1, out: OUT_BOTH }, '目標斷言', ['另一組：']).verdict, 'red',
+  eq(judge({ test: 'x', code: 1, out: OUT_BOTH }, '目標斷言', ['另一組：']).verdict, 'red',
     '只紅對應（必過）：多紅的那一組有用 alsoRed 明列 → 合格');
-  eq(judge({ code: 1, out: OUT_BOTH }, '目標斷言', ['不相干的標籤：']).verdict, 'extra-red',
+  eq(judge({ test: 'x', code: 1, out: OUT_BOTH }, '目標斷言', ['不相干的標籤：']).verdict, 'extra-red',
     '只紅對應：alsoRed 列的是別的標籤 → 照樣判「多紅了別組」');
 }
 {

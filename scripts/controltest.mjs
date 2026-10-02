@@ -264,4 +264,126 @@ section('殘留突變的還原（mutationtest --restore，從命令列入口、�
   }
 }
 
+// ---------------------------------------------------------------------------
+section('突變執行器：逾時判成「情境未成立」（從命令列入口、在複本裡跑一條假突變）');
+{
+  // 2026-10-03：逾時的 exit code 非 0，沒帶 expect 的突變就被判成「變紅」——gateselftest（實測約 55 分鐘、逾時 15 分鐘）
+  // 的兩條突變每次都這樣被記成被抓到。這裡在複本裡把突變清單換成一條假突變（只換資料，判定與迴圈跑的是真的程式），
+  // 對一支假測試跑三個方向：逾時 → 不算數；同一條不逾時 → 沒紅（證明上一個「不算數」是逾時造成的）；真的紅 → 紅。
+  const { spawnSync } = await import('node:child_process');
+  const C = path.join(ROOT, '.logs', `controltest-timeout-${process.pid}`);
+  const verLine = /export const APP_VERSION = '[^']+';/.exec(fs.readFileSync(path.join(ROOT, 'js', 'version.js'), 'utf8'))?.[0];
+  ok(Boolean(verLine), '（前提）逾時對照：找得到 js/version.js 的版本行（假突變要改它）');
+  const fakeTest = [
+    "import fs from 'node:fs';",
+    "import { ok, done } from './tap.mjs';",
+    "const v = fs.readFileSync(new URL('../js/version.js', import.meta.url), 'utf8');",
+    "if (v.includes('PROBE_SLEEP')) { const t = Date.now(); while (Date.now() - t < 3000) { /* 忙等：模擬跑很久的測試 */ } }",
+    "if (fs.existsSync(new URL('./sleeptest.exit0', import.meta.url))) process.exit(0);   // 沒印結算行就以 0 結束",
+    "ok(!v.includes('PROBE_RED'), '假測試：版本行沒有 PROBE_RED 標記');",
+    "done('sleeptest');",
+    '',
+  ].join('\n');
+  const runFake = (marker, timeoutMs, exit0 = false) => {
+    fs.rmSync(C, { recursive: true, force: true });
+    for (const d of ['scripts', 'js']) fs.cpSync(path.join(ROOT, d), path.join(C, d), { recursive: true });
+    fs.rmSync(path.join(C, 'scripts', '.mutation-pending.json'), { force: true });
+    fs.writeFileSync(path.join(C, 'scripts', 'sleeptest.mjs'), fakeTest);
+    if (exit0) fs.writeFileSync(path.join(C, 'scripts', 'sleeptest.exit0'), '');
+    const F = path.join(C, 'scripts', 'mutationtest.mjs');
+    let s = fs.readFileSync(F, 'utf8');
+    const swap = (a, b) => { if (s.split(a).length !== 2) throw new Error(`逾時對照：mutationtest.mjs 的錨點不是剛好一次：${a.slice(0, 50)}`); s = s.split(a).join(b); };
+    const fake = { name: '假突變：逾時對照', why: '驗執行器把逾時判成什麼（controltest）', file: 'js/version.js', find: verLine, replace: `${verLine} // ${marker}`, test: 'sleeptest' };
+    swap('  return MUTATIONS;\n})();', `  return [${JSON.stringify(fake)}];\n})();`);
+    swap('const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000 };', `const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000, sleeptest: ${timeoutMs} };`);
+    fs.writeFileSync(F, s);
+    if (!fs.readFileSync(F, 'utf8').includes(`sleeptest: ${timeoutMs}`)) throw new Error('逾時對照：假突變沒寫進複本，前提沒造成');   // v11.3：讀回
+    const r = spawnSync(process.execPath, ['scripts/mutationtest.mjs'], { cwd: C, encoding: 'utf8', timeout: 120000 });
+    return { code: r.status, out: `${r.stdout}${r.stderr}` };
+  };
+  const has = (out, head) => out.split('\n').some((l) => l.trimStart().startsWith(head));
+  try {
+    const a = runFake('PROBE_SLEEP', 1000);
+    const aWhat = `回傳 ${a.code}；${a.out.split('\n').filter((l) => /假突變|情境|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`;
+    ok(/【情境未成立】逾時；/.test(a.out), '逾時對照・一a：測試逾時 → 判成「情境未成立」，理由是逾時（不是別的）', aWhat);
+    ok(/重跑了 2 次都沒成立/.test(a.out), '逾時對照・一b：情境沒成立就重跑，到上限（2 次）才放棄', aWhat);
+    ok(a.code !== 0 && /情境未成立 1 條（不算）/.test(a.out) && /情境成立 0 條/.test(a.out) && !has(a.out, '✓ 假突變：逾時對照'),
+      '逾時對照・一c：不算紅也不算過（不印 ✓、分開數成「未成立 1」、整支非 0）', aWhat);
+    const b = runFake('PROBE_SLEEP', 10000);
+    ok(/【沒紅】/.test(b.out) && /情境成立 1 條/.test(b.out),
+      '逾時對照・二（同一條、不逾時）：判成「沒紅」——上一條的「不算數」是逾時造成的', `回傳 ${b.code}；${b.out.split('\n').filter((l) => /假突變|沒紅|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`);
+    const c = runFake('PROBE_RED', 10000);
+    ok(c.code === 0 && has(c.out, '✓ 假突變：逾時對照 → sleeptest 變紅') && /紅在對的地方 1/.test(c.out),
+      '逾時對照・三（必過）：真的紅、沒逾時 → 判成紅（這套情境分得出紅）', `回傳 ${c.code}；${c.out.split('\n').filter((l) => /假突變|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`);
+    const d = runFake('PROBE_RED', 10000, true);
+    ok(d.code !== 0 && /基準就不是綠的/.test(d.out) && /【情境未成立】沒有 sleeptest 自己的結算行/.test(d.out) && !/假突變：逾時對照 →/.test(d.out),
+      '逾時對照・四：基準 exit 0 卻沒有結算行（沒跑完）→ 不算通過、停下、一條突變都不跑', `回傳 ${d.code}；${d.out.split('\n').filter((l) => /基準|情境|sleeptest/.test(l)).join(' ⏎ ').slice(0, 400)}`);
+  } finally {
+    fs.rmSync(C, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+section('突變挑選器（scripts/affected.mjs）：判斷不出範圍就全跑，不是「沒有關係」');
+{
+  // 2026-10-03：以前讀不到的檔直接跳過，範圍默默變小（實測：一支中間的模組讀不到，改 js/avgcost.js 從 168 條變成 11 條，
+  // 回傳 0、沒有任何訊息）。這裡用假的檔案系統，每一條從寬規則一個樣本；答案事先寫好。
+  // （挑選器原本的斷言在 shelltest；shelltest 要開瀏覽器，新的放在這支只用 node 的。）
+  const { closureReport, selectWithReason } = await import('./affected.mjs');
+  const FS = {
+    'scripts/at.mjs': "im" + "port { settle } from '../js/settle.js';",
+    'scripts/bt.mjs': "im" + "port { x } from '../js/b.js';",
+    // 拆開拼：原樣寫在這支檔裡的話，挑選器掃 controltest 自己時會把這兩段當成它真的 import（誤認成動態路徑與 js/c.js）
+    'scripts/dyn.mjs': 'const m = await im' + 'port(`./js/views/${name}.js`);',
+    'scripts/ver.mjs': 'const m = await im' + 'port(`./js/c.js${V}`);',
+    'js/settle.js': "import { toMicro } from './money.js';",
+    'js/money.js': '// 沒有 import',
+    'js/b.js': '// 沒有 import',
+    'js/c.js': '// 沒有 import',
+  };
+  const reader = (missing = []) => (rel) => { if (!(rel in FS) || missing.includes(rel)) throw new Error('讀不到：' + rel); return FS[rel]; };
+  const MUTS = [
+    { name: 'a1', file: 'js/settle.js', test: 'at' },
+    { name: 'b1', file: 'js/b.js', test: 'bt' },
+  ];
+  const pickWith = (read, muts = MUTS, changed = ['js/money.js']) => selectWithReason(muts, changed, (t) => closureReport(`scripts/${t}.mjs`, read));
+
+  const okRead = pickWith(reader());
+  ok(!okRead.all && okRead.selected.map((m) => m.name).join() === 'a1' && okRead.reasons.length === 0,
+    '判斷得出範圍（必過）：照相依挑、不全跑——改 js/money.js 只挑 a1（at 經由 settle.js 碰得到）', JSON.stringify(okRead));
+  const midMissing = closureReport('scripts/at.mjs', reader(['js/settle.js']));
+  ok(midMissing.unresolved.some((u) => u.includes('讀不到 js/settle.js')), '判斷不出範圍・讀不到中間的模組：記成理由，不是跳過', JSON.stringify(midMissing));
+  const testMissing = closureReport('scripts/不存在.mjs', reader());
+  ok(testMissing.unresolved.some((u) => u.includes('讀不到測試檔 scripts/不存在.mjs')), '判斷不出範圍・讀不到測試檔：記成理由', JSON.stringify(testMissing));
+  const dyn = closureReport('scripts/dyn.mjs', reader());
+  ok(dyn.unresolved.some((u) => u.includes('動態組出來的 import 路徑')), '判斷不出範圍・動態路徑：樣板字串的路徑裡有 ${…}，記成理由', JSON.stringify(dyn));
+  const ver = closureReport('scripts/ver.mjs', reader());
+  ok(ver.unresolved.length === 0 && ver.modules.includes('js/c.js'), '判斷不出範圍・版本參數不算動態（必過）：`./js/c.js${V}` 的路徑是固定的', JSON.stringify(ver));
+  const allRun = pickWith(reader(['js/settle.js']));
+  ok(allRun.all && allRun.selected.length === MUTS.length && allRun.reasons.some((r) => r.startsWith('at：讀不到 js/settle.js')),
+    '判斷不出範圍 → 全跑：一支測試的範圍算不出來，就全部都跑，並講出是哪一支、為什麼', JSON.stringify(allRun));
+
+  // 從真實入口（命令列，只列不跑）：在 clone 裡改一支 js，--changed --list 要講出全跑與理由
+  const { spawnSync } = await import('node:child_process');
+  const G = path.join(ROOT, '.logs', `controltest-changed-${process.pid}`);
+  try {
+    fs.rmSync(G, { recursive: true, force: true });
+    const cl = spawnSync('git', ['clone', '-q', ROOT, G], { encoding: 'utf8' });
+    if (cl.status !== 0) throw new Error('clone 失敗：' + cl.stderr);
+    for (const d of ['scripts', 'js']) fs.cpSync(path.join(ROOT, d), path.join(G, d), { recursive: true });   // 帶上工作區還沒 commit 的改動
+    fs.rmSync(path.join(G, 'scripts', '.mutation-pending.json'), { force: true });
+    spawnSync('git', ['-C', G, 'add', '-A'], { encoding: 'utf8' });
+    spawnSync('git', ['-C', G, '-c', 'user.name=t', '-c', 'user.email=t@users.noreply.github.com', 'commit', '-qm', 'wt'], { encoding: 'utf8' });
+    fs.appendFileSync(path.join(G, 'js', 'money.js'), '\n// controltest：改一行\n');
+    const r = spawnSync(process.execPath, ['scripts/mutationtest.mjs', '--changed', '--list'], { cwd: G, encoding: 'utf8', timeout: 60000 });
+    const out = `${r.stdout}${r.stderr}`;
+    ok(r.status === 0 && /git 說改到了 1 個檔：js\/money\.js/.test(out) && /判斷不出範圍 → 全跑/.test(out) && /dcatest：scripts\/dcatest\.mjs 有動態組出來的 import 路徑/.test(out)
+      && !/— 基準：/.test(out),
+      '判斷不出範圍・真實入口：--changed --list 在現在的 repo 上講出「全跑」與理由（dcatest 的動態路徑），而且沒有跑基準',
+      `回傳 ${r.status}；${out.split('\n').filter((l) => /git 說|判斷不出|只列不跑|基準/.test(l)).join(' ⏎ ').slice(0, 500)}`);
+  } finally {
+    fs.rmSync(G, { recursive: true, force: true });
+  }
+}
+
 done('controltest');
