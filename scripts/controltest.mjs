@@ -300,7 +300,7 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     const swap = (a, b) => { if (s.split(a).length !== 2) throw new Error(`逾時對照：mutationtest.mjs 的錨點不是剛好一次：${a.slice(0, 50)}`); s = s.split(a).join(b); };
     const fake = { name: '假突變：逾時對照', why: '驗執行器把逾時判成什麼（controltest）', file: 'js/version.js', find: verLine, replace: `${verLine} // ${marker}`, test: 'sleeptest', ...(expect ? { expect } : {}) };
     swap('  return MUTATIONS;\n})();', `  return [${JSON.stringify(fake)}];\n})();`);
-    swap('const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000,', `const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000, sleeptest: ${timeoutMs},`);
+    swap('const TEST_TIMEOUT = { gateselftest: 180 * 60 * 1000,', `const TEST_TIMEOUT = { gateselftest: 180 * 60 * 1000, sleeptest: ${timeoutMs},`);
     fs.writeFileSync(F, s);
     if (!fs.readFileSync(F, 'utf8').includes(`sleeptest: ${timeoutMs}`)) throw new Error('逾時對照：假突變沒寫進複本，前提沒造成');   // v11.3：讀回
     const r = spawnSync(process.execPath, ['scripts/mutationtest.mjs'], { cwd: C, encoding: 'utf8', timeout: 120000 });

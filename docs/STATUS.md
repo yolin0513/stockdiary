@@ -47,10 +47,10 @@
 
 | 測試 | 正常耗時（出處） | 突變逾時 | 餘裕 |
 |---|---|---|---|
-| `gateselftest` | 約 55 分鐘以上（2026-09-25；之後加了 G15–G17 變體、改經 jobrun，待量） | 90 分鐘 | **⚠ 約 1.6 倍** |
-| `pathtest` | 140.4 秒（2026-09-21 全面檢測） | 360 秒 | **⚠ 2.6 倍**（照 3 倍要 421 秒以上） |
-| `controltest` | 42–63 秒（2026-10-03 直接跑三次的牆鐘） | 180 秒 | **⚠ 2.9 倍**（以最慢那次算） |
-| `layouttest` | 116.5 秒（2026-09-21） | 360 秒 | 3.1 倍 |
+| `gateselftest` | 約 55 分鐘以上（2026-09-25；之後加了 G15–G17 變體、改經 jobrun，待量） | 180 分鐘（2026-10-03 從 90 改） | 約 3.3 倍（G15–G17 之後的實測待量） |
+| `pathtest` | 140.4 秒（2026-09-21 全面檢測） | 450 秒（2026-10-03 從 180 → 360 → 450） | 3.2 倍 |
+| `controltest` | 42–63 秒（2026-10-03 直接跑三次的牆鐘） | 240 秒（2026-10-03 從 180 改） | 3.8 倍（以最慢那次算） |
+| `layouttest` | 116.5 秒（2026-09-21） | 360 秒（2026-10-03 從 180 改） | 3.1 倍 |
 | `upgradecheck` | 43.9 秒（2026-09-21） | 180 秒 | 4.1 倍 |
 | `eventtest`／`uikittest`／`dcatest` | 36.8／35.4／34.5 秒（2026-09-21） | 180 秒 | 4.9–5.2 倍 |
 | `jobtest` | 約 30 秒（2026-10-03） | 180 秒 | 6 倍 |
@@ -67,19 +67,32 @@
 - **`scripts/gatepush.sh` 整支沒有任何逾時**：`git fetch`、`git push`、`git ls-remote` 都打網路，卡住就一直卡著，從外面看像「還在跑」（Dispatch 指出：推送卡住會讓驗完的版本上不去）。
   `gatetest.sh` 也沒有；它經 `gateselftest` 跑時有 10 分鐘（`spawnSync` 的 `timeout`）兜底，單獨跑沒有。
 - **`scripts/buildverify.mjs` 開 `buildtest` 那一行沒有逾時**（它被 `gatepush` 叫到時也沒有兜底）。
-- **`gateselftest` 本身**：開 `gatetest.sh` 有 10 分鐘；開頭的 `git clone --no-local` 沒有。它被 `mutationtest` 叫時外層有 90 分鐘兜底，單獨跑沒有。
+- **`gateselftest` 本身**：開 `gatetest.sh` 有 10 分鐘；開頭的 `git clone --no-local` 沒有。它被 `mutationtest` 叫時外層有 180 分鐘兜底，單獨跑沒有。
 - `longrun` 開的指令沒有逾時（設計如此：它是包裝，被包的要自己有；GV 那場被包的是 `mutationtest`，裡面每支有逾時）。
 - `jobrun` 開的指令沒有逾時（同上，由呼叫端設）；`workertest` 起 wrangler 沒有。
-- 明天 GV 那場會走到的：`mutationtest`（每支有）→ `gateselftest`（90 分鐘）→ `gatetest.sh`（每次 10 分鐘）→ 裡面的 git／node（沒有，被 10 分鐘兜住）。
+- 明天 GV 那場會走到的：`mutationtest`（每支有）→ `gateselftest`（180 分鐘）→ `gatetest.sh`（每次 10 分鐘）→ 裡面的 git／node（沒有，被 10 分鐘兜住）。
 
 **盤點：只在某個時點查的護欄**：
 - **推送閘門的 TOCTOU**：要推哪個 commit（`LOCAL`）在 fetch 前記一次；自查掃的是當下的 `refs/heads/main`，**`git push` 推的是推送那一刻的 `main`**。
   自查與推送之間如果有新 commit 落地，它會不經自查就推出去；第三關（遠端≠`LOCAL`）會回 3，但那時已經公開了。修法（推論）：自查與推送都改用記下來的 `$LOCAL`
-  （`git push origin "$LOCAL:refs/heads/main"`）。動閘門要重跑 `gatetest.sh` 並加一種情境，還沒做。
+  （`git push origin "$LOCAL:refs/heads/main"`）。動閘門要重跑 `gatetest.sh` 並加一種情境，還沒做（Dispatch：等 GV 跑完再做）。
+  **在那之前用程序規則補上**：自查到推送之間不得有任何新 commit（「接手者最容易做錯的事」第 0b 條）。
 - **`mutationtest` 沒有「工作區等於 HEAD」的檢查**：只在開跑前查殘留突變；跑的期間有人改了檔，結果是混合版本、log 只記開頭的 commit。
   （F9 build 登記有前後各比一次：「跑的期間改了檔」那條，是對的寫法。）
 - **程序數上限（本 repo ≤ 4）沒有任何機器擋**：只在開跑前人工預估；`longrun` 邊跑邊取樣（含逐一計數的峰值），但只記錄、不攔。
-- **記憶體下限：沒有**。`longrun` 每次取樣都記可用記憶體，但沒有門檻、不會停。
+- **記憶體下限：沒有**。`longrun` 每次取樣都記可用記憶體，但沒有門檻、不會停。→ 先用外部監看補上（下一段）；程式內的門檻排在冗餘配對盤點之後，三件裡排第一。
+
+**外部記憶體監看 `tools/memwatch.mjs`（2026-10-03，Dispatch；照 MealMate 的做法；不碰閘門、不動 `scripts/`）**：
+- 每 5 秒看一次系統可用記憶體，**連續 3 次**低於 2,048 MB 才停；停之前把記憶體用量前 10 名寫進 log；停的對象只限 `--pid` 那一個，
+  開始時與動手前都確認身分（`node.exe`、指令列含 `--expect`、建立時間不變）。子孫靠 Job Object 收（mutationtest 每支測試經 jobrun）。
+  停完有殘留突變的還原紀錄就跑 `mutationtest --restore`。回傳：0 目標自己結束、10 停了目標、2 身分對不上沒動、4 連續讀不到記憶體（監看失效、目標沒動）。
+- **GV 開跑前掛上**：先開 GV（`node scripts/mutationtest.mjs --only "GV："`，或經 `longrun` 包），查到 mutationtest 那支 node 的 PID，然後
+  `node tools/memwatch.mjs --pid <PID> --expect "mutationtest.mjs"`（log 在 `.logs/memwatch-<日期>-<PID>.log`）。**`--pid` 要給 mutationtest 那一支，
+  不要給 longrun**：longrun 被停時不會連帶殺它開的指令以外的東西，mutationtest 被停時它底下的 jobrun 與 Job 會收掉整棵樹。
+- **實測**：`tools/memwatchtest.mjs`（12 項，約 45 秒，最多 3 個 node；不在 `npm test` 鏈上，因為它在 `tools/`）——連續 3 次低才停（第 2、4 次單獨低不停，第 6 次停）、
+  前 10 名寫進 log、從沒連續低就不動手、身分對不上回 2 且目標活著、讀不到記憶體回 4 且目標活著、真的讀一次系統記憶體是正數。
+  突變四條（改壞的複本放 `tools/`、經 `MEMWATCH_FILE` 跑，一次性腳本，不進 repo）全部紅在指定的那一條：不要求連續、開始時不確認指令列、讀不到就略過、不寫前 10 名。
+- **推論、沒驗**：PID 被重用的分支（建立時間不同就當成目標已結束）沒有造情境驗；停下真的 mutationtest 之後 Job 收樹、`--restore` 還原，沒有在真的突變場次上演練。
 
 以下是當天較早的紀錄（推送那段已經過期：兩件優先後來都推上去了）。
 
@@ -353,7 +366,7 @@ repo 裡其他會殺程序的地方：`f1ev`、`s6ev` 的 `p.kill()` 與各測�
 **推送前固定要做的**（新 Session 第一次推送也一樣）：
 - `bash scripts/gatetest.sh`（約 2 分鐘）：登記第零關。
 - 改過三支 build、`buildtest` 或它們的相依時：commit 之後、推送之前跑 `node scripts/buildverify.mjs`（約 1 分鐘），登記 F9。
-- 推送一律 `bash scripts/gatepush.sh`，不接管線。
+- 推送一律 `bash scripts/gatepush.sh`，不接管線。**自查到推送之間不得有任何新 commit**（Dispatch 2026-10-03，暫行補償，見「接手者最容易做錯的事」第 0b 條）：commit 全部做完 → 跑閘門，中間不 commit、不 amend、不 rebase。
 - 改過閘門、驗法或 `buildverify` 時，另外跑 `npm run gateselftest`。
 
 **2026-09-23 做完的兩件（都已 push）**：
@@ -544,7 +557,7 @@ repo 裡其他會殺程序的地方：`f1ev`、`s6ev` 的 `p.kill()` 與各測�
 6. **不得出現任何投資建議、目標價、買賣建議**——AI 輸出、UI 文案、試算器預設值、說明文字全部適用。
 7. **不規劃也不實作任何券商帳密、下單、轉帳功能。**
 8. 沿用 JLPT_App／TripQuest 技術路線：原生 JS ES Modules ＋ IndexedDB ＋ Service Worker，無框架、無打包；`h()` 全 textNode、URL 屬性白名單；CSP `script-src 'self'`；外部請求一律 `AbortSignal.timeout` ＋ 降級。
-9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變＋**`npm run checkmutations`（每版必跑，不到一秒：突變有沒有過期、`expect` 找不找得到）**＋**`npm run gatescan`（每版必跑，不到一秒：閘門、自查、驗法有沒有已知的壞寫法）**（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit → **`bash scripts/gatepush.sh`**（推送閘門，見「推送閘門」那一節；**回傳 0 才往下**，1／2／3／4 都停下來查（4＝改過閘門、自查或驗法之後還沒跑過驗法：先跑 `bash scripts/gatetest.sh`），不要接著等線上換版或跑 `sweep`——推送沒成功的話，那是對著舊版在驗，看起來還是綠的）→ `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。（2026-09-23 共用慣例 v7 §2.5：以前這裡寫的是直接 push。）
+9. 每版流程：`npm run bump -- stockdiary-vX.Y.Z`（**一次改四處**：`js/version.js`、`sw.js`、`index.html` 的 `?v=`、`package.json`）→ 跑**受影響的**測試＋這次新突變＋**`npm run checkmutations`（每版必跑，不到一秒：突變有沒有過期、`expect` 找不找得到）**＋**`npm run gatescan`（每版必跑，不到一秒：閘門、自查、驗法有沒有已知的壞寫法）**（見「測試範圍」；全套只在 Yolin 叫時跑）→ commit（全部做完；**之後到推送之間不再 commit**，第 0b 條）→ **`bash scripts/gatepush.sh`**（推送閘門，見「推送閘門」那一節；**回傳 0 才往下**，1／2／3／4 都停下來查（4＝改過閘門、自查或驗法之後還沒跑過驗法：先跑 `bash scripts/gatetest.sh`），不要接著等線上換版或跑 `sweep`——推送沒成功的話，那是對著舊版在驗，看起來還是綠的）→ `until curl -s https://yolin0513.github.io/stockdiary/js/version.js | grep -q "vX.Y.Z"; do sleep 5; done` 等線上換版 → `npm run sweep`。（2026-09-23 共用慣例 v7 §2.5：以前這裡寫的是直接 push。）
    （2026-09-18 更新：以前寫「bump sw.js VERSION → npm test」，那是 v0.7.10 測試範圍政策之前的做法。）
 10. 打真網路的測試（TWSE、RSS、Anthropic）**不進 `npm test`**，另開 `npm run livecheck`；TWSE 請求 ≥ 2 秒間隔，測試也一樣，**不要連打**（社群共識 3 次／5 秒會被封 IP）。
 11. 不動 `../TripQuest`、`../JLPT_App`、`../MealMate` 的任何檔案（可讀，用來抄慣例與對照同一種 bug）。
@@ -859,6 +872,10 @@ A4 讀屏兩條、看門狗按鈕、跨年、B3 代號表過期等）。其中 `
 
 ## 接手者最容易做錯的事
 
+0b. **自查到推送之間不得有任何新 commit**（Dispatch 2026-10-03；**鎖定 commit 之前的暫行補償**，閘門改成自查與推送都用同一個記下來的 commit 之後可以撤掉）。
+   做法：commit 全部做完 → `bash scripts/gatepush.sh`（自查之後立刻推，同一支腳本裡）→ 中間不插入任何 commit、amend、rebase。
+   自查擋下、要修：修完 commit，**整個閘門重跑**，不沿用上一次自查的結果。另一個 Session 或工具可能在同一個 repo commit 時，推送前先確認沒有人在動。
+   理由：閘門現在掃的是自查那一刻的 `main`、推的是推送那一刻的 `main`，中間落地的 commit 不經自查就公開；第三關會回 3，但那時已經推上去了（公開衛生的紅線）。
 0. **要寫檔或改檔，一律用 Write／Edit 工具，不要用 shell**（Dispatch 2026-10-03）。heredoc、`sed -i`、`echo >`、`node -e` 寫檔都不行；
    shell 只用來執行指令。**不要先判斷「這段有沒有反斜線、regex、特殊字元」再決定**——判斷那一步本身就是出錯的來源。
    起因：2026-10-03 一天之內四次（MealMate 兩次、TripQuest 一次、本 App 一次），都是把含反斜線的補丁寫進 heredoc，
@@ -1651,7 +1668,7 @@ email 類原本拿 git 歷史的作者信箱當對照組，改用 noreply 之後
 
 ### 推送閘門：自查沒過，推送指令就不能執行（2026-09-23）
 
-**推送一律走閘門**：`bash scripts/gatepush.sh`（預設推 `origin main`；也可以 `bash scripts/gatepush.sh <遠端> <分支>`）。**三關**（共用慣例 v7 §2.5），**每一步的輸出都寫到 `.logs/`、不接任何管線**，回傳值分得出是哪一關：
+**推送一律走閘門**：`bash scripts/gatepush.sh`（預設推 `origin main`；也可以 `bash scripts/gatepush.sh <遠端> <分支>`）。**自查到推送之間不得有任何新 commit**（Dispatch 2026-10-03，暫行補償，見「接手者最容易做錯的事」第 0b 條）。**三關**（共用慣例 v7 §2.5），**每一步的輸出都寫到 `.logs/`、不接任何管線**，回傳值分得出是哪一關：
 - **回傳 4｜第零關・驗法登記**（2026-09-24，`SPEC_檢查器修補` S7，共用慣例 §5.15；做法照 MealMate 的登記制，驗證自己做）：`gatepush.sh`、`precheck.mjs`、`piiscan.mjs`、`gatetest.sh`、`gatereason.mjs`、`buildverify.mjs` 六支目前的雜湊（`git hash-object`，工作區的檔）要跟 `.logs/gate-verified.txt`（被 ignore）的登記一致；沒有登記檔或對不上就停，**在 fetch 與自查之前**，並講出是哪一支。登記由 `gatetest.sh` 寫：一開跑就刪掉登記，全部符合才寫回（寫的是複本裡驗的那一份，也就是已 commit 的版本）。以前「改過閘門就重跑驗法」靠人記得。**新 Session（或新 clone）第一次推送前，先跑一次 `bash scripts/gatetest.sh`（約 1 分鐘）。**
 - **回傳 5｜F9・build 驗法登記**（2026-09-24，統籌者新訂、四家統一）：fetch 之後、自查之前，`node scripts/buildverify.mjs --check` 逐個 commit 列出這次要推的 commit 動到的檔；**動到被守的檔**（三支 build、`buildguard`、`testfetch`、`buildtest`、`tap.mjs`、`js/roc.js`、`js/twse.js`）才看 `.logs/build-verified.txt`，登記要跟要推的已 commit 版本一致，沒有或對不上就停。沒動到就不看。登記由 `node scripts/buildverify.mjs`（約 1 分鐘）寫：被守的檔工作區＝HEAD、`buildtest` 全擋才寫，一開跑就刪舊登記。**改過 build 或 `buildtest`，commit 之後、推送之前跑一次。**
 - **回傳 1｜第一關・自查**：四類（`scripts/precheck.mjs`）與第五類（`scripts/piiscan.mjs`）。有命中、**對照組沒命中（檢查器壞了）**、黑名單檔不見，或取不到遠端狀態（算不出要掃哪些 commit）都擋。**掃的是「遠端分支..本機」的全部 commit**，逐個 commit 取新增行（2026-09-23 以前只掃 HEAD：一次推好幾個 commit 時，前面的沒被掃到）。
