@@ -3870,6 +3870,8 @@ const MUTATIONS = [
     replace: "  ok(verdict === 'red' || verdict === 'not-counted', label,\n",
     test: 'controltest',
     expect: '逾時對照・一c',
+    alsoRed: ['逾時對照・一a', '逾時對照・一b'],
+    alsoRedWhy: '「不算數」印成 ✓ 時就沒有那一行 ✗ 與它的細節行；一a（細節行寫的理由）與一b（重跑次數）看的是同一行，一起紅（2026-10-03 第 2 步實跑查到）。',
   },
   {
     name: 'NC：基準不看結算行',
@@ -4044,8 +4046,8 @@ const MUTATIONS = [
     replace: "  return /exit=/.test(logText) ? 'done' : 'not-done';",
     test: 'controltest',
     expect: '長跑判定・只有 exit= 沒有結算行：',
-    alsoRed: ['長跑・沒有結算行：'],
-    alsoRedWhy: '包裝結束時自己就寫 exit= 那一行，「沒有結算行也以 0 結束」那一格讀 log 時也會被判成跑完。',
+    alsoRed: ['長跑・跑完：'],
+    alsoRedWhy: '包裝是先判定、才寫 exit= 那一行；判定當下 log 裡還沒有 exit=，連真的跑完的那一格也被判成沒跑完（2026-10-03 第 2 步實跑查到；登記時猜的「沒有結算行那一格」猜錯了）。',
   },
   {
     name: 'LR：資源取樣跑完才寫',
