@@ -342,6 +342,9 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     const f = runFake('PROBE_RED', 10000, false, '假測試：版本行沒有 PROBE_RED 標記');
     ok(f.code === 0 && has(f.out, '  ✓ 假突變：逾時對照 → sleeptest 紅在「假測試：版本行沒有 PROBE_RED 標記」') && tallyOf(f.out).includes('；預期清單過期 0 條；'),
       '預期清單過期・執行時（必過）：expect 找得到 → 照常判紅', `回傳 ${f.code}；${linesOf(f.out).filter((l) => /假突變|預期清單|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`);
+    // 判對時也印出實際紅了哪幾條（Dispatch 2026-10-03）：通過的那一條也要能被稽核——看得出它紅在哪、對應到幾條
+    ok(has(f.out, '  · 實際紅在（共 1 條）：假測試：版本行沒有 PROBE_RED 標記'),
+      '判對時也印出實際紅在哪：判成紅的那一條，下一行說明實際紅的是哪幾條斷言（這裡剛好 1 條）', linesOf(f.out).filter((l) => /實際紅在|假突變/.test(l)).join(' ⏎ ').slice(0, 300));
   } finally {
     fs.rmSync(C, { recursive: true, force: true });
   }

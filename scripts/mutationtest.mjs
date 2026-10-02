@@ -3992,6 +3992,15 @@ const MUTATIONS = [
     test: 'controltest',
     expect: '預期清單過期・執行時：',
   },
+  {
+    name: 'SE：判對時不印實際紅在哪',
+    why: '只在判錯時才顯示計算過程的檢查器，通過時無法被稽核：預期字串對應到好幾條斷言、隨便哪一條紅都算過，從輸出上看不出來。',
+    file: 'scripts/mutationtest.mjs',
+    find: "  if (verdict === 'red') note(`實際紅在（共 ${failed.length} 條）：${failed.join('／')}`);\n}",
+    replace: '}',
+    test: 'controltest',
+    expect: '判對時也印出實際紅在哪：',
+  },
   // ──── expect 必須是失敗訊息的開頭（2026-10-03，Dispatch 決定 A）：判定比開頭、登記時就擋 ────
   {
     name: 'XP：判定改回子字串比對 expect',
@@ -4305,6 +4314,9 @@ for (const mut of SELECTED) {
           ? `【多紅了別組】紅在「${mut.expect}」，但別組也一起紅：${extra.slice(0, 4).join('／')}${extra.length > 4 ? ` 等 ${extra.length} 條` : ''}\n      ` +
             '→ 保證不了「只紅對應的那一種」。本來就該連帶紅的，在突變上用 alsoRed 明列、並在 why 講理由。'
           : '');
+  // **判對時也印出實際紅了哪幾條**（Dispatch 2026-10-03）：只在判錯時才顯示計算過程的檢查器，通過的時候無法被稽核——
+  // 「預期字串對應到好幾條斷言、隨便哪一條紅都算過」從輸出上完全看不出來。印成說明行（行首「  · 」，不會被當成失敗斷言）。
+  if (verdict === 'red') note(`實際紅在（共 ${failed.length} 條）：${failed.join('／')}`);
 }
 
 {
