@@ -11,8 +11,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done, detects, everyOf, noneOf, note } from './tap.mjs';
+import { loadRegistry } from './assertreg.mjs';
 import {
-  failedAssertions, judge, applyMutation, loadMutations, expectProblems, findProblems, legacyCount, EXPECT_MARKER,
+  failedAssertions, judge, applyMutation, loadMutations, expectProblems, registryProblems, findProblems, legacyCount, EXPECT_MARKER,
 } from './mutjudge.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -149,8 +150,35 @@ section('每一條 expect 都找得到（A2）');
 
 const withExpect = MUTATIONS.filter((m) => m.expect != null);
 ok(withExpect.length > 0, `（前提）帶 expect 的突變有 ${withExpect.length} 條（全部 ${MUTATIONS.length} 條）`);
-everyOf(withExpect, (m) => expectProblems(m, read).length === 0,
+everyOf(withExpect, (m) => expectProblems(m, read, loadRegistry(m.test)).length === 0,
   '每一條 expect 都是對應測試原始碼裡的一段字面（打錯字的永遠不會命中）');
+{
+  // 有斷言登記表的測試，預期對登記表檢查（2026-10-03）：通過時也印出檢查了幾條，免得「0 個問題」跟「沒有表、沒檢查」長得一樣
+  const viaReg = withExpect.filter((m) => loadRegistry(m.test));
+  note(`對斷言登記表檢查的預期：${viaReg.length} 條（${[...new Set(viaReg.map((m) => m.test))].join('、') || '（沒有）'}）；其餘 ${withExpect.length - viaReg.length} 條對原始碼的字面檢查`);
+  for (const m of viaReg) {
+    const reg = loadRegistry(m.test);
+    note(`  ${m.name}：expect 對應到 ${reg.assertions.filter((a) => a.name.startsWith(m.expect)).length} 條、預期寫於 ${m.regStamp ?? '（沒戳）'}、登記表現在是 ${reg.version}`);
+  }
+}
+
+section('斷言登記表：預期有歧義、對不到、需要複審（兩個方向）');
+{
+  const REG = { test: 't', version: '4:abc', assertions: ['甲：一', '甲：二', '乙：唯一', '丙：x'].map((name, i) => ({ id: `t#${i + 1}`, name })) };
+  eq(registryProblems({ test: 't', expect: '乙：', regStamp: '4:abc' }, REG), [], '登記表・唯一而且版本對（必過）：沒有問題');
+  ok(registryProblems({ test: 't', expect: '甲：', regStamp: '4:abc' }, REG).some((p) => p.startsWith('預期有歧義') && p.includes('t#1、t#2')),
+    '登記表・預期有歧義：以 expect 開頭的斷言有 2 條 → 報出來、列出是哪幾條');
+  ok(registryProblems({ test: 't', expect: '丁：', regStamp: '4:abc' }, REG).some((p) => p.includes('對不到任何一條')),
+    '登記表・對不到：以 expect 開頭的斷言 0 條 → 報出來');
+  ok(registryProblems({ test: 't', expect: '乙：', regStamp: '3:old' }, REG).some((p) => p.startsWith('預期需要複審')),
+    '登記表・預期需要複審：預期戳的是舊版登記表（母體變了）→ 報出來');
+  ok(registryProblems({ test: 't', expect: '乙：', regStamp: '4:abc', alsoRed: ['戊：'] }, REG).some((p) => p.includes('alsoRed「戊：」')),
+    '登記表・alsoRed 對不到：報出來');
+  // 有表就對表檢查：同一條預期，原始碼裡是唯一的字面開頭（靜態看沒問題），登記表裡卻是 2 條的開頭 → 要報歧義
+  const rdOne = (rel) => (rel === 'scripts/t.mjs' ? "ok(a, `甲：${n}`);" : null);
+  ok(expectProblems({ test: 't', expect: '甲：', regStamp: '4:abc' }, rdOne, REG).some((p) => p.startsWith('預期有歧義')),
+    '登記表・有表就對表檢查：原始碼裡看起來唯一（樣板），登記表裡對到 2 條 → 照登記表報歧義');
+}
 
 // 對照組：拿一支真的存在的測試造兩條假突變，一條 expect 對、一條打錯字
 const REAL_TEST = 'checkmutations';

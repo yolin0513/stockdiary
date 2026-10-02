@@ -68,6 +68,9 @@ try {
   process.exit(1);
 }
 
+/** 預期清單過期的前置，這一場檢查了幾份、幾個編號、過期幾個（結尾印出來）。 */
+const EXPECT_TALLY = { lists: 0, ids: 0, stale: 0 };
+
 /** 預期清單裡、情境清單沒有的編號。 */
 const staleIds = (ids, all) => ids.filter((k) => !all.includes(k));
 // 對照（兩個方向）：清單裡都有 → 空；有一個不在 → 抓到那一個
@@ -106,11 +109,14 @@ function variant(name, patches, { expectBad, expectReg, order = ALL }) {
   // 預期清單過期（2026-10-03，TripQuest 同日）：預期不符的情境不在 ALL 裡（情境改名、拿掉了）——
   // 照跑的話會報成「不符的情境不如預期」，看起來像閘門有問題。獨立報出來，這個變體不跑。
   const unknown = staleIds(expectBad, ALL);
+  EXPECT_TALLY.lists += 1; EXPECT_TALLY.ids += expectBad.length; EXPECT_TALLY.stale += unknown.length;
   if (unknown.length) {
     section(`變體：${name}`);
     ok(false, `${name}：預期清單過期`, `【預期清單過期】預期不符的情境 ${unknown.join('、')} 不在驗法的情境清單裡；這個變體沒有跑`);
     return {};
   }
+  // 通過時也留下算過的痕跡（Dispatch 2026-10-03）：只在抓到東西時才印的話，「0 個過期」跟「根本沒檢查」長得一樣
+  note(`預期清單：${name} 的 ${expectBad.length} 個情境編號都在驗法的情境清單（${ALL.length} 種）裡`);
   git('reset', '-q', '--hard', BASE);
   for (const [rel, find, replace] of patches) patch(rel, find, replace);
   if (patches.length) git('commit', '-q', '-am', `gateselftest：${name}`);
@@ -212,4 +218,7 @@ try {
 } finally {
   fs.rmSync(T, { recursive: true, force: true });
 }
+// 通過時也要量得到：這一場的前置實際檢查了幾份、幾個編號（母體非空才算數）
+ok(EXPECT_TALLY.lists > 0 && EXPECT_TALLY.stale === 0,
+  `預期清單過期的前置：檢查了 ${EXPECT_TALLY.lists} 份、${EXPECT_TALLY.ids} 個情境編號，過期 ${EXPECT_TALLY.stale} 個`);
 done('gateselftest');

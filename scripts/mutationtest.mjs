@@ -24,6 +24,7 @@ import { ok, eq, section, done , note } from './tap.mjs';
 import { closureReport, selectWithReason } from './affected.mjs';
 import { judge, countOf, applyMutation, hasSummary, expectProblems } from './mutjudge.mjs';
 import { makePending } from './mutpending.mjs';
+import { loadRegistry } from './assertreg.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -2735,7 +2736,12 @@ const MUTATIONS = [
     find: 'rm -f "$REG_ROOT"   # 這一次沒全過，就不能留著上一次的登記',
     replace: ':   # 突變：不刪上一次的登記',
     test: 'gateselftest',
-    expect: '驗法沒全過，先放的舊登記要被刪掉',
+    // 2026-10-03：以前 expect 只寫「驗法沒全過，先放的舊登記要被刪掉」，斷言登記表實測對到 17 條（每個變體一條）——預期有歧義。
+    // 改成登記表裡唯一的那一條（第一個驗法沒全過的變體 G1），其餘 16 個變體的同一句明列為連帶紅
+    expect: '驗法沒全過，先放的舊登記要被刪掉：突變 G1：拿掉整個第零關',
+    alsoRed: ['驗法沒全過，先放的舊登記要被刪掉：'],
+    alsoRedWhy: '這條突變讓驗法一開跑不刪舊登記：每一個驗法沒全過的變體都會留著舊登記，17 個變體的同一句一起紅（同一個原因）。',
+    regStamp: '119:3d0052b02aef',
   },
   {
     name: 'GV：驗法沒全過也寫登記',
@@ -2744,9 +2750,10 @@ const MUTATIONS = [
     find: 'if [ "$BAD" -eq 0 ] && [ "$OK" -eq "$#" ]; then',
     replace: 'if true; then',
     test: 'gateselftest',
-    expect: '驗法沒全過，先放的舊登記要被刪掉',
-    alsoRed: ['gatetest.sh 的回傳值'],
-    alsoRedWhy: '寫了登記的那一段最後 exit 0，所以驗法沒全過時回傳值也變成 0。',
+    expect: '驗法沒全過，先放的舊登記要被刪掉：突變 G1：拿掉整個第零關',
+    alsoRed: ['驗法沒全過，先放的舊登記要被刪掉：', 'gatetest.sh 的回傳值：'],
+    alsoRedWhy: '每一個驗法沒全過的變體都會被寫回登記，17 個變體的同一句一起紅；寫了登記的那一段最後 exit 0，所以回傳值那一句也跟著紅。',
+    regStamp: '119:3d0052b02aef',
   },
   // ---- WF：寫檔那一步出事（補充說明（四）第 5 點）——清理也要能失敗、不能中斷，只清自己寫出的 ----
   {
@@ -4046,6 +4053,40 @@ const MUTATIONS = [
     alsoRed: ['突變都還有效・find 剛好一次：'],
     alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
   },
+  // ──── 斷言登記表（2026-10-03）：預期有歧義、需要複審、有表就對表檢查 ────
+  {
+    name: 'RG：不查預期有歧義',
+    why: '一段預期對應到好幾條斷言（GV 兩條實測 17 條）時照樣放行：隨便哪一條紅都會算過，突變證明不了它想守的那一條。',
+    file: 'scripts/mutjudge.mjs',
+    find: '  else if (hits.length > 1) probs.push(',
+    replace: '  else if (false) probs.push(',
+    test: 'checkmutations',
+    expect: '登記表・預期有歧義：',
+    alsoRed: ['突變都還有效・find 剛好一次：', '登記表・有表就對表檢查：'],
+    alsoRedWhy: '「有表就對表檢查」那組對照要求報出歧義，靠的是同一道檢查；最後一條同上（checkmutations 讀到被改壞的檔，2026-10-03 實跑查到）。',
+  },
+  {
+    name: 'RG：不比預期寫於哪一版登記表',
+    why: '斷言母體長大了（新增斷言），舊預期靜默繼續通過、其實沒涵蓋新的那一條（JLPT 2026-10-03）。',
+    file: 'scripts/mutjudge.mjs',
+    find: '  if (mut.regStamp !== reg.version) probs.push(',
+    replace: '  if (false) probs.push(',
+    test: 'checkmutations',
+    expect: '登記表・預期需要複審：',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 會讀到被改壞的那支檔，把這條突變本身判成過期（find 對不到）——指向 checkmutations 的突變都會這樣。',
+  },
+  {
+    name: 'RG：有登記表也不用',
+    why: '退回對原始碼字面檢查：樣板在迴圈裡長出幾條斷言看不出來，GV 那種歧義就漏掉。',
+    file: 'scripts/mutjudge.mjs',
+    find: '  if (reg) {\n    const probs = registryProblems(mut, reg);',
+    replace: '  if (false) {\n    const probs = registryProblems(mut, reg);',
+    test: 'checkmutations',
+    expect: '登記表・有表就對表檢查：',
+    alsoRed: ['突變都還有效・find 剛好一次：', '每一條 expect 都是對應測試原始碼裡的一段字面'],
+    alsoRedWhy: '退回原始碼檢查時，GV 兩條的預期（樣板展開後的斷言名稱）在原始碼裡找不到字面，「每一條 expect 都找得到」一起紅（2026-10-03 實跑查到）；最後一條同上。',
+  },
   // ──── 長跑的包裝（2026-10-03，TripQuest 同日的兩件）：跑完只認結算行、取樣一次就寫一行；認子孫防 PID 重用 ────
   {
     name: 'LR：看到 exit= 就算跑完',
@@ -4266,7 +4307,7 @@ for (const mut of SELECTED) {
   // 預期清單過期（2026-10-03，TripQuest 同日）：expect／alsoRed 在測試原始碼裡已經找不到——斷言訊息改了、斷言拿掉了。
   // 以前照跑，結果是「紅錯地方」，跟「不如預期」長得一樣，很容易被讀成程式有問題、去修一個沒壞的東西。
   // 所以不跑、用獨立的訊息與獨立的計數報出來。
-  const expProbs = expectProblems(mut, (rel) => (fs.existsSync(path.join(ROOT, rel)) ? readRel(rel) : null));
+  const expProbs = expectProblems(mut, (rel) => (fs.existsSync(path.join(ROOT, rel)) ? readRel(rel) : null), loadRegistry(mut.test));
   if (expProbs.length) {
     tally.staleExpect += 1;
     ok(false, `${mut.name}`, `【預期清單過期】${expProbs.join('；')}——不是突變沒被抓到，是預期寫的那一條已經不在測試裡；這一條沒有跑`);

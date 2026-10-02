@@ -103,9 +103,33 @@ export function loadMutations(src, appVersion) {
  */
 export const atMessageStart = (src, s) => ["'", '"', '`'].some((q) => src.includes(q + s));
 
-export function expectProblems(mut, read) {
+/**
+ * 那支測試有斷言登記表（scripts/assertreg.mjs，從一次實跑建的）時，預期對登記表檢查，不對原始碼的字面檢查：
+ * 原始碼看不出樣板在迴圈裡長出幾條斷言，登記表是實跑出來的名稱。三件（2026-10-03，Dispatch）：
+ *   · 預期有歧義：以 expect 開頭的斷言不只一條（隨便哪一條紅都算過）——GV 兩條實測對到 17 條
+ *   · 對不到任何一條：表過期或預期寫錯
+ *   · 預期需要複審：預期戳著寫它的時候那一版登記表（regStamp），版本變了（母體長大了）而預期沒跟上
+ */
+export function registryProblems(mut, reg) {
+  const probs = [];
+  const hits = reg.assertions.filter((a) => a.name.startsWith(mut.expect));
+  if (hits.length === 0) probs.push(`expect「${mut.expect}」在斷言登記表 ${mut.test}（${reg.version}）裡對不到任何一條斷言`);
+  else if (hits.length > 1) probs.push(`預期有歧義：expect「${mut.expect}」對應到 ${hits.length} 條斷言（${hits.slice(0, 5).map((a) => a.id).join('、')}${hits.length > 5 ? '…' : ''}）——隨便哪一條紅都會算過`);
+  if (mut.regStamp !== reg.version) probs.push(`預期需要複審：這條預期寫於斷言登記表 ${mut.regStamp ?? '（沒戳版本）'}，現在的登記表是 ${reg.version}`);
+  for (const a of Array.isArray(mut.alsoRed) ? mut.alsoRed : []) {
+    if (typeof a === 'string' && a.trim() !== '' && !reg.assertions.some((x) => x.name.startsWith(a))) probs.push(`alsoRed「${a}」在斷言登記表 ${mut.test} 裡對不到任何一條斷言`);
+  }
+  return probs;
+}
+
+export function expectProblems(mut, read, reg = null) {
   if (mut.expect == null) return [];
   if (typeof mut.expect !== 'string' || mut.expect.trim() === '') return ['expect 是空的'];
+  if (reg) {
+    const probs = registryProblems(mut, reg);
+    if (mut.alsoRed != null && (typeof mut.alsoRedWhy !== 'string' || mut.alsoRedWhy.trim().length < 6)) probs.push('有 alsoRed 就要寫 alsoRedWhy（為什麼會連帶紅別組）');
+    return probs;
+  }
   const testSrc = read(`scripts/${mut.test}.mjs`);
   if (testSrc == null) return [`指定的測試 scripts/${mut.test}.mjs 不存在`];
   const probs = !testSrc.includes(mut.expect) ? [`expect「${mut.expect}」在 scripts/${mut.test}.mjs 裡找不到`]
