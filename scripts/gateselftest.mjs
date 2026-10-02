@@ -55,6 +55,12 @@ export function parseVerdicts(out) {
   eq(parseVerdicts(''), {}, '（對照）空的輸出抽到 0 種（下面每一次都另外斷言剛好是 ALL 那幾種）');
 }
 
+/** 預期清單裡、情境清單沒有的編號。 */
+const staleIds = (ids, all) => ids.filter((k) => !all.includes(k));
+// 對照（兩個方向）：清單裡都有 → 空；有一個不在 → 抓到那一個
+eq(staleIds(['10', '19c'], ALL), [], '（對照）預期清單過期的判斷：情境都在清單裡 → 不報');
+eq(staleIds(['10', '99z'], ALL), ['99z'], '（對照）預期清單過期的判斷：有一個不在清單裡 → 報出那一個');
+
 const T = fs.mkdtempSync(path.join(os.tmpdir(), 'gateselftest-'));
 const W = path.join(T, 'w');
 const git = (...args) => execFileSync('git', ['-C', W, ...args], { encoding: 'utf8' }).trim();
@@ -84,6 +90,14 @@ function patch(rel, find, replace) {
  * expectBad：預期不符的情境（剛好這幾種）；expectReg：跑完登記檔應該在（true）或不在（false）。
  */
 function variant(name, patches, { expectBad, expectReg, order = ALL }) {
+  // 預期清單過期（2026-10-03，TripQuest 同日）：預期不符的情境不在 ALL 裡（情境改名、拿掉了）——
+  // 照跑的話會報成「不符的情境不如預期」，看起來像閘門有問題。獨立報出來，這個變體不跑。
+  const unknown = staleIds(expectBad, ALL);
+  if (unknown.length) {
+    section(`變體：${name}`);
+    ok(false, `${name}：預期清單過期`, `【預期清單過期】預期不符的情境 ${unknown.join('、')} 不在驗法的情境清單裡；這個變體沒有跑`);
+    return {};
+  }
   git('reset', '-q', '--hard', BASE);
   for (const [rel, find, replace] of patches) patch(rel, find, replace);
   if (patches.length) git('commit', '-q', '-am', `gateselftest：${name}`);

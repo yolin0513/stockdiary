@@ -284,7 +284,7 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     "done('sleeptest');",
     '',
   ].join('\n');
-  const runFake = (marker, timeoutMs, exit0 = false) => {
+  const runFake = (marker, timeoutMs, exit0 = false, expect = null) => {
     fs.rmSync(C, { recursive: true, force: true });
     for (const d of ['scripts', 'js']) fs.cpSync(path.join(ROOT, d), path.join(C, d), { recursive: true });
     fs.rmSync(path.join(C, 'scripts', '.mutation-pending.json'), { force: true });
@@ -293,7 +293,7 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     const F = path.join(C, 'scripts', 'mutationtest.mjs');
     let s = fs.readFileSync(F, 'utf8');
     const swap = (a, b) => { if (s.split(a).length !== 2) throw new Error(`逾時對照：mutationtest.mjs 的錨點不是剛好一次：${a.slice(0, 50)}`); s = s.split(a).join(b); };
-    const fake = { name: '假突變：逾時對照', why: '驗執行器把逾時判成什麼（controltest）', file: 'js/version.js', find: verLine, replace: `${verLine} // ${marker}`, test: 'sleeptest' };
+    const fake = { name: '假突變：逾時對照', why: '驗執行器把逾時判成什麼（controltest）', file: 'js/version.js', find: verLine, replace: `${verLine} // ${marker}`, test: 'sleeptest', ...(expect ? { expect } : {}) };
     swap('  return MUTATIONS;\n})();', `  return [${JSON.stringify(fake)}];\n})();`);
     swap('const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000 };', `const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000, sleeptest: ${timeoutMs} };`);
     fs.writeFileSync(F, s);
@@ -334,6 +334,14 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     ok(d.code !== 0 && has(d.out, '基準就不是綠的') && (detailOf(d.out, '  ✗ sleeptest 在乾淨的程式碼上通過') ?? '').startsWith('      【情境未成立】沒有 sleeptest 自己的結算行')
       && !has(d.out, '  ✓ 假突變：逾時對照') && !has(d.out, '  ✗ 假突變：逾時對照'),
       '逾時對照・四：基準 exit 0 卻沒有結算行（沒跑完）→ 不算通過、停下、一條突變都不跑', `回傳 ${d.code}；${d.out.split('\n').filter((l) => /基準|情境|sleeptest/.test(l)).join(' ⏎ ').slice(0, 400)}`);
+    // 預期清單過期（2026-10-03，TripQuest 同日）：expect 在測試裡找不到 → 獨立的結果，不是「紅錯地方」；找得到 → 照常判
+    const e = runFake('PROBE_RED', 10000, false, '不存在的標籤：zz');
+    ok((detailOf(e.out, '  ✗ 假突變：逾時對照') ?? '').startsWith('      【預期清單過期】') && tallyOf(e.out).includes('；預期清單過期 1 條；')
+      && tallyOf(e.out).includes('紅錯地方 0、'),
+      '預期清單過期・執行時：expect 在測試裡找不到 → 獨立報成「預期清單過期」、不算紅錯地方', `回傳 ${e.code}；${linesOf(e.out).filter((l) => /假突變|預期清單|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`);
+    const f = runFake('PROBE_RED', 10000, false, '假測試：版本行沒有 PROBE_RED 標記');
+    ok(f.code === 0 && has(f.out, '  ✓ 假突變：逾時對照 → sleeptest 紅在「假測試：版本行沒有 PROBE_RED 標記」') && tallyOf(f.out).includes('；預期清單過期 0 條；'),
+      '預期清單過期・執行時（必過）：expect 找得到 → 照常判紅', `回傳 ${f.code}；${linesOf(f.out).filter((l) => /假突變|預期清單|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`);
   } finally {
     fs.rmSync(C, { recursive: true, force: true });
   }

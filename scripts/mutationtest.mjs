@@ -22,7 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ok, eq, section, done , note } from './tap.mjs';
 import { closureReport, selectWithReason } from './affected.mjs';
-import { judge, countOf, applyMutation, hasSummary } from './mutjudge.mjs';
+import { judge, countOf, applyMutation, hasSummary, expectProblems } from './mutjudge.mjs';
 import { makePending } from './mutpending.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -3979,6 +3979,15 @@ const MUTATIONS = [
     alsoRed: ['判定行・細節不會出現在行首：'],
     alsoRedWhy: '同一支探針：訊息換行長出來的那一行「  ✗ 」也會被 mutjudge 數進失敗斷言，另一條「剛好 2 條」就跟著紅。',
   },
+  {
+    name: 'SE：執行時不查預期清單過期',
+    why: 'expect 已經不在測試裡時照跑，結果是「紅錯地方」，跟「不如預期」長得一樣——很容易被讀成程式有問題、去修一個沒壞的東西。',
+    file: 'scripts/mutationtest.mjs',
+    find: '  if (expProbs.length) {\n',
+    replace: '  if (false) {\n',
+    test: 'controltest',
+    expect: '預期清單過期・執行時：',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
@@ -4152,7 +4161,7 @@ if (!baselineOk) {
 
 section(`${SELECTED.length} 條突變：每一條都必須讓對應的測試變紅`);
 // 結果分開數（2026-10-03）：「情境未成立」不算紅、不算沒紅，也不算跑過——回報寫「成立 N、未成立 M（不算）」
-const tally = { red: 0, 'not-red': 0, 'wrong-place': 0, 'extra-red': 0, 'not-counted': 0, stale: 0, restoreBroke: 0 };
+const tally = { red: 0, 'not-red': 0, 'wrong-place': 0, 'extra-red': 0, 'not-counted': 0, stale: 0, staleExpect: 0, restoreBroke: 0 };
 for (const mut of SELECTED) {
   const abs = path.join(ROOT, mut.file);
   const original = fs.readFileSync(abs, 'utf8');
@@ -4163,6 +4172,16 @@ for (const mut of SELECTED) {
       `要改的程式碼在 ${mut.file} 裡出現 ${occurrences} 次（需要剛好 1 次）—— 這條突變過期了，` +
       '表示對應的斷言已經很久沒有被驗證過。請更新突變或確認該邏輯還在。');
     tally.stale += 1;
+    continue;
+  }
+
+  // 預期清單過期（2026-10-03，TripQuest 同日）：expect／alsoRed 在測試原始碼裡已經找不到——斷言訊息改了、斷言拿掉了。
+  // 以前照跑，結果是「紅錯地方」，跟「不如預期」長得一樣，很容易被讀成程式有問題、去修一個沒壞的東西。
+  // 所以不跑、用獨立的訊息與獨立的計數報出來。
+  const expProbs = expectProblems(mut, (rel) => (fs.existsSync(path.join(ROOT, rel)) ? readRel(rel) : null));
+  if (expProbs.length) {
+    tally.staleExpect += 1;
+    ok(false, `${mut.name}`, `【預期清單過期】${expProbs.join('；')}——不是突變沒被抓到，是預期寫的那一條已經不在測試裡；這一條沒有跑`);
     continue;
   }
 
@@ -4212,9 +4231,9 @@ for (const mut of SELECTED) {
 {
   const counted = tally.red + tally['not-red'] + tally['wrong-place'] + tally['extra-red'];
   note(`結果分開數：情境成立 ${counted} 條（紅在對的地方 ${tally.red}、沒紅 ${tally['not-red']}、紅錯地方 ${tally['wrong-place']}、多紅了別組 ${tally['extra-red']}）；`
-    + `情境未成立 ${tally['not-counted']} 條（不算）；過期 ${tally.stale} 條；還原失敗 ${tally.restoreBroke} 條`);
+    + `情境未成立 ${tally['not-counted']} 條（不算）；過期 ${tally.stale} 條；預期清單過期 ${tally.staleExpect} 條；還原失敗 ${tally.restoreBroke} 條`);
   // 分類加總要等於這次挑的條數，不等就是有一條沒被分到任何一類（v11.3：只報總數的檢查要分類、加總核對母體）
-  const sum = counted + tally['not-counted'] + tally.stale + tally.restoreBroke;
+  const sum = counted + tally['not-counted'] + tally.stale + tally.staleExpect + tally.restoreBroke;
   ok(SELECTED.length > 0 && sum === SELECTED.length, `結果分類加總：${sum} 條＝這次挑的 ${SELECTED.length} 條`,
     `差了 ${SELECTED.length - sum} 條沒被分到任何一類`);
 }
