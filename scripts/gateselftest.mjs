@@ -124,7 +124,9 @@ function variant(name, patches, { expectBad, expectReg, order = ALL }) {
   fs.mkdirSync(path.dirname(REG), { recursive: true });
   fs.writeFileSync(REG, STALE_REG);
   const seeded = fs.existsSync(REG) && fs.readFileSync(REG, 'utf8') === STALE_REG;
-  const r = spawnSync(BASH, ['scripts/gatetest.sh'], { cwd: W, encoding: 'utf8', env: { ...process.env, GATETEST_ORDER: order.join(' ') }, timeout: 600000 });
+  // 驗法在 Job Object 裡跑（scripts/jobrun.mjs，2026-10-03）：逾時時連帶殺 gatetest.sh 經 bash 開的 git／node——
+  // 以前只殺得到 bash 那一支，它開的程式會活下來（實測：Git Bash 開的 2 個 sleep 殺完還活著）
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'jobrun.mjs'), BASH, 'scripts/gatetest.sh'], { cwd: W, encoding: 'utf8', env: { ...process.env, GATETEST_ORDER: order.join(' ') }, timeout: 600000 });
   const out = `${r.stdout}${r.stderr}`;
   const v = parseVerdicts(out);
   const ran = /被執行的閘門檔案雜湊：([0-9a-f]+)/.exec(out)?.[1];

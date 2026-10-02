@@ -4201,6 +4201,45 @@ const MUTATIONS = [
     test: 'controltest',
     expect: '長跑資源紀錄・取樣：',
   },
+  // ---- Job Object（2026-10-03；v11.6 §5.19）：jobrun／jobhelper 的每一步拿掉都要紅 ----
+  {
+    name: 'JB：沒把 jobrun 放進 Job',
+    why: 'Job 建了、也回了 JOB-OK，但裡面是空的：殺掉最外層之後，Git Bash 的孫程序、detached 的目標、正常結束留下的子孫全部活下來——跟沒有 Job 一樣漏殺。',
+    file: 'scripts/jobhelper.ps1',
+    find: '    if (!AssignProcessToJobObject(job, p)) return "AssignProcessToJobObject 失敗 " + Marshal.GetLastWin32Error();',
+    replace: '    // 突變：不放進 Job',
+    test: 'jobtest',
+    expect: 'Job・Git Bash：經 jobrun，殺掉最外層之後',
+    alsoRed: ['Job・detached：經 jobrun，殺掉最外層之後', 'Job・cmd.exe：經 jobrun', 'Job・正常結束：'],
+    alsoRedWhy: '四種情境靠的是同一件事（jobrun 在 Job 裡、子孫跟著進去）；拿掉它，四種一起漏。',
+  },
+  {
+    name: 'JB：不等 JOB-OK 就開指令',
+    why: '先開指令、再把 jobrun 放進 Job：放進去之前開的子孫不在 Job 裡（順序反過來留下的空檔）。',
+    file: 'scripts/jobrun.mjs',
+    find: "  let out = '';\n  let started = false;",
+    replace: "  let out = '';\n  let started = true; runIt();",
+    test: 'jobtest',
+    expect: 'Job・Git Bash：經 jobrun，殺掉最外層之後',
+    alsoRed: ['Job・detached：經 jobrun，殺掉最外層之後', 'Job・cmd.exe：經 jobrun', 'Job・正常結束：'],
+    alsoRedWhy: '四種情境的子孫都是指令一開就開的，全部落在「放進 Job 之前」的空檔裡。',
+  },
+  // 不收「JB：Job 不設關閉時連帶殺」（LimitFlags 改成 0）：2026-10-03 實跑沒紅，判定為等價突變（§5.12）。
+  // 理由：jobrun 本身是 node，Node 會把它開的子程序放進自己的 Job（關閉時連帶殺，但准許孫程序靜默脫離）；
+  // 我們的 Job 不准脫離，孫程序就脫離不了 Node 那個 Job，jobrun 一結束或被殺，Node 那個 Job 就把整棵樹收掉。
+  // 「不准脫離」與「關閉時連帶殺」兩道共同守著；單拿掉後者會被 Node 的 Job 補上，拿掉前者（下一條）就紅。
+  // 留著 0x2000 是給「jobrun 不是 node」的情況（例：別的 App 用 PowerShell 直接包），本 repo 沒有那種路徑。
+  {
+    name: 'JB：准許子孫靜默脫離 Job',
+    why: '加了 SILENT_BREAKAWAY_OK（0x1000），Job 裡開的子孫自動不屬於 Job，殺掉最外層之後全部活下來。',
+    file: 'scripts/jobhelper.ps1',
+    find: '    info.Basic.LimitFlags = 0x2000;',
+    replace: '    info.Basic.LimitFlags = 0x2000 | 0x1000;',
+    test: 'jobtest',
+    expect: 'Job・Git Bash：經 jobrun，殺掉最外層之後',
+    alsoRed: ['Job・detached：經 jobrun，殺掉最外層之後', 'Job・cmd.exe：經 jobrun', 'Job・正常結束：'],
+    alsoRedWhy: '准許脫離之後，四種情境的子孫都在 Job 外面，一起漏。',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
@@ -4210,9 +4249,12 @@ const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
 // 而逾時的 exit code 非 0，兩條突變就被判成「變紅」——從來沒有證明過任何事。現在逾時判成「情境未成立」（mutjudge），
 // 逾時改成實測的 1.6 倍（90 分鐘）；它再變長，就會以「情境未成立」停下，而不是被記成紅。
 const TEST_TIMEOUT = { gateselftest: 90 * 60 * 1000 };
+// 每支測試都在 Job Object 裡跑（scripts/jobrun.mjs，2026-10-03）：逾時時殺的是 jobrun 這一層，Job 連帶殺整棵樹——
+// 以前只殺得到直接開的那一支，它經 Git Bash 開的孫程序會活下來（實測：2 個 sleep 殺完還活著）。每支多約 0.85 秒（開 Job 的協助程序）。
+const JOBRUN = path.join(ROOT, 'scripts', 'jobrun.mjs');
 function runTest(name) {
   try {
-    const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', `${name}.mjs`)], {
+    const out = execFileSync(process.execPath, [JOBRUN, process.execPath, path.join(ROOT, 'scripts', `${name}.mjs`)], {
       cwd: ROOT,
       stdio: 'pipe',
       encoding: 'utf8',

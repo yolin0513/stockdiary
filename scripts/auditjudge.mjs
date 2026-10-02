@@ -45,6 +45,8 @@ export const AUDIT_TESTS = [
   'plcalviewtest',
   // 2026-09-24：跳脫掃描（補充說明（四）第 4 點）
   'escscan',
+  // 2026-10-03：Job Object（殺程序不靠父程序編號往下找子孫）
+  'jobtest',
 ];
 /** npm test 鏈上、刻意不收的：名稱 → 理由。 */
 export const AUDIT_SKIP = {

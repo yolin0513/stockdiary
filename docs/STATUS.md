@@ -65,15 +65,28 @@ OneDrive 同步服務認成自己開的子程序（它記著的父 PID 早就結
 | `shelltest`（挑選器原本的斷言在裡面；要開瀏覽器） | 待量 | node＋1 個 Chromium | **重負載**（開瀏覽器），等 Dispatch |
 | `mutationtest --only "PT："` 殺程序樹的 3 條（一次一條跑，各約 30 秒） | 各約 30 秒 | 最多 3 個 node | 不是重負載；2026-10-03 別的專案正在跑長跑、合計會超過 4 個，先沒跑 |
 | `workertest`（改了 killTree；要起 wrangler、打一次真的上游 RSS） | 待量 | node＋wrangler＋workerd | 不在 `npm test`；待量，視耗時歸類 |
+| `mutationtest --only "JB："`（Job Object 的突變，跑了兩場：4 條、3 條） | 實測 2 分 41 秒、2 分 10 秒 | 最多約 4 個 node（mutationtest、jobrun、jobtest、它開的 jobrun／sleeper） | **照定義是重負載**（2 個以上且超過 60 秒）；當作 Dispatch「Job Object 現在就做」的一部分跑了，2026-10-03 15:46–15:51 |
 
-**「不要漏殺」實測（v11.6 §5.19，2026-10-03）——兩個洞都在，還沒修**：先前的兩道防線（建立時間＋可殺名稱）解的是「不要殺錯」；
+**「不要漏殺」修好了（2026-10-03，Job Object）**：`scripts/jobrun.mjs <指令…>` 先開 `scripts/jobhelper.ps1` 把 jobrun 自己放進一個
+「關閉時連帶殺（0x2000）、不准脫離」的 Job，等它回 `JOB-OK` 才開指令；Job 建不起來回 97（情境未成立）。接上的地方：`mutationtest` 的
+`runTest`（每支被突變的測試）、`gateselftest` 跑 `gatetest.sh`、`workertest` 起 wrangler。可抄的做法寫在 `docs/HOWTO_JobObject殺程序樹.md`。
+- **實測**：`jobtest`（11 項，約 30 秒，進 `npm test`）——Git Bash 的 2 個 sleep 殺完剩 0（對照不經 jobrun 剩 2）；detached 的目標剩 0（對照剩 1）；
+  經 cmd.exe 開的 node 剩 0；正常結束留下的 sleep 剩 0；結束碼照傳。突變 `JB：` 三條（沒放進 Job、不等 JOB-OK 就開、准許靜默脫離）
+  實跑全部紅在對的地方（`.logs/mut-JB2.txt`，mutlog 對得上）。每次多約 0.85 秒（起 PowerShell）。
+- **等價突變**：把 0x2000 拿掉（LimitFlags=0）**沒紅**。推論的理由：jobrun 是 node，Node 會把它開的子程序放進自己的 Job（連帶殺、但准許孫程序
+  靜默脫離）；我們的 Job 不准脫離，孫程序就留在 Node 那個 Job 裡，jobrun 一死就被收掉。兩道共同守著，單拿掉 0x2000 會被補上；
+  拿掉「不准脫離」那一道（准許 0x1000）就紅。沒收這條突變，理由寫在 `mutationtest.mjs` 的 JB 段。
+- **還沒驗**：`workertest`（要起 wrangler、打真網路）與 `gateselftest`（約 55 分鐘以上）改了呼叫方式，沒跑；`gateselftest` 會在 GV 那一場一起跑到。
+- 非 Windows 沒有 Job Object，jobrun 直接跑——那邊的漏殺沒有處理（照實寫）。
+
+**「不要漏殺」實測（v11.6 §5.19，2026-10-03）——修法見上一段**：先前的兩道防線（建立時間＋可殺名稱）解的是「不要殺錯」；
 這一條是「不要漏殺」。實測（每個假程序的指令列帶一個在原始碼裡拆開拼的標記，外層不會被算成內層——第一版標記是巢狀的、結果不採信；
 殺之前先確認都活著）：
 - node 直接開、沒有 `detached` 的子孫**不會漏**：libuv 在 Windows 上把子程序放進「父程序結束就連帶殺掉」的 Job，殺掉直接那一支，孫程序跟著死。
 - **漏的一**（`mutationtest`／`gateselftest` 的逾時，用 handle 殺直接那一支）：直接那一支經 Git Bash 開了 2 個 `sleep`——殺完 bash 死了、
   **2 個 sleep 還活著**（跟 JLPT 撞到的一樣）。`gateselftest` 經 bash 跑 `gatetest.sh`，逾時時它底下 bash 開的 git／node 會留著。
 - **漏的二**（`workertest` 的 `killTargets`，照父程序往下找）：中間那一支用 `detached` 開了目標、自己先結束——只挑得到根，**目標還活著**。
-- 修法（計畫）：Windows 用 Job Object。Node 沒有建 Job 的 API，做法是開一支小的 PowerShell 協助程序（P/Invoke 建 Job、設「關閉時連帶殺」、
+- 修法（當時的計畫，已照做）：Windows 用 Job Object。Node 沒有建 Job 的 API，做法是開一支小的 PowerShell 協助程序（P/Invoke 建 Job、設「關閉時連帶殺」、
   不准 breakaway），**先把要跑測試的那一層 node 放進 Job、再由它開測試**——之後開的子孫自動歸 Job 管（不看父程序編號、也沒有「開了才放進去」
   的空檔）；要停時結束協助程序，整個 Job 連帶殺。驗法照上面兩個漏的情境：停掉之後數還活著的程序必須是 0；把「放進 Job」拿掉的突變必須紅。
 
@@ -232,7 +245,7 @@ repo 裡其他會殺程序的地方：`f1ev`、`s6ev` 的 `p.kill()` 與各測�
   另外，順帶查到的 `data/stocks.json` 過期（7812 已轉上市）：Yolin 核准後重跑 `build-stocks`，v0.7.24 上線。變少的逐檔原因寫在 commit `7e1485a` 與證據檔 F8 一節。
 
 **沒做完、照實留著的**
-- **突變還有 153 條沒寫 `expect`**：全部 476 條，帶 `expect` 的 323 條，以 `scripts/mutationtest.mjs` 的 `expect:` 數得出來。
+- **突變還有 153 條沒寫 `expect`**：全部 479 條，帶 `expect` 的 326 條，以 `scripts/mutationtest.mjs` 的 `expect:` 數得出來。
   - 已補的兩批：第一批 54 條（7 支只用 node 的測試）、第二批 25 條（另外 6 支只用 node 的測試）。
   - 剩下的幾乎都在瀏覽器類測試，照 Dispatch 指示沒有為了補完硬跑。
   - 另外有 11 條的突變檔在凍結區（`js/avgcost.js`、`js/settle.js`、`js/money.js`），照凍結規則沒碰。
@@ -345,7 +358,7 @@ repo 裡其他會殺程序的地方：`f1ev`、`s6ev` 的 `p.kill()` 與各測�
 | v0.7.21 | 修復（真正的根因）：更新流程不再 `unregister`；`js/bootguard.js` 開機看門狗 | ✅ 線上；**沒有逐項的實機確認**。2026-09-18 Yolin 整體回覆「使用上沒有太大問題」（見下方待回覆表的註記），不等於已確認修好 |
 | v0.7.22 | 批次 4：A8 CSP 拿掉 `unsafe-inline`、A11 死碼、A15 收重複、B2 SW 導覽 3 秒逾時 | ✅ 線上；內建瀏覽器實機驗過長條圖／逐年圖／對話框 |
 
-測試：38 支＋476 條突變（其中帶 `expect` 的有 323 條）。**2026-09-21 跑過一次全面檢測**（當時 234 條，233 條變紅、1 條過期）；
+測試：39 支＋479 條突變（其中帶 `expect` 的有 326 條）。**2026-09-21 跑過一次全面檢測**（當時 234 條，233 條變紅、1 條過期）；
 **2026-09-23 又跑了一次整套**（`da3cef4`）：261 條全部變紅、帶 `expect` 的 29 條都紅在指定的斷言上。
 
 ### 下一步該做什麼（照建議順序）
@@ -360,7 +373,7 @@ repo 裡其他會殺程序的地方：`f1ev`、`s6ev` 的 `p.kill()` 與各測�
 3.5. ~~自查範圍補上 commit 訊息與作者／提交者~~ **2026-09-24 已補**（Dispatch 授權；見「推送閘門」那一節）。
 4. **2026-11-16 起**總覽會出現「開休市日只到 12/31」的警示 —— 那是預期中的，不是 bug。證交所公布 2027 年休市日之後照「交易日曆」那一節的步驟產檔、發版。
    **端對端測試也靠這份日曆找「今天的交易日」**（接手者第 43 條），拖到 2027-01-01 還沒更新的話，連測試都會一起紅。
-5. Yolin 叫「全面檢測」時：全套 38 支＋全部 476 條突變＋`sweep`＋`upgradecheck`＋`workertest`，**實測約 1 小時 52 分**。
+5. Yolin 叫「全面檢測」時：全套 39 支＋全部 479 條突變＋`sweep`＋`upgradecheck`＋`workertest`，**實測約 1 小時 52 分**。
    **2026-09-21 已經跑過一次**（Yolin 指定），結果與三項發現見「測試範圍 → 全面檢測」那一節；上限也在那裡。
 
 ### 在等 Yolin 回覆的事
@@ -406,7 +419,7 @@ repo 裡其他會殺程序的地方：`f1ev`、`s6ev` 的 `p.kill()` 與各測�
 2. **TWT48U 在金額未公告時放的是 HTML 文字**（§10.8）—— 當成 0 會在日曆上生出「每股 0 元」。72 筆裡有 35 筆是這樣。
 3. **`t187ap03_L` 只給產業別代碼、沒有名稱**（§10.3）—— 另接 ISIN 一覽表 join 出代碼→名稱，34 個代碼零衝突（使用者已同意這個增補）。
 
-測試現況：38 支測試＋突變套件，`npm run mutationtest` 用 **476 條突變**逐一證明關鍵斷言改壞會紅。
+測試現況：39 支測試＋突變套件，`npm run mutationtest` 用 **479 條突變**逐一證明關鍵斷言改壞會紅。
 （這兩個數字由 `npm run doctest` 從程式數出來核對 —— 文件漂移過一次：STATUS 與 README 都停在 138，實際已經 182。）
 突變的 `find` 字串在原始碼裡找不到（或找到多次）時，突變測試會**失敗**而不是略過
 （所以突變字串**不可以寫死版本號** —— 每 bump 一次就會過期一次；改從 `js/version.js` 讀）。
@@ -546,9 +559,9 @@ node scripts/mutationtest.mjs --only <這次的突變關鍵字>
 
 ### 全面檢測
 
-**只在使用者要求時**跑：完整 38 支 ＋ 全部突變 ＋ `sweep` ＋ `upgradecheck` ＋ `workertest`。
+**只在使用者要求時**跑：完整 39 支 ＋ 全部突變 ＋ `sweep` ＋ `upgradecheck` ＋ `workertest`。
 
-**整套指的是什麼、要多久**：整套 ＝ `npm test` 的 38 支 ＋ `mutationtest` 全部 476 條突變（每條都要改寫原始碼、跑一次完整的對應測試再還原，不能平行）。
+**整套指的是什麼、要多久**：整套 ＝ `npm test` 的 39 支 ＋ `mutationtest` 全部 479 條突變（每條都要改寫原始碼、跑一次完整的對應測試再還原，不能平行）。
 耗時**實測 6,730 秒 ≈ 1 小時 52 分**（2026-09-21 全面檢測，見下面「上次全面檢測」那一列的分段）。
 以前寫的「約 3.5–4 小時」是文件記載值、從來沒有人量過 —— **實際只有一半**。
 
@@ -1530,7 +1543,7 @@ puppeteer 不認 `'Shift+Tab'` 這種組合寫法，要 `keyboard.down('Shift')`
 
 | # | 項目 | 怎麼做 |
 |---|---|---|
-| 1 | 全部測試綠 | `npm test`（38 支＋476 條突變；數字由 `doctest` 盯著 —— 現在的總數寫成「N 支＋M 條突變」「N 支測試」「M 條突變」，歷史紀錄前面加「當時」；寫法約定在 `scripts/doctest.mjs` 的 `declaredCounts` 旁。以前它只認「N 條突變」，這一行寫成「突變 N 條」就漂到 185 沒人發現） |
+| 1 | 全部測試綠 | `npm test`（39 支＋479 條突變；數字由 `doctest` 盯著 —— 現在的總數寫成「N 支＋M 條突變」「N 支測試」「M 條突變」，歷史紀錄前面加「當時」；寫法約定在 `scripts/doctest.mjs` 的 `declaredCounts` 旁。以前它只認「N 條突變」，這一行寫成「突變 N 條」就漂到 185 沒人發現） |
 | 2 | 版本四處一致 | `npm run bump -- stockdiary-vX.Y.Z` 會一次改完（`js/version.js`、`sw.js`、`index.html`、`package.json`），`shelltest` 會驗 |
 | 3 | 線上巡檢 | `npm run sweep` —— 版本一致、七頁開得起來、SW 接手、離線正常、Worker 活著 |
 | 4 | Worker 稽核 | `npm run workertest`（要 wrangler；會碰一次上游，別連跑） |

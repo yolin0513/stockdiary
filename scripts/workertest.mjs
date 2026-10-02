@@ -26,20 +26,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * 會活下來 —— 跑幾次之後就堆了二十幾個殭屍行程，佔著連接埠，下一次測試直接卡死。（實際發生過。）
  *
  * **不再用 `taskkill /PID <殼> /T`**（2026-10-03）：殼結束之後 PID 可能被別的程序拿走，/T 又只照父 PID 找子孫，
- * 會殺到不相干的程序（JLPT 撞到的是 OneDrive 的同步服務）。改成 scripts/proctree.mjs：只認比父程序晚建立的、
- * 只殺名稱在 WRANGLER_TREE 裡的，其餘印出來不殺。非 Windows 只用 handle 殺我們開的那一個（不用 kill(-pid) 的群組號碼）。
+ * 會殺到不相干的程序（JLPT 撞到的是 OneDrive 的同步服務）。
+ * **也不再照父程序編號往下找**（2026-10-03 同日，v11.6 §5.19）：中間那一支先結束（detached、分叉）的就找不到，實測目標程式殺完還活著。
+ * 現在 Windows 上 wrangler 整棵樹在 Job Object 裡跑（scripts/jobrun.mjs）：殺 jobrun 這一層，Job 連帶殺 cmd、npx、wrangler、workerd，
+ * 不看父程序編號、也不會殺到 Job 以外的程序。非 Windows 只用 handle 殺我們開的那一個。
+ * （這一處要起 wrangler、打真網路，2026-10-03 沒有實跑驗；同一個「經 cmd.exe 開」的形狀由 controltest 的 Job 情境驗。）
  */
-const WRANGLER_TREE = ['cmd.exe', 'node.exe', 'workerd.exe', 'esbuild.exe'];
 async function killTree(proc) {
   if (proc.pid == null) return;
-  if (process.platform === 'win32') {
-    const { killTargets } = await import('./proctree.mjs');
-    const pick = killTargets(proc.pid, proc.spawnedAt, WRANGLER_TREE);
-    if (pick.why) console.log(`  · 沒有殺 wrangler 的程序樹：${pick.why}`);
-    for (const s of pick.skipped) console.log(`  · 沒有殺 PID ${s.pid}（${s.name}）：${s.why}`);
-  } else if (proc.exitCode == null) {
-    proc.kill('SIGKILL');
-  }
+  if (proc.exitCode == null) proc.kill(process.platform === 'win32' ? undefined : 'SIGKILL');
   await sleep(300);
 }
 
@@ -58,13 +53,12 @@ async function freePort() {
 /** 起 wrangler dev，探到它真的收請求為止。 */
 async function startWrangler() {
   const port = await freePort();
-  const spawnedAt = Date.now();   // killTree 用它確認程序表裡的根程序真的是這一個（PID 重用）
-  const proc = spawn(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['wrangler', 'dev', '--port', String(port), '--inspector-port', '0'],
-    { cwd: path.join(ROOT, 'workers'), stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' },
-  );
-  proc.spawnedAt = spawnedAt;
+  const wranglerArgs = ['wrangler', 'dev', '--port', String(port), '--inspector-port', '0'];
+  // Windows：整棵樹放進 Job Object（jobrun）；.cmd 不能不經 shell 直接開，所以經 cmd.exe
+  const proc = process.platform === 'win32'
+    ? spawn(process.execPath, [path.join(ROOT, 'scripts', 'jobrun.mjs'), 'cmd.exe', '/d', '/s', '/c', ['npx', ...wranglerArgs].join(' ')],
+      { cwd: path.join(ROOT, 'workers'), stdio: ['ignore', 'pipe', 'pipe'] })
+    : spawn('npx', wranglerArgs, { cwd: path.join(ROOT, 'workers'), stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
   proc.stdout.on('data', (b) => { out += b.toString(); });
   proc.stderr.on('data', (b) => { out += b.toString(); });
