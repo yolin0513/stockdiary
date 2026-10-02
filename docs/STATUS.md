@@ -66,6 +66,20 @@ OneDrive 同步服務認成自己開的子程序（它記著的父 PID 早就結
 | `mutationtest --only "PT："` 殺程序樹的 3 條（一次一條跑，各約 30 秒） | 各約 30 秒 | 最多 3 個 node | 不是重負載；2026-10-03 別的專案正在跑長跑、合計會超過 4 個，先沒跑 |
 | `workertest`（改了 killTree；要起 wrangler、打一次真的上游 RSS） | 待量 | node＋wrangler＋workerd | 不在 `npm test`；待量，視耗時歸類 |
 
+**「不要漏殺」實測（v11.6 §5.19，2026-10-03）——兩個洞都在，還沒修**：先前的兩道防線（建立時間＋可殺名稱）解的是「不要殺錯」；
+這一條是「不要漏殺」。實測（每個假程序的指令列帶一個在原始碼裡拆開拼的標記，外層不會被算成內層——第一版標記是巢狀的、結果不採信；
+殺之前先確認都活著）：
+- node 直接開、沒有 `detached` 的子孫**不會漏**：libuv 在 Windows 上把子程序放進「父程序結束就連帶殺掉」的 Job，殺掉直接那一支，孫程序跟著死。
+- **漏的一**（`mutationtest`／`gateselftest` 的逾時，用 handle 殺直接那一支）：直接那一支經 Git Bash 開了 2 個 `sleep`——殺完 bash 死了、
+  **2 個 sleep 還活著**（跟 JLPT 撞到的一樣）。`gateselftest` 經 bash 跑 `gatetest.sh`，逾時時它底下 bash 開的 git／node 會留著。
+- **漏的二**（`workertest` 的 `killTargets`，照父程序往下找）：中間那一支用 `detached` 開了目標、自己先結束——只挑得到根，**目標還活著**。
+- 修法（計畫）：Windows 用 Job Object。Node 沒有建 Job 的 API，做法是開一支小的 PowerShell 協助程序（P/Invoke 建 Job、設「關閉時連帶殺」、
+  不准 breakaway），**先把要跑測試的那一層 node 放進 Job、再由它開測試**——之後開的子孫自動歸 Job 管（不看父程序編號、也沒有「開了才放進去」
+  的空檔）；要停時結束協助程序，整個 Job 連帶殺。驗法照上面兩個漏的情境：停掉之後數還活著的程序必須是 0；把「放進 Job」拿掉的突變必須紅。
+
+**收版控時只 add 明確指定的檔案（2026-10-03 踩到）**：統籌者會在 Session 做事的途中覆寫 `docs/SPEC_共用慣例更新_v11.md`。
+`git add -A scripts docs` 把 v11.6 一起收進了一個不相干的 commit（`c04019f`，訊息沒提到它）；已推送不改寫，補了一個空 commit（`7ba8ee6`）寫明。
+
 **殺程序樹改掉了（2026-10-03，TripQuest 同日提出，排在第一優先之前）**：`workertest` 以前用 `taskkill /PID <殼> /T /F`，
 PID 被重用時會殺到不相干的程序（`/T` 自己找子孫也只看父 PID）。改成 `scripts/proctree.mjs`：只認比父程序晚建立的、根程序的
 建立時刻要對得上開它的時刻、只殺名稱在清單裡的（`cmd.exe`、`node.exe`、`workerd.exe`、`esbuild.exe`），其餘只印不殺；非 Windows
