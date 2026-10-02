@@ -340,6 +340,60 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
 }
 
 // ---------------------------------------------------------------------------
+section('殺程序樹（scripts/proctree.mjs）：只殺我們開的、比父程序晚建立的、名稱在清單裡的');
+{
+  // 2026-10-03：workertest 以前用 taskkill /PID <殼> /T。PID 被重用時會殺到不相干的程序（JLPT 撞到 OneDrive 的同步服務），
+  // /T 自己找子孫也只看父 PID。合成的程序表，每一種情境一個樣本（答案事先寫好）。
+  const { pickKillTargets, windowsProcessTable, killTargets } = await import('./proctree.mjs');
+  const T0 = Date.parse('2026-10-03T10:00:00Z');
+  const ALLOW = ['cmd.exe', 'node.exe', 'workerd.exe'];
+  const P = (pid, ppid, name, dt) => ({ pid, ppid, name, created: T0 + dt });
+  const tree = [P(100, 1, 'cmd.exe', 0), P(101, 100, 'node.exe', 1000), P(102, 101, 'workerd.exe', 2000)];
+  const sorted = (a) => [...a].sort((x, y) => x - y);
+  const n = pickKillTargets(tree, 100, T0, ALLOW);
+  eq(sorted(n.kill), [100, 101, 102], '殺程序樹・正常的樹：根、子、孫都殺');
+  const reuse = pickKillTargets([...tree, P(200, 100, 'OneDrive.exe', -5 * 3600 * 1000), P(201, 100, 'node.exe', -3600 * 1000)], 100, T0, ALLOW);
+  ok(!reuse.kill.includes(200) && !reuse.kill.includes(201) && reuse.skipped.some((s) => s.pid === 201 && s.why.includes('比父程序早建立')),
+    '殺程序樹・PID 重用的舊程序：記著同一個父 PID、卻比父程序早建立的，就算名稱在清單裡也不殺', JSON.stringify(reuse));
+  const notAllowed = pickKillTargets([...tree, P(103, 100, 'conhost.exe', 1000), P(104, 103, 'node.exe', 1500)], 100, T0, ALLOW);
+  ok(!notAllowed.kill.includes(103) && !notAllowed.kill.includes(104) && notAllowed.skipped.some((s) => s.pid === 103 && s.why.includes('不在可殺清單')),
+    '殺程序樹・不在清單：名稱不在可殺清單的不殺、只印出來，它底下的也不往下認', JSON.stringify(notAllowed));
+  const rootReused = pickKillTargets([P(100, 1, 'cmd.exe', 3600 * 1000), P(105, 100, 'node.exe', 3601 * 1000)], 100, T0, ALLOW);
+  ok(rootReused.kill.length === 0 && rootReused.why != null, '殺程序樹・根程序被重用：根的建立時刻跟開它的時刻對不上 → 一個都不殺', JSON.stringify(rootReused));
+  const rootGone = pickKillTargets([P(101, 100, 'node.exe', 1000), P(102, 101, 'workerd.exe', 2000)], 100, T0, ALLOW);
+  eq(sorted(rootGone.kill), [101, 102], '殺程序樹・根程序已結束：殼不在了，開它之後才建立的子孫照樣殺（不留殭屍）');
+
+  // 真的程序表（Windows）：開一個 node 子程序、它再開一個孫程序，挑出來的要剛好是這兩個；殺完兩個都不在
+  if (process.platform === 'win32') {
+    const { spawn } = await import('node:child_process');
+    const sleeper = 'setTimeout(() => {}, 20000);';
+    const spawnedAt = Date.now();
+    const child = spawn(process.execPath, ['-e', `require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(sleeper)}], { stdio: 'ignore' }); ${sleeper}`], { stdio: 'ignore' });
+    try {
+      let table = [];
+      let grand = null;
+      for (let i = 0; i < 20 && !grand; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        table = windowsProcessTable();
+        grand = table.find((p) => p.ppid === child.pid);
+      }
+      ok(Boolean(grand), '（前提）殺程序樹・真的程序表：讀得到我們開的子程序與它開的孫程序');
+      const pick = pickKillTargets(table, child.pid, spawnedAt, ['node.exe']);
+      eq(sorted(pick.kill), sorted([child.pid, grand?.pid]), '殺程序樹・真的程序表：挑出來的剛好是我們開的子程序與孫程序');
+      ok(!pick.kill.includes(process.pid), '殺程序樹・真的程序表：不含 controltest 自己');
+      killTargets(child.pid, spawnedAt, ['node.exe'], { table });
+      await new Promise((r) => setTimeout(r, 500));
+      const after = windowsProcessTable();
+      ok(!after.some((p) => p.pid === child.pid && p.created === table.find((q) => q.pid === child.pid)?.created)
+        && !after.some((p) => p.pid === grand?.pid && p.created === grand?.created),
+        '殺程序樹・真的程序表：殺完之後子程序與孫程序都不在了（同一個 PID＋同一個建立時刻）');
+    } finally {
+      if (child.exitCode == null) child.kill();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 section('突變挑選器（scripts/affected.mjs）：判斷不出範圍就全跑，不是「沒有關係」');
 {
   // 2026-10-03：以前讀不到的檔直接跳過，範圍默默變小（實測：一支中間的模組讀不到，改 js/avgcost.js 從 168 條變成 11 條，

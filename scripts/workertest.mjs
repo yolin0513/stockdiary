@@ -20,23 +20,26 @@ const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * 把整棵行程樹殺掉。
+ * 把我們開的那棵行程樹殺掉。
  *
  * Windows 上 `proc.kill()` 只會殺掉 npx.cmd 這層殼，底下的 wrangler 與 workerd
- * 會活下來 —— 跑幾次之後就堆了二十幾個殭屍行程，佔著連接埠，下一次測試直接卡死。
- * （實際發生過。）所以要用 taskkill /T 連子孫一起殺。
+ * 會活下來 —— 跑幾次之後就堆了二十幾個殭屍行程，佔著連接埠，下一次測試直接卡死。（實際發生過。）
+ *
+ * **不再用 `taskkill /PID <殼> /T`**（2026-10-03）：殼結束之後 PID 可能被別的程序拿走，/T 又只照父 PID 找子孫，
+ * 會殺到不相干的程序（JLPT 撞到的是 OneDrive 的同步服務）。改成 scripts/proctree.mjs：只認比父程序晚建立的、
+ * 只殺名稱在 WRANGLER_TREE 裡的，其餘印出來不殺。非 Windows 只用 handle 殺我們開的那一個（不用 kill(-pid) 的群組號碼）。
  */
+const WRANGLER_TREE = ['cmd.exe', 'node.exe', 'workerd.exe', 'esbuild.exe'];
 async function killTree(proc) {
-  const pid = proc.pid;
-  if (pid == null) return;
-  try {
-    if (process.platform === 'win32') {
-      const { execFileSync } = await import('node:child_process');
-      execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      process.kill(-pid, 'SIGKILL');
-    }
-  } catch { /* 已經死了就算了 */ }
+  if (proc.pid == null) return;
+  if (process.platform === 'win32') {
+    const { killTargets } = await import('./proctree.mjs');
+    const pick = killTargets(proc.pid, proc.spawnedAt, WRANGLER_TREE);
+    if (pick.why) console.log(`  · 沒有殺 wrangler 的程序樹：${pick.why}`);
+    for (const s of pick.skipped) console.log(`  · 沒有殺 PID ${s.pid}（${s.name}）：${s.why}`);
+  } else if (proc.exitCode == null) {
+    proc.kill('SIGKILL');
+  }
   await sleep(300);
 }
 
@@ -55,11 +58,13 @@ async function freePort() {
 /** 起 wrangler dev，探到它真的收請求為止。 */
 async function startWrangler() {
   const port = await freePort();
+  const spawnedAt = Date.now();   // killTree 用它確認程序表裡的根程序真的是這一個（PID 重用）
   const proc = spawn(
     process.platform === 'win32' ? 'npx.cmd' : 'npx',
     ['wrangler', 'dev', '--port', String(port), '--inspector-port', '0'],
     { cwd: path.join(ROOT, 'workers'), stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' },
   );
+  proc.spawnedAt = spawnedAt;
   let out = '';
   proc.stdout.on('data', (b) => { out += b.toString(); });
   proc.stderr.on('data', (b) => { out += b.toString(); });

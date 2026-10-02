@@ -3930,6 +3930,34 @@ const MUTATIONS = [
     alsoRed: ['判斷不出範圍・真實入口'],
     alsoRedWhy: '真實入口在現在的 repo 上本來就該全跑；不全跑就印不出「判斷不出範圍 → 全跑」。',
   },
+  // ──── 殺程序樹（2026-10-03）：PID 被重用時不能殺到不相干的程序（JLPT 撞到 OneDrive 的同步服務） ────
+  {
+    name: 'PT：認子程序不看建立時間',
+    why: '記著同一個父 PID、卻比父程序早建立的舊程序（PID 被重用）會被當成我們開的、一起殺掉。',
+    file: 'scripts/proctree.mjs',
+    find: '      if (!(p.created >= parentCreated)) { skipped.push(',
+    replace: '      if (false) { skipped.push(',
+    test: 'controltest',
+    expect: '殺程序樹・PID 重用的舊程序：',
+  },
+  {
+    name: 'PT：不看可殺清單',
+    why: '名稱不在清單裡的程序（例：conhost、或被誤認進來的任何程序）也照殺；清單是 PID 重用之外的第二道擋。',
+    file: 'scripts/proctree.mjs',
+    find: '      if (!allow.includes(p.name.toLowerCase())) { skipped.push(',
+    replace: '      if (false) { skipped.push(',
+    test: 'controltest',
+    expect: '殺程序樹・不在清單：',
+  },
+  {
+    name: 'PT：不看根程序的建立時刻',
+    why: '殼結束、PID 被別的程序拿走時，會把那個不相干的程序與它的子孫當成我們的樹殺掉。',
+    file: 'scripts/proctree.mjs',
+    find: '  if (root && Math.abs(root.created - spawnedAt) > slackMs) {',
+    replace: '  if (false) {',
+    test: 'controltest',
+    expect: '殺程序樹・根程序被重用：',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
