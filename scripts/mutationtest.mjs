@@ -3958,6 +3958,27 @@ const MUTATIONS = [
     test: 'controltest',
     expect: '殺程序樹・根程序被重用：',
   },
+  // ──── 只有判定行會出現在行首（2026-10-03；TripQuest 同日：證據行自己以失敗符號開頭，照樣被當成紅） ────
+  {
+    name: 'TL：細節只有第一行縮排',
+    why: '子程序的多行輸出塞進細節時，裡面的「  ✗ …」出現在行首，被突變的判定當成這支測試自己的失敗斷言。',
+    file: 'scripts/tap.mjs',
+    find: "(extra ? '\\n      ' + indentDetail(extra) : '')",
+    replace: "(extra ? '\\n      ' + extra : '')",
+    test: 'taptest',
+    expect: '判定行・細節不會出現在行首：',
+  },
+  {
+    name: 'TL：斷言訊息裡的換行原樣印出',
+    why: '訊息裡有換行時，換行之後的那一段從行首開始；它若以「  ✗ 」開頭，就多出一條假的失敗斷言。',
+    file: 'scripts/tap.mjs',
+    find: "  msg = oneLine(msg);\n  record('ok', msg);",
+    replace: "  record('ok', msg);",
+    test: 'taptest',
+    expect: '判定行・訊息裡的換行壓成一行：',
+    alsoRed: ['判定行・細節不會出現在行首：'],
+    alsoRedWhy: '同一支探針：訊息換行長出來的那一行「  ✗ 」也會被 mutjudge 數進失敗斷言，另一條「剛好 2 條」就跟著紅。',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

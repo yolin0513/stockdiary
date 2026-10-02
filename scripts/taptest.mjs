@@ -52,6 +52,29 @@ try {
       '（對照）取紅的理由：字眼只出現在斷言名稱或 ✓ 行 → 不算；出現在 ✗ 底下的細節行 → 算', JSON.stringify([reasonOf(onlyLabel), reasonOf(inDetail)]));
   }
 
+  section('只有判定行會出現在行首（突變的判定只認「  ✗ 」開頭的行）');
+  {
+    // 2026-10-03（TripQuest 同日）：細節以前只有第一行縮排——把子程序的多行輸出塞進細節，裡面的「  ✗ …」會出現在行首，
+    // 被 mutjudge 當成這支測試自己的失敗斷言。訊息裡有換行也一樣。從命令列跑一支探針，用 mutjudge 真的那一段解析。
+    const { failedAssertions } = await import('./mutjudge.mjs');
+    const file = path.join(DIR, 'lines.mjs');
+    fs.writeFileSync(file, [
+      `import { ok, done } from ${JSON.stringify(TAP_URL)};`,
+      "ok(false, '真的失敗甲', '子程序的輸出第一行\\n  ✗ 子程序自己的失敗行（不是這支的斷言）\\n  ✓ 子程序的通過行');",
+      "ok(true, '通過的斷言\\n  ✗ 訊息換行之後的假失敗行');",
+      "ok(false, '真的失敗乙 ✗ 訊息中間帶著符號');",
+      "done('lines');",
+      '',
+    ].join('\n'));
+    const r = spawnSync(process.execPath, [file], { encoding: 'utf8', env: { ...process.env, SD_AUDIT: '' } });
+    const out = `${r.stdout}${r.stderr}`;
+    const got = failedAssertions(out);
+    ok(got.length === 2 && got[0] === '真的失敗甲' && got[1] === '真的失敗乙 ✗ 訊息中間帶著符號',
+      '判定行・細節不會出現在行首：細節裡子程序的「  ✗ 」行不被當成這支的失敗斷言', JSON.stringify(got));
+    ok(!out.replace(/\r/g, '').split('\n').some((l) => l.startsWith('  ✗ 訊息換行之後')),
+      '判定行・訊息裡的換行壓成一行：通過的斷言訊息裡的換行，不會在行首長出一行「  ✗ 」', JSON.stringify(got));
+  }
+
   section('對照組：母體非空、乾淨的斷言要放行（不然「什麼都判紅」的 tap 也會讓下面全過）');
   const okNone = probe('ok-none', "noneOf([1, 2], (x) => x > 5, '對照：乾淨的 noneOf');");
   const okEvery = probe('ok-every', "everyOf([1, 2], (x) => x > 0, '對照：乾淨的 everyOf');");

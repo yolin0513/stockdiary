@@ -27,14 +27,25 @@ const AUDIT = process.env.SD_AUDIT === '1';
 const audit = [];
 let currentSection = '';
 
+/**
+ * **只有判定行會出現在行首**（2026-10-03；TripQuest 同日：錨定在行首還不夠，證據行自己以失敗符號開頭，照樣被當成紅）。
+ * 突變的判定（mutjudge）只認「兩格縮排＋✗」開頭的行。以前細節只有第一行加縮排：把子程序的輸出（好幾行）
+ * 塞進細節時，裡面的「  ✗ …」會原樣出現在行首，被當成這支測試自己的失敗斷言。所以：
+ *   · 斷言訊息與說明行裡的換行，壓成「 ⏎ 」（判定行一定只有一行）
+ *   · 細節的每一行都縮排六格
+ */
+export const oneLine = (s) => String(s).replace(/\r?\n/g, ' ⏎ ');
+export const indentDetail = (s) => String(s).split(/\r?\n/).join('\n      ');
+
 function record(kind, msg, n = null) {
   if (AUDIT) audit.push({ kind, section: currentSection, msg: String(msg).slice(0, 140), n });
 }
 
 export function ok(cond, msg, extra = '') {
+  msg = oneLine(msg);
   record('ok', msg);
   if (cond) { pass += 1; console.log('  ✓ ' + msg); }
-  else { fail += 1; console.log('  ✗ ' + msg + (extra ? '\n      ' + extra : '')); }
+  else { fail += 1; console.log('  ✗ ' + msg + (extra ? '\n      ' + indentDetail(extra) : '')); }
   return !!cond;
 }
 
@@ -46,6 +57,7 @@ export function ok(cond, msg, extra = '') {
  * 於是混進通過數裡。分開之後，「N 項通過」只算真的斷言。
  */
 export function note(msg) {
+  msg = oneLine(msg);
   notes += 1;
   record('note', msg);
   console.log('  · ' + msg);
@@ -58,6 +70,7 @@ export function note(msg) {
 const show = (v) => JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? `${x}n` : x));
 
 export function eq(actual, expected, msg) {
+  msg = oneLine(msg);
   const a = show(actual);
   const e = show(expected);
   record('eq', msg);
@@ -81,6 +94,7 @@ export function throws(fn, rx, msg) {
 
 /** 母體非空，而且裡面沒有任何一個符合 pred。兩件事一起斷言。 */
 export function noneOf(list, pred, msg) {
+  msg = oneLine(msg);
   const arr = [...list];
   record('noneOf', msg, arr.length);
   if (arr.length === 0) {
@@ -98,6 +112,7 @@ export function noneOf(list, pred, msg) {
 
 /** 母體非空，而且每一個都符合 pred。 */
 export function everyOf(list, pred, msg) {
+  msg = oneLine(msg);
   const arr = [...list];
   record('everyOf', msg, arr.length);
   if (arr.length === 0) {
@@ -118,6 +133,7 @@ export function everyOf(list, pred, msg) {
  * 只測正例的話，一個「永遠回 true」的壞檢查器也會全過。
  */
 export function detects(fn, { shouldHit, shouldMiss }, msg) {
+  msg = oneLine(msg);
   record('detects', msg, Math.min(shouldHit.length, shouldMiss.length));
   const missed = shouldHit.filter((x) => !fn(x));
   const falsePos = shouldMiss.filter((x) => fn(x));
