@@ -238,7 +238,7 @@ section('殘留突變的還原（mutationtest --restore，從命令列入口、�
     fresh();
     const before = fs.readFileSync(V, 'utf8');
     const r2 = restore();
-    ok(r2.code === 0 && /--restore：沒有還原紀錄/.test(r2.out) && fs.readFileSync(V, 'utf8') === before,
+    ok(r2.code === 0 && r2.out.replace(/\r/g, '').split('\n').some((l) => l.startsWith('--restore：沒有還原紀錄')) && fs.readFileSync(V, 'utf8') === before,
       '殘留突變還原・二（必過）：沒有紀錄 → 不動任何檔、回 0', `回傳 ${r2.code}；${r2.out.slice(-200)}`);
     // 三、紀錄壞了 → 停下（非 0）、講明是紀錄壞了、紀錄留著（閘門與自查才擋得到）
     fresh();
@@ -301,22 +301,38 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     const r = spawnSync(process.execPath, ['scripts/mutationtest.mjs'], { cwd: C, encoding: 'utf8', timeout: 120000 });
     return { code: r.status, out: `${r.stdout}${r.stderr}` };
   };
-  const has = (out, head) => out.split('\n').some((l) => l.trimStart().startsWith(head));
+  // 一律以行首錨定，不用子字串（MealMate 2026-10-03：✓ 行的訊息裡帶 ✗，被子字串比對當成紅）
+  const linesOf = (out) => out.replace(/\r/g, '').split('\n');
+  const has = (out, head) => linesOf(out).some((l) => l.startsWith(head));
+  /** 以 head 開頭的那一行的下一行（斷言的細節行） */
+  const detailOf = (out, head) => { const ls = linesOf(out); const i = ls.findIndex((l) => l.startsWith(head)); return i < 0 ? null : (ls[i + 1] ?? ''); };
+  /** 結算分類那一行（tap 的說明行：兩格縮排＋「· 」） */
+  const tallyOf = (out) => linesOf(out).find((l) => l.startsWith('  · 結果分開數：')) ?? '';
+  // 擷取程式自己的對照（§5.11 第二層，兩個方向）：
+  {
+    const good = '  ✗ 假突變：逾時對照 → sleeptest 變紅\n      【情境未成立】逾時；重跑了 2 次都沒成立。\n  · 結果分開數：情境成立 0 條（…）；情境未成立 1 條（不算）；過期 0 條';
+    const fake = '  ✓ 假突變：逾時對照 說明裡寫著 ✗ 與【情境未成立】逾時；\n      【情境未成立】逾時；重跑了 2 次都沒成立。\n說明：  · 結果分開數：情境成立 0 條';
+    ok((detailOf(good, '  ✗ 假突變：逾時對照') ?? '').startsWith('      【情境未成立】逾時；') && tallyOf(good).startsWith('  · 結果分開數：情境成立 0 條'),
+      '（對照）逾時對照的擷取：已知的輸出抽得到細節行與分類行');
+    ok(detailOf(fake, '  ✗ 假突變：逾時對照') === null && tallyOf(fake) === '' && !has(fake, '  ✗ 假突變'),
+      '（對照）逾時對照的擷取：✓ 行訊息裡帶 ✗、說明裡提到同一句，都不算');
+  }
   try {
     const a = runFake('PROBE_SLEEP', 1000);
     const aWhat = `回傳 ${a.code}；${a.out.split('\n').filter((l) => /假突變|情境|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`;
-    ok(/【情境未成立】逾時；/.test(a.out), '逾時對照・一a：測試逾時 → 判成「情境未成立」，理由是逾時（不是別的）', aWhat);
-    ok(/重跑了 2 次都沒成立/.test(a.out), '逾時對照・一b：情境沒成立就重跑，到上限（2 次）才放棄', aWhat);
-    ok(a.code !== 0 && /情境未成立 1 條（不算）/.test(a.out) && /情境成立 0 條/.test(a.out) && !has(a.out, '✓ 假突變：逾時對照'),
+    ok((detailOf(a.out, '  ✗ 假突變：逾時對照') ?? '').startsWith('      【情境未成立】逾時；'), '逾時對照・一a：測試逾時 → 判成「情境未成立」，理由是逾時（不是別的）', aWhat);
+    ok((detailOf(a.out, '  ✗ 假突變：逾時對照') ?? '').includes('；重跑了 2 次都沒成立。'), '逾時對照・一b：情境沒成立就重跑，到上限（2 次）才放棄', aWhat);
+    ok(a.code !== 0 && tallyOf(a.out).startsWith('  · 結果分開數：情境成立 0 條') && tallyOf(a.out).includes('；情境未成立 1 條（不算）；') && !has(a.out, '  ✓ 假突變：逾時對照'),
       '逾時對照・一c：不算紅也不算過（不印 ✓、分開數成「未成立 1」、整支非 0）', aWhat);
     const b = runFake('PROBE_SLEEP', 10000);
-    ok(/【沒紅】/.test(b.out) && /情境成立 1 條/.test(b.out),
+    ok((detailOf(b.out, '  ✗ 假突變：逾時對照') ?? '').startsWith('      【沒紅】') && tallyOf(b.out).startsWith('  · 結果分開數：情境成立 1 條'),
       '逾時對照・二（同一條、不逾時）：判成「沒紅」——上一條的「不算數」是逾時造成的', `回傳 ${b.code}；${b.out.split('\n').filter((l) => /假突變|沒紅|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`);
     const c = runFake('PROBE_RED', 10000);
-    ok(c.code === 0 && has(c.out, '✓ 假突變：逾時對照 → sleeptest 變紅') && /紅在對的地方 1/.test(c.out),
+    ok(c.code === 0 && has(c.out, '  ✓ 假突變：逾時對照 → sleeptest 變紅') && tallyOf(c.out).startsWith('  · 結果分開數：情境成立 1 條（紅在對的地方 1、'),
       '逾時對照・三（必過）：真的紅、沒逾時 → 判成紅（這套情境分得出紅）', `回傳 ${c.code}；${c.out.split('\n').filter((l) => /假突變|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`);
     const d = runFake('PROBE_RED', 10000, true);
-    ok(d.code !== 0 && /基準就不是綠的/.test(d.out) && /【情境未成立】沒有 sleeptest 自己的結算行/.test(d.out) && !/假突變：逾時對照 →/.test(d.out),
+    ok(d.code !== 0 && has(d.out, '基準就不是綠的') && (detailOf(d.out, '  ✗ sleeptest 在乾淨的程式碼上通過') ?? '').startsWith('      【情境未成立】沒有 sleeptest 自己的結算行')
+      && !has(d.out, '  ✓ 假突變：逾時對照') && !has(d.out, '  ✗ 假突變：逾時對照'),
       '逾時對照・四：基準 exit 0 卻沒有結算行（沒跑完）→ 不算通過、停下、一條突變都不跑', `回傳 ${d.code}；${d.out.split('\n').filter((l) => /基準|情境|sleeptest/.test(l)).join(' ⏎ ').slice(0, 400)}`);
   } finally {
     fs.rmSync(C, { recursive: true, force: true });
@@ -377,8 +393,10 @@ section('突變挑選器（scripts/affected.mjs）：判斷不出範圍就全跑
     fs.appendFileSync(path.join(G, 'js', 'money.js'), '\n// controltest：改一行\n');
     const r = spawnSync(process.execPath, ['scripts/mutationtest.mjs', '--changed', '--list'], { cwd: G, encoding: 'utf8', timeout: 60000 });
     const out = `${r.stdout}${r.stderr}`;
-    ok(r.status === 0 && /git 說改到了 1 個檔：js\/money\.js/.test(out) && /判斷不出範圍 → 全跑/.test(out) && /dcatest：scripts\/dcatest\.mjs 有動態組出來的 import 路徑/.test(out)
-      && !/— 基準：/.test(out),
+    const ls = out.replace(/\r/g, '').split('\n');
+    const why = ls.find((l) => l.startsWith('  · 判斷不出範圍 → 全跑（')) ?? '';
+    ok(r.status === 0 && ls.some((l) => l.startsWith('  ✓ git 說改到了 1 個檔：js/money.js')) && why.includes('dcatest：scripts/dcatest.mjs 有動態組出來的 import 路徑')
+      && !ls.some((l) => l.startsWith('— 基準：')),
       '判斷不出範圍・真實入口：--changed --list 在現在的 repo 上講出「全跑」與理由（dcatest 的動態路徑），而且沒有跑基準',
       `回傳 ${r.status}；${out.split('\n').filter((l) => /git 說|判斷不出|只列不跑|基準/.test(l)).join(' ⏎ ').slice(0, 500)}`);
   } finally {
