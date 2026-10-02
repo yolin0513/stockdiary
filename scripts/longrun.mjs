@@ -25,12 +25,23 @@ export function judgeRun(logText, test) {
   return hasSummary(logText, test) ? 'done' : 'not-done';
 }
 
-/** 一次取樣的那一行（純函式，測試用合成的程序表驗）。 */
+/**
+ * 一次取樣的那一行（純函式，測試用合成的程序表驗）。
+ * 記憶體拆三份（Dispatch 2026-10-03：遊戲那邊量到最低那一刻，自己的樹 42 MB、其他 node 244 MB、非 node 12,302 MB——
+ * 壓力可能主要不是來自我們）：這一次的樹／這棵樹以外的 node／這棵樹以外的非 node。累積幾筆才看得出壓力從哪來。
+ */
 export function sampleLine(table, rootPid, spawnedAt, freeMB, now = new Date()) {
   const tree = descendants(table, rootPid, spawnedAt);
+  const inTree = new Set(tree.map((p) => p.pid));
   const workers = tree.filter((p) => WORKER_NAMES.includes(p.name.toLowerCase()));
-  const mb = Math.round(tree.reduce((s, p) => s + (p.mem || 0), 0) / 1024 / 1024);
-  return { line: `${now.toISOString()}\t工作程序 ${workers.length}\t全部 ${tree.length}\t記憶體 ${mb}MB\t系統可用 ${freeMB}MB`, workers: workers.length, all: tree.length, mb };
+  const MB = (list) => Math.round(list.reduce((s, p) => s + (p.mem || 0), 0) / 1024 / 1024);
+  const mb = MB(tree);
+  const otherNode = MB(table.filter((p) => !inTree.has(p.pid) && p.name.toLowerCase() === 'node.exe'));
+  const nonNode = MB(table.filter((p) => !inTree.has(p.pid) && p.name.toLowerCase() !== 'node.exe'));
+  return {
+    line: `${now.toISOString()}\t工作程序 ${workers.length}\t全部 ${tree.length}\t記憶體 ${mb}MB\t其他 node ${otherNode}MB\t非 node ${nonNode}MB\t系統可用 ${freeMB}MB`,
+    workers: workers.length, all: tree.length, mb, otherNode, nonNode,
+  };
 }
 
 function main() {
@@ -49,7 +60,7 @@ function main() {
   const RES = path.join(ROOT, '.logs', `${name}-${head}-${stamp}.res.txt`);
   const put = (f, s) => fs.appendFileSync(f, s);
   put(LOG, `開始 ${new Date().toISOString()}，commit ${head}，指令：${[cmd, ...args].join(' ')}\n`);
-  put(RES, `# ${name} @ ${head}｜每 ${every / 1000} 秒一行｜時間\t工作程序\t全部\t記憶體（這棵樹）\t系統可用\n`);
+  put(RES, `# ${name} @ ${head}｜每 ${every / 1000} 秒一行｜時間\t工作程序\t全部\t記憶體（這棵樹）\t其他 node\t非 node\t系統可用\n`);
   console.log(`長跑：${name}｜log ${path.relative(ROOT, LOG)}｜資源 ${path.relative(ROOT, RES)}`);
 
   const spawnedAt = Date.now();

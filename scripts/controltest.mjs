@@ -408,9 +408,12 @@ section('長跑的包裝（scripts/longrun.mjs）：跑完只認結算行、資�
   const { sampleLine, judgeRun } = await import('./longrun.mjs');
   const T0 = Date.parse('2026-10-03T10:00:00Z');
   const P = (pid, ppid, name, dt, mem = 50 * 1024 * 1024) => ({ pid, ppid, name, created: T0 + dt, mem });
-  const s = sampleLine([P(10, 1, 'node.exe', 0), P(11, 10, 'bash.exe', 1000), P(12, 11, 'node.exe', 2000), P(13, 10, 'OneDrive.exe', -3600 * 1000)], 10, T0, 4096);
-  ok(s.workers === 2 && s.all === 3 && /\t工作程序 2\t全部 3\t記憶體 150MB\t系統可用 4096MB$/.test(s.line),
+  const s = sampleLine([P(10, 1, 'node.exe', 0), P(11, 10, 'bash.exe', 1000), P(12, 11, 'node.exe', 2000), P(13, 10, 'OneDrive.exe', -3600 * 1000),
+    P(20, 1, 'node.exe', -100, 30 * 1024 * 1024)], 10, T0, 4096);
+  ok(s.workers === 2 && s.all === 3 && /\t工作程序 2\t全部 3\t記憶體 150MB\t/.test(s.line),
     '長跑資源紀錄・取樣：工作程序只數 node（bash 不算）、PID 重用的舊程序不數進這棵樹', JSON.stringify(s));
+  ok(/\t記憶體 150MB\t其他 node 30MB\t非 node 50MB\t系統可用 4096MB$/.test(s.line),
+    '長跑資源紀錄・記憶體拆三份：這棵樹／樹外的 node／樹外的非 node（被 PID 重用騙進來的舊程序算在樹外）', s.line);
   eq(judgeRun('…\n結束，exit=127\n', 'x'), 'not-done', '長跑判定・只有 exit= 沒有結算行：判成沒跑完');
   eq(judgeRun('…\nx：12 項通過\n結束，exit=0\n', 'x'), 'done', '長跑判定（必過）・有自己的結算行：判成跑完');
 
