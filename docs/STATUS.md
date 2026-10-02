@@ -59,6 +59,27 @@
 | 之後才加的（`buildtest`、`buildverifytest`、`entrygatetest`、`plcaltest`、`plcalviewtest`、`escscan`、`gatescan`、`taptest`、`divrecordtest` 等） | **待量** | 180 秒 | 待量 |
 
 2026-09-21 的數字是 jobrun 之前量的（現在每支多約 0.85 秒，不影響倍數）。往後每一場突變的 log 都有「基準耗時｜」行，下一次整套跑完就用那份補齊這張表。
+**倍數一律用最長那次算，不用中位數（Dispatch 2026-10-03，MealMate 的實例：中位數 3.1 倍、最長 2.3 倍）**：`controltest` 已經用最慢那次；
+2026-09-21 那幾支只量過一次，「最長」就是那一次——多量幾次可能更長。
+
+**盤點：沒設逾時的地方（2026-10-03，一次性掃描＋人工看；掃描附對照組 6 種樣本全中）**：`scripts/*.mjs` 82 支、開子程序 68 處，沒帶 `timeout` 的 57 處。
+大多是本機的 `git` 小指令（`rev-parse`、`show`、`log`），卡住的機會小、但沒有上限。要緊的幾處：
+- **`scripts/gatepush.sh` 整支沒有任何逾時**：`git fetch`、`git push`、`git ls-remote` 都打網路，卡住就一直卡著，從外面看像「還在跑」（Dispatch 指出：推送卡住會讓驗完的版本上不去）。
+  `gatetest.sh` 也沒有；它經 `gateselftest` 跑時有 10 分鐘（`spawnSync` 的 `timeout`）兜底，單獨跑沒有。
+- **`scripts/buildverify.mjs` 開 `buildtest` 那一行沒有逾時**（它被 `gatepush` 叫到時也沒有兜底）。
+- **`gateselftest` 本身**：開 `gatetest.sh` 有 10 分鐘；開頭的 `git clone --no-local` 沒有。它被 `mutationtest` 叫時外層有 90 分鐘兜底，單獨跑沒有。
+- `longrun` 開的指令沒有逾時（設計如此：它是包裝，被包的要自己有；GV 那場被包的是 `mutationtest`，裡面每支有逾時）。
+- `jobrun` 開的指令沒有逾時（同上，由呼叫端設）；`workertest` 起 wrangler 沒有。
+- 明天 GV 那場會走到的：`mutationtest`（每支有）→ `gateselftest`（90 分鐘）→ `gatetest.sh`（每次 10 分鐘）→ 裡面的 git／node（沒有，被 10 分鐘兜住）。
+
+**盤點：只在某個時點查的護欄**：
+- **推送閘門的 TOCTOU**：要推哪個 commit（`LOCAL`）在 fetch 前記一次；自查掃的是當下的 `refs/heads/main`，**`git push` 推的是推送那一刻的 `main`**。
+  自查與推送之間如果有新 commit 落地，它會不經自查就推出去；第三關（遠端≠`LOCAL`）會回 3，但那時已經公開了。修法（推論）：自查與推送都改用記下來的 `$LOCAL`
+  （`git push origin "$LOCAL:refs/heads/main"`）。動閘門要重跑 `gatetest.sh` 並加一種情境，還沒做。
+- **`mutationtest` 沒有「工作區等於 HEAD」的檢查**：只在開跑前查殘留突變；跑的期間有人改了檔，結果是混合版本、log 只記開頭的 commit。
+  （F9 build 登記有前後各比一次：「跑的期間改了檔」那條，是對的寫法。）
+- **程序數上限（本 repo ≤ 4）沒有任何機器擋**：只在開跑前人工預估；`longrun` 邊跑邊取樣（含逐一計數的峰值），但只記錄、不攔。
+- **記憶體下限：沒有**。`longrun` 每次取樣都記可用記憶體，但沒有門檻、不會停。
 
 以下是當天較早的紀錄（推送那段已經過期：兩件優先後來都推上去了）。
 
