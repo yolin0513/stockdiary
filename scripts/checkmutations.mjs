@@ -51,6 +51,39 @@ eq(judge({ test: 'x', code: 1, out: '\n  ✗ 目標斷言：紅了\n\ny：0 項�
 eq(judge({ test: 'x', code: 1, out: '\n  ✗ 目標斷言：紅了\n  說明 x：0 項通過，1 項失敗' }, '目標斷言').verdict, 'not-counted',
   '情境未成立・結算行不在行首：只在行中間出現 → 不算');
 eq(judge({ test: 'x', code: 0, out: '\n— 某段 —\n  ✓ 目標斷言\n\nx：1 項通過' }, '目標斷言').verdict, 'not-red', '對照：完全沒紅 → 判成「沒紅」，跟「紅錯地方」分得開');
+
+// 真的中途被殺（MealMate 2026-10-03 攔到的形狀）：測試前面幾節已經印出 ✗，然後被強制停掉——Windows 上結束碼跟斷言失敗一樣非 0。
+// 上面的合成樣本是同一個形狀；這裡用真的程序跑一次，輸出與結束碼都是作業系統給的，不是手寫的。
+// 刻意不傳 timedOut：證明光靠「有沒有自己的結算行」就判得出來（呼叫端漏填 timedOut、或被外面的人殺掉時，靠的就是這一道）。
+{
+  const os = await import('node:os');
+  const { spawn } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'killmid-'));
+  const runProbe = (body, killAfterMark) => new Promise((resolve) => {
+    const file = path.join(dir, `p${Math.random().toString(36).slice(2)}.mjs`);
+    fs.writeFileSync(file, body);
+    const child = spawn(process.execPath, [file], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    const onData = (b) => { out += b.toString(); if (killAfterMark && out.includes('✗')) child.kill(); };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    const t = setTimeout(() => child.kill(), 20000);
+    child.on('exit', (code, signal) => { clearTimeout(t); resolve({ code, signal, out }); });
+  });
+  const FRONT = "console.log('\\n— 前一節 —\\n  ✗ 目標斷言：紅了\\n      細節');\n";
+  const killed = await runProbe(FRONT + 'setInterval(() => {}, 1000);\n', true);
+  const finished = await runProbe(FRONT + "console.log('\\nprobe：0 項通過，1 項失敗');\nprocess.exit(1);\n", false);
+  fs.rmSync(dir, { recursive: true, force: true });
+  const killedCode = killed.code ?? 1;   // 跟 mutationtest 的 runTest 同一個換算：被殺沒有結束碼就當成 1
+  ok(killedCode !== 0 && killed.out.includes('  ✗ 目標斷言：紅了'),
+    '（前提）真的中途被殺：殺之前已經印出紅在目標斷言的 ✗ 行、結束碼非 0（跟斷言失敗長得一樣）', JSON.stringify({ code: killed.code, signal: killed.signal }));
+  eq(judge({ test: 'probe', code: killedCode, out: killed.out }, '目標斷言').verdict, 'not-counted',
+    '情境未成立・真的中途被殺：已有 ✗ 行、結束碼非 0、沒傳逾時，只因為沒有自己的結算行 → 不算數');
+  eq(judge({ test: 'probe', code: killedCode, out: killed.out }).verdict, 'not-counted',
+    '情境未成立・真的中途被殺（沒帶 expect）：不能被結束碼判成紅');
+  eq(judge({ test: 'probe', code: finished.code ?? 1, out: finished.out }, '目標斷言').verdict, 'red',
+    '（對照，必過）同一段輸出、跑到結算行才以 1 結束 → 判成紅在目標斷言（不是「什麼都判不算數」）');
+}
 // 2026-09-24 Dispatch：232 條沒寫 expect 的要分批補，先做這個對照——故意把一條的 expect 寫成**另一組真的存在的標籤**，判定必須報出來
 eq(judge({ test: 'x', code: 1, out: OUT_HIT }, '無關的那條').verdict, 'wrong-place',
   '對照：expect 寫錯成另一組存在的標籤（那一組沒紅）→ 判成「紅錯地方」');
@@ -188,6 +221,25 @@ section('從 log 逐行數突變結果（scripts/mutlog.mjs）：不是恆等式
     'log 逐行數・log 有而清單沒有 → 報出來');
   ok(countLog(L(P('甲'), R('甲', '紅在對的地方'))).problems.some((p) => p.includes('判定行不是恰好一行')),
     'log 逐行數・獨立核對：有「結果｜」行卻沒有判定行 → 報出來（兩個來源對不上）');
+
+  // 耗時（2026-10-03，MealMate 同日）：被中斷的突變會長得像斷言失敗——第二個來源是耗時與「有沒有跑到結算行」
+  const B = (t, s) => `  · 基準耗時｜${t}｜${s}`;
+  const T = (n, s, sum = '有', t = 't') => `  · 耗時｜${n}｜${t}｜${s}｜結算行${sum}`;
+  const tGood = L(B('t', '50.0'), P('甲'), P('乙'), V('甲'), T('甲', '48.2'), R('甲', '紅在對的地方'), V('乙', '✗'), T('乙', '51.0'), R('乙', '沒紅'));
+  const g = countLog(tGood);
+  ok(g.problems.length === 0 && g.timing.legacy === false && g.timing.short.length === 0,
+    'log 耗時・正常（必過）：每條都有耗時、都跑到結算行、沒有偏短的', JSON.stringify(g.timing));
+  const sh = countLog(L(B('t', '50.0'), P('甲'), V('甲'), T('甲', '9.0'), R('甲', '紅在對的地方'))).timing.short;
+  ok(sh.length === 1 && sh[0].name === '甲' && sh[0].base === 50,
+    'log 耗時・偏短：9 秒對基準 50 秒、記成紅 → 列成「可能被中斷、需重驗」（MealMate 那一筆的形狀）', JSON.stringify(sh));
+  ok(countLog(L(B('t', '50.0'), P('甲'), V('甲'), T('甲', '9.0', '沒有'), R('甲', '紅在對的地方'))).problems.some((p) => p.startsWith('算數的結果（紅在對的地方）卻沒有跑到結算行')),
+    'log 耗時・判定器漏了：記成紅、耗時行卻寫結算行沒有 → 對不上');
+  eq(countLog(L(B('t', '50.0'), P('甲'), V('甲', '✗'), T('甲', '9.0', '沒有'), R('甲', '情境未成立'))).problems, [],
+    'log 耗時・情境未成立而且沒有結算行（必過）：這是對的，不報');
+  ok(countLog(L(B('t', '50.0'), P('甲'), V('甲'), R('甲', '紅在對的地方'))).problems.some((p) => p.startsWith('有結果（紅在對的地方）卻沒有耗時行')),
+    'log 耗時・新格式少了耗時行 → 對不上（不是當成沒有偏短的）');
+  ok(countLog(good).timing.legacy === true && countLog(good).problems.length === 0,
+    'log 耗時・舊格式（沒有基準耗時行）：標成掃不到（legacy），不當成「沒有偏短的」');
 }
 
 section('斷言登記表：預期有歧義、對不到、需要複審（兩個方向）');

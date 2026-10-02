@@ -278,7 +278,7 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
     "import fs from 'node:fs';",
     "import { ok, done } from './tap.mjs';",
     "const v = fs.readFileSync(new URL('../js/version.js', import.meta.url), 'utf8');",
-    "if (v.includes('PROBE_SLEEP')) { const t = Date.now(); while (Date.now() - t < 3000) { /* 忙等：模擬跑很久的測試 */ } }",
+    "if (v.includes('PROBE_SLEEP')) { const t = Date.now(); while (Date.now() - t < 8000) { /* 忙等：模擬跑很久的測試 */ } }",
     "if (fs.existsSync(new URL('./sleeptest.exit0', import.meta.url))) process.exit(0);   // 沒印結算行就以 0 結束",
     "ok(!v.includes('PROBE_RED'), '假測試：版本行沒有 PROBE_RED 標記');",
     "done('sleeptest');",
@@ -323,13 +323,14 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
       '（對照）逾時對照的擷取：✓ 行訊息裡帶 ✗、說明裡提到同一句，都不算');
   }
   try {
-    const a = runFake('PROBE_SLEEP', 1000);
+    // 逾時 4 秒、假測試忙等 8 秒：每支測試現在經 jobrun 跑（多約 0.85 秒），以前的 1 秒會讓基準本身就逾時（2026-10-03 實測紅過）
+    const a = runFake('PROBE_SLEEP', 4000);
     const aWhat = `回傳 ${a.code}；${a.out.split('\n').filter((l) => /假突變|情境|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`;
     ok((detailOf(a.out, '  ✗ 假突變：逾時對照') ?? '').startsWith('      【情境未成立】逾時；'), '逾時對照・一a：測試逾時 → 判成「情境未成立」，理由是逾時（不是別的）', aWhat);
     ok((detailOf(a.out, '  ✗ 假突變：逾時對照') ?? '').includes('；重跑了 2 次都沒成立。'), '逾時對照・一b：情境沒成立就重跑，到上限（2 次）才放棄', aWhat);
     ok(a.code !== 0 && tallyOf(a.out).startsWith('  · 結果分開數：情境成立 0 條') && tallyOf(a.out).includes('；情境未成立 1 條（不算）；') && !has(a.out, '  ✓ 假突變：逾時對照'),
       '逾時對照・一c：不算紅也不算過（不印 ✓、分開數成「未成立 1」、整支非 0）', aWhat);
-    const b = runFake('PROBE_SLEEP', 10000);
+    const b = runFake('PROBE_SLEEP', 20000);   // 忙等 8 秒＋jobrun，20 秒內一定跑完
     ok((detailOf(b.out, '  ✗ 假突變：逾時對照') ?? '').startsWith('      【沒紅】') && tallyOf(b.out).startsWith('  · 結果分開數：情境成立 1 條'),
       '逾時對照・二（同一條、不逾時）：判成「沒紅」——上一條的「不算數」是逾時造成的', `回傳 ${b.code}；${b.out.split('\n').filter((l) => /假突變|沒紅|結果分開數/.test(l)).join(' ⏎ ').slice(0, 400)}`);
     const c = runFake('PROBE_RED', 10000);
@@ -346,6 +347,12 @@ section('突變執行器：逾時判成「情境未成立」（從命令列入�
       && cc.problems.length === 0 && cc.counts['紅在對的地方'] === 1 && cc.verdictLines === 1,
       'log 逐行數・真實入口：逾時那一場數成「情境未成立 1」、真的紅那一場數成「紅在對的地方 1」，挑選、結果、判定行各 1',
       JSON.stringify({ a: ca, c: cc }).slice(0, 400));
+    // 耗時（2026-10-03）：真的跑出來的 log 有基準耗時與每條的耗時行；逾時那一場寫「結算行沒有」、真的紅那一場寫「有」
+    ok(ca.timing.legacy === false && cc.timing.legacy === false
+      && linesOf(a.out).some((l) => /^ {2}· 耗時｜假突變：逾時對照｜sleeptest｜[\d.]+｜結算行沒有$/.test(l))
+      && linesOf(c.out).some((l) => /^ {2}· 耗時｜假突變：逾時對照｜sleeptest｜[\d.]+｜結算行有$/.test(l)),
+      'log 耗時・真實入口：基準耗時與每條的耗時行都印出來；逾時的寫結算行沒有、跑完的寫有',
+      linesOf(a.out).concat(linesOf(c.out)).filter((l) => l.includes('耗時｜')).join(' ⏎ ').slice(0, 400));
     // 預期需要複審（JLPT 2026-10-03）：這一場基準實跑出來的斷言母體跟登記表那一版比；兩個方向
     const { versionOf } = await import('./assertreg.mjs');
     const RIGHT = versionOf(['假測試：版本行沒有 PROBE_RED 標記']);

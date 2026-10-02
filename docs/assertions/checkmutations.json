@@ -1,7 +1,7 @@
 {
  "test": "checkmutations",
- "version": "56:43ec5203ad46",
- "count": 56,
+ "version": "66:315627959888",
+ "count": 66,
  "assertions": [
   {
    "id": "checkmutations#1",
@@ -45,186 +45,226 @@
   },
   {
    "id": "checkmutations#11",
-   "name": "對照：expect 寫錯成另一組存在的標籤（那一組沒紅）→ 判成「紅錯地方」"
+   "name": "（前提）真的中途被殺：殺之前已經印出紅在目標斷言的 ✗ 行、結束碼非 0（跟斷言失敗長得一樣）"
   },
   {
    "id": "checkmutations#12",
-   "name": "沒帶 expect 的照舊：情境有成立（有結算行）、只要紅就算"
+   "name": "情境未成立・真的中途被殺：已有 ✗ 行、結束碼非 0、沒傳逾時，只因為沒有自己的結算行 → 不算數"
   },
   {
    "id": "checkmutations#13",
-   "name": "只紅對應：紅在對的那一條、別組也一起紅 → 判成「多紅了別組」，並列出多紅的那一條"
+   "name": "情境未成立・真的中途被殺（沒帶 expect）：不能被結束碼判成紅"
   },
   {
    "id": "checkmutations#14",
-   "name": "只紅對應（必過）：多紅的那一組有用 alsoRed 明列 → 合格"
+   "name": "（對照，必過）同一段輸出、跑到結算行才以 1 結束 → 判成紅在目標斷言（不是「什麼都判不算數」）"
   },
   {
    "id": "checkmutations#15",
-   "name": "只紅對應：alsoRed 列的是別的標籤 → 照樣判「多紅了別組」"
+   "name": "對照：expect 寫錯成另一組存在的標籤（那一組沒紅）→ 判成「紅錯地方」"
   },
   {
    "id": "checkmutations#16",
-   "name": "alsoRed（必過）：每一條都是測試原始碼裡的字面 → 沒問題"
+   "name": "沒帶 expect 的照舊：情境有成立（有結算行）、只要紅就算"
   },
   {
    "id": "checkmutations#17",
-   "name": "alsoRed：有連帶紅卻沒寫理由（alsoRedWhy）→ 報出來"
+   "name": "只紅對應：紅在對的那一條、別組也一起紅 → 判成「多紅了別組」，並列出多紅的那一條"
   },
   {
    "id": "checkmutations#18",
-   "name": "alsoRed：有一條在測試原始碼裡找不到 → 報出來"
+   "name": "只紅對應（必過）：多紅的那一組有用 alsoRed 明列 → 合格"
   },
   {
    "id": "checkmutations#19",
-   "name": "alsoRed：空字串（會讓每一條都算宣告過）→ 報出來"
+   "name": "只紅對應：alsoRed 列的是別的標籤 → 照樣判「多紅了別組」"
   },
   {
    "id": "checkmutations#20",
-   "name": "（前提）三格：碰巧的樣本真的出現在一條失敗斷言的訊息裡（被判定看見）"
+   "name": "alsoRed（必過）：每一條都是測試原始碼裡的字面 → 沒問題"
   },
   {
    "id": "checkmutations#21",
-   "name": "（對照）三格的前提：樣本只在細節行（不在任何失敗斷言的訊息裡）→ 判成情境未成立"
+   "name": "alsoRed：有連帶紅卻沒寫理由（alsoRedWhy）→ 報出來"
   },
   {
    "id": "checkmutations#22",
-   "name": "舊判定的洞・第一格：子字串比對時，嵌在別條訊息裡的證據會滿足 expect"
+   "name": "alsoRed：有一條在測試原始碼裡找不到 → 報出來"
   },
   {
    "id": "checkmutations#23",
-   "name": "舊判定的洞・第二格：新判定（比開頭）下，同一個樣本不滿足 expect → 紅錯地方"
+   "name": "alsoRed：空字串（會讓每一條都算宣告過）→ 報出來"
   },
   {
    "id": "checkmutations#24",
-   "name": "舊判定的洞・第三格（必過）：新判定下，真的紅在那一條 → 照樣判紅"
+   "name": "（前提）三格：碰巧的樣本真的出現在一條失敗斷言的訊息裡（被判定看見）"
   },
   {
    "id": "checkmutations#25",
-   "name": "舊判定的洞・多紅別組也比開頭：嵌了證據的那一條算「多紅了別組」，不會因為含 expect 那幾個字就被當成紅在對的地方"
+   "name": "（對照）三格的前提：樣本只在細節行（不在任何失敗斷言的訊息裡）→ 判成情境未成立"
   },
   {
    "id": "checkmutations#26",
-   "name": "登記檢查・expect 在開頭（必過）：緊接在引號後面 → 准登記"
+   "name": "舊判定的洞・第一格：子字串比對時，嵌在別條訊息裡的證據會滿足 expect"
   },
   {
    "id": "checkmutations#27",
-   "name": "登記檢查・expect 不在開頭：只出現在固定文字中間 → 拒絕登記並點名"
+   "name": "舊判定的洞・第二格：新判定（比開頭）下，同一個樣本不滿足 expect → 紅錯地方"
   },
   {
    "id": "checkmutations#28",
-   "name": "登記檢查・expect 前面嵌了動態內容：拒絕登記並點名"
+   "name": "舊判定的洞・第三格（必過）：新判定下，真的紅在那一條 → 照樣判紅"
   },
   {
    "id": "checkmutations#29",
-   "name": "登記檢查・alsoRed 不在開頭：拒絕登記並點名"
+   "name": "舊判定的洞・多紅別組也比開頭：嵌了證據的那一條算「多紅了別組」，不會因為含 expect 那幾個字就被當成紅在對的地方"
   },
   {
    "id": "checkmutations#30",
-   "name": "（前提）登記檢查的母體：帶 expect 的突變 323 條＝原始碼裡數出的 expect 欄位 323 筆"
+   "name": "登記檢查・expect 在開頭（必過）：緊接在引號後面 → 准登記"
   },
   {
    "id": "checkmutations#31",
-   "name": "套用突變不偷改替換字串：$$、$&、$' 原樣寫進去（String.replace(字串, 字串) 會把它們當特殊序列）"
+   "name": "登記檢查・expect 不在開頭：只出現在固定文字中間 → 拒絕登記並點名"
   },
   {
    "id": "checkmutations#32",
-   "name": "突變都還有效・find 剛好一次：全部 476 條（改了有差、測試檔存在）（檢查了 476 項）"
+   "name": "登記檢查・expect 前面嵌了動態內容：拒絕登記並點名"
   },
   {
    "id": "checkmutations#33",
-   "name": "過期檢查抓得到 find 不存在、出現兩次、改了等於沒改、檔案或測試不存在，也不會誤殺正常的（正例 5、反例 1）"
+   "name": "登記檢查・alsoRed 不在開頭：拒絕登記並點名"
   },
   {
    "id": "checkmutations#34",
-   "name": "（前提）帶 expect 的突變有 323 條（全部 476 條）"
+   "name": "（前提）登記檢查的母體：帶 expect 的突變 331 條＝原始碼裡數出的 expect 欄位 331 筆"
   },
   {
    "id": "checkmutations#35",
-   "name": "每一條 expect 都是對應測試原始碼裡的一段字面（打錯字的永遠不會命中）（檢查了 323 項）"
+   "name": "套用突變不偷改替換字串：$$、$&、$' 原樣寫進去（String.replace(字串, 字串) 會把它們當特殊序列）"
   },
   {
    "id": "checkmutations#36",
-   "name": "log 逐行數・對得上（必過）：每一條恰好一個結果、一行判定"
+   "name": "突變都還有效・find 剛好一次：全部 484 條（改了有差、測試檔存在）（檢查了 484 項）"
   },
   {
    "id": "checkmutations#37",
-   "name": "log 逐行數・三個數字都從 log 數出來：相加、挑選、判定行"
+   "name": "過期檢查抓得到 find 不存在、出現兩次、改了等於沒改、檔案或測試不存在，也不會誤殺正常的（正例 5、反例 1）"
   },
   {
    "id": "checkmutations#38",
-   "name": "log 逐行數・中斷：挑選了 2 條、只跑了 1 條 → 點名沒有結果的那一條（不是補成某一類）"
+   "name": "（前提）帶 expect 的突變有 331 條（全部 484 條）"
   },
   {
    "id": "checkmutations#39",
-   "name": "log 逐行數・重複：同一條有兩個結果 → 報出來"
+   "name": "每一條 expect 都是對應測試原始碼裡的一段字面（打錯字的永遠不會命中）（檢查了 331 項）"
   },
   {
    "id": "checkmutations#40",
-   "name": "log 逐行數・log 有而清單沒有 → 報出來"
+   "name": "log 逐行數・對得上（必過）：每一條恰好一個結果、一行判定"
   },
   {
    "id": "checkmutations#41",
-   "name": "log 逐行數・獨立核對：有「結果｜」行卻沒有判定行 → 報出來（兩個來源對不上）"
+   "name": "log 逐行數・三個數字都從 log 數出來：相加、挑選、判定行"
   },
   {
    "id": "checkmutations#42",
-   "name": "登記表・唯一而且版本對（必過）：沒有問題"
+   "name": "log 逐行數・中斷：挑選了 2 條、只跑了 1 條 → 點名沒有結果的那一條（不是補成某一類）"
   },
   {
    "id": "checkmutations#43",
-   "name": "登記表・預期有歧義：以 expect 開頭的斷言有 2 條 → 報出來、列出是哪幾條"
+   "name": "log 逐行數・重複：同一條有兩個結果 → 報出來"
   },
   {
    "id": "checkmutations#44",
-   "name": "登記表・對不到：以 expect 開頭的斷言 0 條 → 報出來"
+   "name": "log 逐行數・log 有而清單沒有 → 報出來"
   },
   {
    "id": "checkmutations#45",
-   "name": "登記表・預期需要複審：預期戳的是舊版登記表（母體變了）→ 報出來"
+   "name": "log 逐行數・獨立核對：有「結果｜」行卻沒有判定行 → 報出來（兩個來源對不上）"
   },
   {
    "id": "checkmutations#46",
-   "name": "登記表・alsoRed 對不到：報出來"
+   "name": "log 耗時・正常（必過）：每條都有耗時、都跑到結算行、沒有偏短的"
   },
   {
    "id": "checkmutations#47",
-   "name": "登記表・建表（必過）：全綠、跑完、名稱不重複 → 建得出來"
+   "name": "log 耗時・偏短：9 秒對基準 50 秒、記成紅 → 列成「可能被中斷、需重驗」（MealMate 那一筆的形狀）"
   },
   {
    "id": "checkmutations#48",
-   "name": "登記表・建表：有斷言紅了的那一場 → 不建（結算行在紅的時候也會印）"
+   "name": "log 耗時・判定器漏了：記成紅、耗時行卻寫結算行沒有 → 對不上"
   },
   {
    "id": "checkmutations#49",
-   "name": "登記表・建表：名稱重複 → 不建、點名"
+   "name": "log 耗時・情境未成立而且沒有結算行（必過）：這是對的，不報"
   },
   {
    "id": "checkmutations#50",
-   "name": "登記表・建表：沒有結算行 → 不建"
+   "name": "log 耗時・新格式少了耗時行 → 對不上（不是當成沒有偏短的）"
   },
   {
    "id": "checkmutations#51",
-   "name": "登記表・有表就對表檢查：原始碼裡看起來唯一（樣板），登記表裡對到 2 條 → 照登記表報歧義"
+   "name": "log 耗時・舊格式（沒有基準耗時行）：標成掃不到（legacy），不當成「沒有偏短的」"
   },
   {
    "id": "checkmutations#52",
-   "name": "expect 檢查抓得到打錯字、空字串、測試不存在，也不會誤殺正確的（正例 3、反例 2）"
+   "name": "登記表・唯一而且版本對（必過）：沒有問題"
   },
   {
    "id": "checkmutations#53",
-   "name": "（前提）mutationtest.mjs 裡找得到標記「// ──── EXPECT_REQUIRED_BELOW ────」，它之前有 238 條舊突變"
+   "name": "登記表・預期有歧義：以 expect 開頭的斷言有 2 條 → 報出來、列出是哪幾條"
   },
   {
    "id": "checkmutations#54",
-   "name": "標記以下的 238 條新突變都帶 expect（檢查了 238 項）"
+   "name": "登記表・對不到：以 expect 開頭的斷言 0 條 → 報出來"
   },
   {
    "id": "checkmutations#55",
-   "name": "對照：標記在第 2 條之後，數得出「之前有 2 條」"
+   "name": "登記表・預期需要複審：預期戳的是舊版登記表（母體變了）→ 報出來"
   },
   {
    "id": "checkmutations#56",
+   "name": "登記表・alsoRed 對不到：報出來"
+  },
+  {
+   "id": "checkmutations#57",
+   "name": "登記表・建表（必過）：全綠、跑完、名稱不重複 → 建得出來"
+  },
+  {
+   "id": "checkmutations#58",
+   "name": "登記表・建表：有斷言紅了的那一場 → 不建（結算行在紅的時候也會印）"
+  },
+  {
+   "id": "checkmutations#59",
+   "name": "登記表・建表：名稱重複 → 不建、點名"
+  },
+  {
+   "id": "checkmutations#60",
+   "name": "登記表・建表：沒有結算行 → 不建"
+  },
+  {
+   "id": "checkmutations#61",
+   "name": "登記表・有表就對表檢查：原始碼裡看起來唯一（樣板），登記表裡對到 2 條 → 照登記表報歧義"
+  },
+  {
+   "id": "checkmutations#62",
+   "name": "expect 檢查抓得到打錯字、空字串、測試不存在，也不會誤殺正確的（正例 3、反例 2）"
+  },
+  {
+   "id": "checkmutations#63",
+   "name": "（前提）mutationtest.mjs 裡找得到標記「// ──── EXPECT_REQUIRED_BELOW ────」，它之前有 238 條舊突變"
+  },
+  {
+   "id": "checkmutations#64",
+   "name": "標記以下的 246 條新突變都帶 expect（檢查了 246 項）"
+  },
+  {
+   "id": "checkmutations#65",
+   "name": "對照：標記在第 2 條之後，數得出「之前有 2 條」"
+  },
+  {
+   "id": "checkmutations#66",
    "name": "對照：沒有標記 → 回 null（上面的前提就會紅）"
   }
  ]

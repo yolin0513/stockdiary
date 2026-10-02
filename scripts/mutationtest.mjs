@@ -3849,8 +3849,8 @@ const MUTATIONS = [
     replace: '  if (false) return',
     test: 'checkmutations',
     expect: '情境未成立・沒有結算行：',
-    alsoRed: ['情境未成立・崩潰：', '情境未成立・別支的結算行：', '情境未成立・結算行不在行首：', '突變都還有效・find 剛好一次：'],
-    alsoRedWhy: '崩潰、別支的結算行、不在行首三種樣本都靠「有沒有自己的結算行」這一道；最後一條同上（checkmutations 讀到被改壞的檔）。',
+    alsoRed: ['情境未成立・崩潰：', '情境未成立・別支的結算行：', '情境未成立・結算行不在行首：', '情境未成立・真的中途被殺：', '情境未成立・真的中途被殺（沒帶 expect）', '突變都還有效・find 剛好一次：'],
+    alsoRedWhy: '崩潰、別支的結算行、不在行首、真的中途被殺四種樣本都靠「有沒有自己的結算行」這一道；最後一條同上（checkmutations 讀到被改壞的檔）。',
   },
   {
     name: 'NC：結算行不看是哪一支、也不看行首',
@@ -4240,6 +4240,61 @@ const MUTATIONS = [
     alsoRed: ['Job・detached：經 jobrun，殺掉最外層之後', 'Job・cmd.exe：經 jobrun', 'Job・正常結束：'],
     alsoRedWhy: '准許脫離之後，四種情境的子孫都在 Job 外面，一起漏。',
   },
+  // ---- 耗時與結算行（2026-10-03，MealMate 同日：被中斷的突變長得像斷言失敗）----
+  {
+    name: 'ML：耗時行一律寫結算行有',
+    why: '帳本的第二個來源被寫死：被中斷的那一條在 log 上也是「結算行有」，mutlog 核對不出判定器漏掉的。',
+    file: 'scripts/mutationtest.mjs',
+    // find 帶換行：清單裡這一行寫的是跳脫的 \n，跟程式本身那一段不同，才剛好出現一次
+    find: "｜結算行${lastRun.summary ? '有' : '沒有'}`);\n  if (verdict === 'red')",
+    replace: "｜結算行有`);\n  if (verdict === 'red')",
+    test: 'controltest',
+    expect: 'log 耗時・真實入口：',
+  },
+  {
+    name: 'ML：算數的結果不核對結算行',
+    why: '記成紅、耗時行卻寫沒跑到結算行——這正是 MealMate 那一筆的形狀；不核對就照樣對得上。',
+    file: 'scripts/mutlog.mjs',
+    find: "    if (COUNTED.includes(cat) && !r.summary) problems.push(",
+    replace: "    if (false) problems.push(",
+    test: 'checkmutations',
+    expect: 'log 耗時・判定器漏了：',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 讀到被改壞的 mutlog.mjs，這條突變自己的 find 變成 0 次（跟 NC 那幾條同一個理由）。',
+  },
+  {
+    name: 'ML：不列耗時偏短的',
+    why: '9 秒對基準 50 秒的那一筆不會被列成「可能被中斷、需重驗」，回頭掃帳本時看不到。',
+    file: 'scripts/mutlog.mjs',
+    find: '    if (COUNTED.includes(cat) && r.sec < b * SHORT_RATIO) short.push(',
+    replace: '    if (false) short.push(',
+    test: 'checkmutations',
+    expect: 'log 耗時・偏短：',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 讀到被改壞的 mutlog.mjs，這條突變自己的 find 變成 0 次（跟 NC 那幾條同一個理由）。',
+  },
+  {
+    name: 'ML：少了耗時行也放過',
+    why: '新格式的 log 少了某一條的耗時行，就當成「沒有偏短的」——故障時放行（§5.13）。',
+    file: 'scripts/mutlog.mjs',
+    find: "    if (!r) { problems.push(`有結果（${cat}）卻沒有耗時行：${name}`); continue; }",
+    replace: '    if (!r) continue;',
+    test: 'checkmutations',
+    expect: 'log 耗時・新格式少了耗時行',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 讀到被改壞的 mutlog.mjs，這條突變自己的 find 變成 0 次（跟 NC 那幾條同一個理由）。',
+  },
+  {
+    name: 'ML：舊格式當成掃過了',
+    why: '2026-10-03 以前的 log 沒有耗時，掃不到被中斷的；標成掃過了，就變成「沒有偏短的」——拿 0 下結論。',
+    file: 'scripts/mutlog.mjs',
+    find: "  if (base.size === 0) return { legacy: true,",
+    replace: "  if (base.size === 0) return { legacy: false,",
+    test: 'checkmutations',
+    expect: 'log 耗時・舊格式',
+    alsoRed: ['突變都還有效・find 剛好一次：'],
+    alsoRedWhy: 'checkmutations 讀到被改壞的 mutlog.mjs，這條突變自己的 find 變成 0 次（跟 NC 那幾條同一個理由）。',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
@@ -4402,9 +4457,12 @@ let baselineOk = true;
 // 沒有 --only 的時候 SELECTED 就是全部，跟以前一樣。
 const BASELINE_TESTS = [...new Set(SELECTED.map((m) => m.test))];
 for (const t of BASELINE_TESTS) {
+  const t0 = Date.now();
   const r = runTest(t);
   // 基準也要情境成立：逾時或沒有結算行，就算 exit code 是 0 也不算通過（沒跑完的綠不是綠）
   const ran = !r.timedOut && hasSummary(r.out, t);
+  // 帳本要掃得到「耗時明顯短於正常」的（MealMate 2026-10-03：被中斷的 9 秒對正常 50 秒）——每支的正常耗時記下來給 mutlog 比
+  note(`基準耗時｜${t}｜${((Date.now() - t0) / 1000).toFixed(1)}`);
   if (!ok(r.code === 0 && ran, `${t} 在乾淨的程式碼上通過`,
     ran ? r.out.split('\n').filter((l) => l.includes('✗')).join('\n      ')
       : `【情境未成立】${r.timedOut ? `逾時（${(TEST_TIMEOUT[t] ?? 180000) / 1000} 秒）` : `沒有 ${t} 自己的結算行（崩潰或沒跑起來）`}`)) {
@@ -4464,12 +4522,15 @@ for (const mut of SELECTED) {
   let result = null;
   let attempts = 0;
   let restoreBroke = false;
+  let lastRun = null;   // 最後一次的耗時與有沒有結算行，印進「耗時｜」行
   while (attempts < MAX_ATTEMPTS) {
     attempts += 1;
     backups.set(mut.file, original);
     writePending(mut.file, original);          // 被硬殺掉也還原得回來（寫不進去就丟例外、不改）
     fs.writeFileSync(abs, applyMutation(original, mut.find, mut.replace), 'utf8');
+    const t0 = Date.now();
     const r = runTest(mut.test);
+    lastRun = { sec: (Date.now() - t0) / 1000, summary: hasSummary(r.out, mut.test) };
     fs.writeFileSync(abs, original, 'utf8');
     backups.delete(mut.file);
     clearPending();
@@ -4504,6 +4565,9 @@ for (const mut of SELECTED) {
           : '');
   // **判對時也印出實際紅了哪幾條**（Dispatch 2026-10-03）：只在判錯時才顯示計算過程的檢查器，通過的時候無法被稽核——
   // 「預期字串對應到好幾條斷言、隨便哪一條紅都算過」從輸出上完全看不出來。印成說明行（行首「  · 」，不會被當成失敗斷言）。
+  // 帳本的第二個來源（2026-10-03，MealMate 同日）：耗時與「有沒有跑到結算行」。mutlog 拿它跟基準耗時比、跟類別核對——
+  // 算數的結果卻沒有結算行＝判定器漏了；耗時明顯偏短＝可能被中斷，要人看一眼
+  note(`耗時｜${mut.name}｜${mut.test}｜${lastRun.sec.toFixed(1)}｜結算行${lastRun.summary ? '有' : '沒有'}`);
   if (verdict === 'red') note(`實際紅在（共 ${failed.length} 條）：${failed.join('／')}`);
   resultLine(mut, verdict);
 }
