@@ -84,15 +84,15 @@
 
 **外部記憶體監看 `tools/memwatch.mjs`（2026-10-03，Dispatch；照 MealMate 的做法；不碰閘門、不動 `scripts/`）**：
 - 每 5 秒看一次系統可用記憶體，**連續 3 次**低於 2,048 MB 才停；停之前把記憶體用量前 10 名寫進 log；停的對象只限 `--pid` 那一個，
-  開始時與動手前都確認身分（`node.exe`、指令列含 `--expect`、建立時間不變）。子孫靠 Job Object 收（mutationtest 每支測試經 jobrun）。
+  開始時與動手前都確認身分（`node.exe`、指令列含 `--expect`、建立時間不變）。子孫靠 Job Object 收（mutationtest 每支測試經 jobrun）——**mutationtest 自己不在那個 Job 裡**，停它之後 jobrun 會不會跟著死，靠的是 Node 自己那個「父程序結束就連帶殺」的 Job。這一句原本寫成結論、其實是推論（Dispatch 2026-10-03 指出），**現在是實測**：`memwatchtest` 造了同樣的形狀（父程序用 execFileSync 經 jobrun 開測試、測試經 Git Bash 開 2 個孫程序＋直接開 1 個子程序），監看停掉父程序之後剩 0；對照組不經 jobrun，Git Bash 的 2 個孫程序還活著。突變（jobhelper 准許靜默脫離，一次性、改完讀回確認還原）紅在那一條。
   停完有殘留突變的還原紀錄就跑 `mutationtest --restore`。回傳：0 目標自己結束、10 停了目標、2 身分對不上沒動、4 連續讀不到記憶體（監看失效、目標沒動）。
 - **GV 開跑前掛上**：先開 GV（`node scripts/mutationtest.mjs --only "GV："`，或經 `longrun` 包），查到 mutationtest 那支 node 的 PID，然後
   `node tools/memwatch.mjs --pid <PID> --expect "mutationtest.mjs"`（log 在 `.logs/memwatch-<日期>-<PID>.log`）。**`--pid` 要給 mutationtest 那一支，
-  不要給 longrun**：longrun 被停時不會連帶殺它開的指令以外的東西，mutationtest 被停時它底下的 jobrun 與 Job 會收掉整棵樹。
-- **實測**：`tools/memwatchtest.mjs`（12 項，約 45 秒，最多 3 個 node；不在 `npm test` 鏈上，因為它在 `tools/`）——連續 3 次低才停（第 2、4 次單獨低不停，第 6 次停）、
+  不要給 longrun**：longrun 被停時不會連帶殺它開的指令以外的東西，mutationtest 被停時它底下的 jobrun 與 Job 會收掉整棵樹（上面那段的實測）。
+- **實測**：`tools/memwatchtest.mjs`（16 項，約 80 秒；「停父程序」那兩段同時約 8 個 node（父、jobrun、測試、2 個孫、1 個子、監看、測試本身），照定義是重負載，2026-10-03 16:49 跑了兩次（含突變）；不在 `npm test` 鏈上，因為它在 `tools/`）——連續 3 次低才停（第 2、4 次單獨低不停，第 6 次停）、
   前 10 名寫進 log、從沒連續低就不動手、身分對不上回 2 且目標活著、讀不到記憶體回 4 且目標活著、真的讀一次系統記憶體是正數。
   突變四條（改壞的複本放 `tools/`、經 `MEMWATCH_FILE` 跑，一次性腳本，不進 repo）全部紅在指定的那一條：不要求連續、開始時不確認指令列、讀不到就略過、不寫前 10 名。
-- **推論、沒驗**：PID 被重用的分支（建立時間不同就當成目標已結束）沒有造情境驗；停下真的 mutationtest 之後 Job 收樹、`--restore` 還原，沒有在真的突變場次上演練。
+- **推論、沒驗**：PID 被重用的分支（建立時間不同就當成目標已結束）沒有造情境驗；停下真的 mutationtest 之後 `--restore` 還原，沒有在真的突變場次上演練（收樹的形狀已用假程序實測，見上）。監看真的觸發時就是第一次真實演出：每一步都印進 log。
 
 以下是當天較早的紀錄（推送那段已經過期：兩件優先後來都推上去了）。
 

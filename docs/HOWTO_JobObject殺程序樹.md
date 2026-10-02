@@ -40,6 +40,7 @@ Job 只管「放進去之後才開的」子孫；放進去之前已經開出來�
 
 jobhelper 是 jobrun 用 Node 開的，jobrun 一死它跟著死（Node 自己的 Job）→ 它的標準輸入關掉、handle 關掉 → 我們的 Job 關閉 → 整棵樹被殺。
 jobrun 正常結束時也一樣：指令留下來的背景程序一起被收掉。【實測：正常結束留下的 sleep 剩 0】
+停的是 jobrun 的**父程序**（例：突變跑器本身被外部監看停掉；它不在 jobrun 的 Job 裡）也收得掉：父程序一死，Node 的 Job 把 jobrun 帶走，jobrun 一死我們的 Job 關閉。【實測（StockDiary `tools/memwatchtest.mjs`）：父程序用 execFileSync 經 jobrun 開測試、測試經 Git Bash 開 2 個孫程序，停父程序後剩 0；不經 jobrun 的對照剩 2】這一條原本只是推論——各 App 的監看或逾時如果停的是跑器而不是 jobrun，自己再實測一次。
 
 ## 3. 旗標：只設 KILL_ON_JOB_CLOSE，不准脫離
 

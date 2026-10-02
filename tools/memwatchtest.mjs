@@ -67,6 +67,58 @@ try {
     ok(alive(t.pid) && /監看失效/.test(w.log), '監看・讀不到：目標沒被動、log 寫明監看失效', w.log.slice(-300));
     t.kill();
   }
+  section('停掉父程序（mutationtest 的位置）之後，jobrun 底下的樹剩幾個（Dispatch 2026-10-03：這一條原本是推論）');
+  {
+    // 形狀照真的：父程序（扮 mutationtest）用 execFileSync 經 jobrun 開「測試」，測試經 Git Bash 開 2 個孫程序、直接開 1 個子程序。
+    // 監看停的是父程序——它**不在** jobrun 的 Job 裡；jobrun 會不會跟著死，靠的是 Node 自己那個「父程序結束就連帶殺」的 Job。
+    // 對照：同一個父程序不經 jobrun，停掉之後 Git Bash 開的孫程序還活著（證明這個情境會漏，「經 jobrun 剩 0」才是 Job 的作用）。
+    const { resolveBash } = await import('../scripts/resolvebin.mjs');
+    const JOBRUN = path.join(HERE, '..', 'scripts', 'jobrun.mjs');
+    const BASH = resolveBash();
+    const inner = path.join(TMP, 'inner.mjs');
+    const parent = path.join(TMP, 'parent.mjs');
+    fs.writeFileSync(inner, [
+      "import { spawn } from 'node:child_process';",
+      'const [bash, tag] = process.argv.slice(2);',
+      "const n = process.execPath.split('\\\\').join('/');",
+      "spawn(bash, ['-c', `\"${n}\" -e \"setTimeout(()=>{},40000)\" ${tag}-GRAND & \"${n}\" -e \"setTimeout(()=>{},40000)\" ${tag}-GRAND & wait`], { stdio: 'ignore' });",
+      "spawn(process.execPath, ['-e', 'setTimeout(()=>{},40000)', `${tag}-CHILD`], { stdio: 'ignore' });",
+      'setTimeout(() => {}, 40000);',
+      '',
+    ].join('\n'));
+    fs.writeFileSync(parent, [
+      "import { execFileSync } from 'node:child_process';",
+      'const [jobrun, inner, bash, tag, mode] = process.argv.slice(2);',
+      "const args = mode === 'job' ? [jobrun, process.execPath, inner, bash, tag] : [inner, bash, tag];",
+      "try { execFileSync(process.execPath, args, { stdio: 'ignore' }); } catch {}",
+      '',
+    ].join('\n'));
+    const psq = (cmd) => spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', cmd], { encoding: 'utf8', timeout: 30000 }).stdout.trim();
+    const countTag = (tag) => {
+      const [g, c] = psq(`$a = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '* ${tag}-GRAND' }).Count; $b = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '* ${tag}-CHILD' }).Count; "$a $b"`).split(' ').map(Number);
+      return { grand: g, child: c };
+    };
+    const sweepTag = (tag) => psq(`Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${tag}*' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`);
+    const run = async (mode) => {
+      const tag = ['MWP', mode, process.pid, Date.now() % 100000].join('');
+      const p = spawn(N, [parent, JOBRUN, inner, BASH, tag, mode, `${tag}-PARENT`], { stdio: 'ignore' });
+      await new Promise((r) => setTimeout(r, 5000));
+      const before = countTag(tag);
+      const w = watch(p.pid, `${tag}-PARENT`, '1000');
+      await new Promise((r) => setTimeout(r, 4000));
+      const after = countTag(tag);
+      const parentAlive = alive(p.pid);
+      sweepTag(tag);
+      return { before, after, code: w.code, parentAlive, log: w.log };
+    };
+    const c = await run('plain');
+    ok(c.before.grand === 2 && c.before.child === 1 && c.code === 10 && !c.parentAlive && c.after.grand === 2,
+      '（對照）停父程序・不經 jobrun：監看停了父程序之後，Git Bash 開的 2 個孫程序還活著（這個情境真的會漏）', JSON.stringify({ ...c, log: undefined }));
+    const j = await run('job');
+    ok(j.before.grand === 2 && j.before.child === 1, '（前提）停父程序・經 jobrun：停之前 2 個孫程序、1 個子程序都活著', JSON.stringify(j.before));
+    ok(j.code === 10 && !j.parentAlive, '（前提）停父程序・經 jobrun：監看回 10、父程序真的停了', JSON.stringify({ code: j.code, parentAlive: j.parentAlive }));
+    ok(j.after.grand === 0 && j.after.child === 0, '停父程序・經 jobrun：父程序（不在 Job 裡）被停之後，jobrun 底下的子孫剩 0', JSON.stringify(j.after));
+  }
   {
     // 真的讀一次系統可用記憶體（不是假數字）：門檻設成 1 MB，一定不會停；取樣行要是正的數字
     const t = target(8, 'e');
