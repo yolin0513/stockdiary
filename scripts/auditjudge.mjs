@@ -47,6 +47,8 @@ export const AUDIT_TESTS = [
   'escscan',
   // 2026-10-03：Job Object（殺程序不靠父程序編號往下找子孫）
   'jobtest',
+  // 2026-10-08：共用慣例副本跟主檔一致
+  'convtest',
 ];
 /** npm test 鏈上、刻意不收的：名稱 → 理由。 */
 export const AUDIT_SKIP = {

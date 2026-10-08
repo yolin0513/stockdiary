@@ -4295,6 +4295,43 @@ const MUTATIONS = [
     alsoRed: ['突變都還有效・find 剛好一次：'],
     alsoRedWhy: 'checkmutations 讀到被改壞的 mutlog.mjs，這條突變自己的 find 變成 0 次（跟 NC 那幾條同一個理由）。',
   },
+  // ---- 共用慣例副本跟主檔一致（2026-10-08，Dispatch；scripts/convcheck.mjs，照 MealMate 的做法）----
+  {
+    name: 'CV：不看版本行',
+    why: '副本過期（版本不同）的那一種被判成別的理由——版本對不上這件事沒人點名，照著過期的規則工作。',
+    file: 'scripts/convcheck.mjs',
+    find: "  if (cv !== mv) return { ok: false, why: `版本不同：",
+    replace: "  if (false) return { ok: false, why: `版本不同：",
+    test: 'convtest',
+    expect: '副本比對・版本不同：',
+  },
+  {
+    name: 'CV：只比版本行、不比全文',
+    why: '主檔改了內容卻沒改版本（或副本被手改），照樣判一致。',
+    file: 'scripts/convcheck.mjs',
+    find: '  if (norm(copyText) !== norm(masterText)) return',
+    replace: '  if (false) return',
+    test: 'convtest',
+    expect: '副本比對・全文不同：',
+  },
+  {
+    name: 'CV：讀不到主檔當成一致',
+    why: '主檔搬家或換機器時，檢查默默變成永遠通過——跟沒有這道檢查一樣（§5.13 故障時停下不放行）。',
+    file: 'scripts/convcheck.mjs',
+    find: "  if (masterText == null) return { ok: false, why: '讀不到主檔' };",
+    replace: "  if (masterText == null) return { ok: true, why: '讀不到主檔' };",
+    test: 'convtest',
+    expect: '副本比對・讀不到主檔：',
+  },
+  {
+    name: 'CV：不檢查是不是同一個實體檔',
+    why: '主檔路徑設錯成副本自己時，拿自己比自己永遠一致（§5.2「A 跟 B 一樣」要先證明是兩個不同的來源）。',
+    file: 'scripts/convcheck.mjs',
+    find: '  if (masterText != null && sameFile(copyAbs, masterAbs)) return',
+    replace: '  if (false) return',
+    test: 'convtest',
+    expect: '副本比對・同一個實體檔：',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];
