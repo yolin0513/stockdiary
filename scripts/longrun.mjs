@@ -22,7 +22,12 @@ import { descendants, windowsProcessTable, windowsFreeMemoryMB, WORKER_NAMES } f
 
 /**
  * 逐一計數的峰值（scripts/proccount.mjs 寫的事件檔照時間重播）。回傳 { workers, all, events }。
- * 工作程序＝node（每個 node 自己記的「node:」）＋它開的瀏覽器／python；全部＝每一筆。沒有「-」的（被硬殺）一直算著 → 只會高估。
+ * 工作程序＝node（每個 node 自己記的「node:」）＋它開的瀏覽器／python；全部＝每一筆。
+ * **這個峰值目前不可信，不是「高估、保守一點」**（2026-10-08 改正；以前這裡寫「只會高估」，是錯的註解）：重播是只加不減的形狀——
+ * 被硬殺、或被 Job Object 一起收掉的程序不會記「-」，從那一刻起一直算在場上，之後每一刻的數字都被墊高。
+ * MealMate 同一個形狀實測過：還記著的 37 支裡 36 支其實早就不在，峰值 41 是假的——偏差大到這個數字沒有意義。本 repo 偏差多少**沒量到**（`.logs/` 沒留下事件檔）。
+ * 待辦（照 MealMate 的修法，等本專案解除暫停再排）：結算時逐支核對還記著的那幾支（程序編號＋建立時間），分出「真的還活著」與
+ * 「已經不在、但沒收到結束通知」，有後者就把那一次的峰值作廢、不報數字。
  */
 export function peakOf(eventsText) {
   const ev = String(eventsText).split('\n').filter(Boolean).map((l) => l.split('\t')).filter((x) => x.length >= 3)

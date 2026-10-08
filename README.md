@@ -73,6 +73,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 | `npm run plcaltest` | 每日損益日曆的判斷（`js/plcal.js`）：每一格是有數字／算不出／無資料／未結算／休市／日曆未涵蓋／未來哪一種；沒資料的格子不是 0；母體（畫出有資料的天數＝紀錄數）跨月、跨年、閏年、月底都對；賺賠顏色 |
 | `npm run plcalviewtest` | 每日損益日曆的畫面：從首頁當日損益的日曆圖示進去、切到上個月，逐格核對母體、「算不出」與「無資料」分得開、沒資料不是 0、顏色、今天有標、點一天看明細、手機寬度不橫向捲動（對外連線全擋） |
 | `npm run convtest` | 共用慣例副本（`docs/CONVENTIONS.md`）跟統籌工作區的主檔一致（`scripts/convcheck.mjs`）：版本行不同、版本相同但全文不同、讀不到主檔、副本與主檔是同一個實體檔，都紅；主檔路徑用相對路徑登記。換一台沒有統籌工作區的機器會紅（刻意的，不靜默跳過） |
+| `npm run docguardtest` | 用腳本改文件的兩道擋（`scripts/docguard.mjs`，共用慣例 §6.5）：行數只准變多（明講 allowShrink 才准少）、原本的章節標題都要在；被擋時原檔一字不變 |
 | `npm run jobtest` | 殺程序不靠父程序編號往下找子孫（Job Object，`scripts/jobrun.mjs`）：經 Git Bash 開的孫程序、中間那一支用 detached 開的目標、經 cmd.exe 開的，殺掉最外層之後一個都不剩；正常結束時留下的子孫也被收掉；兩種漏殺各帶一個不經 Job 的對照（證明那個情境真的會漏）。只在 Windows |
 | `npm run escscan` | 跳脫掃描：repo 裡所有腳本（`.mjs`／`.js`／`.cjs`／`.sh`，拿 git 追蹤清單核對一支不漏）有沒有 regex 被多跳脫一次、字串少跳脫一次、shell 樣式帶反斜線——語法正確卻默默空轉的那一種，寫的當下攔不到 |
 | `npm run controltest` | 不在 `npm test` 裡的檢查器，它們的判斷邏輯每版在這裡用合成樣本驗（不打網路）：`assertaudit`（一定失敗的斷言、空母體、寫出資料前就崩掉，都要判對；必過的乾淨測試不能被挑出來）、`sweep`（線上版本是舊的、讀不到版本、留著舊快取、真的錯誤被當成新聞上游雜訊，都要報；全部一致時什麼都不報）、`livecheck`（用 `scripts/fixtures/` 錄好的證交所回應，每個判斷一對：好的錄音不能報、故意改壞的錄音要報，不打證交所）；另做兩道孤兒檢查：`npm test` 鏈上的每一支都要在 `assertaudit` 的清單裡，或寫明不收的理由；`js/app.js` 註冊的每一條路由都要在 `scripts/routes.mjs` 的逐頁清單裡（`sweep` 與 `upgradecheck` 共用），或寫明不巡的理由 |
@@ -84,7 +85,7 @@ npm run livecheck    # 打真網路的巡檢（不在 npm test 裡）
 `npm run mutationtest` 是這個專案的測試品質保證。每一條斷言都要能被突變證明它在檢查東西：
 
 ```
-— 488 條突變：每一條都必須讓對應的測試變紅 —
+— 490 條突變：每一條都必須讓對應的測試變紅 —
   ✓ 把「沒成交」的漲跌價差照抄成 0 → parsetest 變紅
   ✓ 不認得除權息的 "X0.00" 標記 → parsetest 變紅
   ✓ 除權息日拿不到參考價時，退回用前一日收盤當基準 → settletest 變紅

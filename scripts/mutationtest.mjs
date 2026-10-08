@@ -4332,6 +4332,25 @@ const MUTATIONS = [
     test: 'convtest',
     expect: '副本比對・同一個實體檔：',
   },
+  // ---- 用腳本改文件的兩道擋（共用慣例 §6.5；scripts/docguard.mjs）----
+  {
+    name: 'DG：不擋行數變少',
+    why: '改文件的腳本漏接後半份，寫回去就把文件截掉，而且不會有任何測試紅。',
+    file: 'scripts/docguard.mjs',
+    find: '  if (!allowShrink && b < a) problems.push(',
+    replace: '  if (false) problems.push(',
+    test: 'docguardtest',
+    expect: '文件守門・截斷：',
+  },
+  {
+    name: 'DG：不擋章節標題不見',
+    why: '行數沒變、但一個章節標題被改掉或換掉，靠行數擋不到。',
+    file: 'scripts/docguard.mjs',
+    find: '  if (gone.length) problems.push(',
+    replace: '  if (false) problems.push(',
+    test: 'docguardtest',
+    expect: '文件守門・標題不見：',
+  },
 ];
 
 const TESTS = [...new Set(MUTATIONS.map((m) => m.test))];

@@ -49,6 +49,7 @@ export const AUDIT_TESTS = [
   'jobtest',
   // 2026-10-08：共用慣例副本跟主檔一致
   'convtest',
+  'docguardtest',
 ];
 /** npm test 鏈上、刻意不收的：名稱 → 理由。 */
 export const AUDIT_SKIP = {
