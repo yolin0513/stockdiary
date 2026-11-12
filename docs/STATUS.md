@@ -1,5 +1,7 @@
 # StockDiary 專案狀態（docs/STATUS.md）
 
+> **交接文件：`docs/HANDOFF.md`（2026-11-12）。** 沒有任何對話紀錄的接手者先讀它；它指回本檔該讀的段落。
+
 > 最後更新：2026-09-30（線上 `stockdiary-v0.7.25`：新增每日損益日曆）。
 > **M0–M6 全部完成；`SPEC_全面優化.md` 的 A 級 17 項與 B2、B3 全部完成。**
 > repo `yolin0513/stockdiary`，部署在 GitHub Pages。
